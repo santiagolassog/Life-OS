@@ -96,3 +96,29 @@ export interface SavingsYearBalance {
   savingsOpening: number   // savings balance at start of this year
   generalOpening?: number  // general money balance at start of this year (optional, backed by monthBalances)
 }
+
+// IDs fijos de las categorías financieras especiales de préstamos
+export const LOAN_OUT_CAT_ID = 'finc-loan-out'  // egreso: dinero prestado
+export const LOAN_IN_CAT_ID  = 'finc-loan-in'   // ingreso: reintegro recibido
+
+export interface Loan {
+  id: string
+  personName: string
+  amount: number
+  date: string            // "YYYY-MM-DD"
+  description?: string
+  transactionId?: string  // referencia al egreso registrado
+  status: 'active' | 'completed'
+  completedAt?: string
+  createdAt: string
+}
+
+export interface LoanPayment {
+  id: string
+  loanId: string
+  amount: number
+  date: string            // "YYYY-MM-DD"
+  description?: string
+  transactionId?: string  // referencia al ingreso registrado
+  createdAt: string
+}

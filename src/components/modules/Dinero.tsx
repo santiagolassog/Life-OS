@@ -8,10 +8,12 @@ import {
   ChevronLeft, ChevronRight, Wallet, PiggyBank, Edit2, BarChart3, List, Tag,
   Info, Pencil, Check, ArrowLeftRight,
 } from 'lucide-react';
-import type { Transaction, FinCategory, Savings, MonthBalance, SavingsWithdrawal, SavingsPocket, PocketFunding, SavingsYearBalance } from '../../types';
+import type { Transaction, FinCategory, Savings, MonthBalance, SavingsWithdrawal, SavingsPocket, PocketFunding, SavingsYearBalance, Loan, LoanPayment } from '../../types';
+import { LOAN_OUT_CAT_ID, LOAN_IN_CAT_ID } from '../../types';
 import { generateId, fmtCurrency as fmt } from '../../lib/utils';
+import PrestamosTab from './PrestamosTab';
 
-type DineroTab = 'movimientos' | 'categorias' | 'dashboard' | 'ahorros';
+type DineroTab = 'movimientos' | 'categorias' | 'dashboard' | 'ahorros' | 'prestamos';
 
 interface DineroProps {
   transactions: Transaction[];
@@ -30,6 +32,10 @@ interface DineroProps {
   setPocketFundings: React.Dispatch<React.SetStateAction<PocketFunding[]>>;
   savingsYearBalances: SavingsYearBalance[];
   setSavingsYearBalances: React.Dispatch<React.SetStateAction<SavingsYearBalance[]>>;
+  loans: Loan[];
+  setLoans: React.Dispatch<React.SetStateAction<Loan[]>>;
+  loanPayments: LoanPayment[];
+  setLoanPayments: React.Dispatch<React.SetStateAction<LoanPayment[]>>;
   currentDate: Date;
 }
 
@@ -64,6 +70,7 @@ const TABS: Array<{ key: DineroTab; label: string; Icon: React.FC<{ size?: numbe
   { key: 'categorias',  label: 'Categorías',  Icon: Tag },
   { key: 'dashboard',   label: 'Dashboard',   Icon: BarChart3 },
   { key: 'ahorros',     label: 'Ahorros',     Icon: PiggyBank },
+  { key: 'prestamos',   label: 'Préstamos',   Icon: ArrowLeftRight },
 ];
 
 type WithdrawalModal = { amount: number; description: string; date: string; fromPocketId: string };
@@ -77,6 +84,7 @@ const Dinero: React.FC<DineroProps> = ({
   savingsPockets, setSavingsPockets,
   pocketFundings, setPocketFundings,
   savingsYearBalances, setSavingsYearBalances,
+  loans, setLoans, loanPayments, setLoanPayments,
   currentDate,
 }) => {
   const today = new Date().toISOString().split('T')[0];
@@ -140,8 +148,8 @@ const Dinero: React.FC<DineroProps> = ({
     const g: Record<string, Transaction[]> = {};
 
     monthTxs.forEach(tx => {
-      if (tx.type === 'income') income += tx.amount;
-      else expenses += tx.amount;
+      if (tx.type === 'income' && tx.finCategoryId !== LOAN_IN_CAT_ID) income += tx.amount;
+      else if (tx.type === 'expense' && tx.finCategoryId !== LOAN_OUT_CAT_ID) expenses += tx.amount;
 
       const cat = finCategories.find(c => c.id === tx.finCategoryId);
       if (cat) {
@@ -200,8 +208,8 @@ const Dinero: React.FC<DineroProps> = ({
       transactions.forEach(tx => {
         const [ty, tm] = tx.date.split('-').map(Number);
         if (ty === year && tm - 1 === m) {
-          if (tx.type === 'income') inc += tx.amount;
-          else exp += tx.amount;
+          if (tx.type === 'income' && tx.finCategoryId !== LOAN_IN_CAT_ID) inc += tx.amount;
+          else if (tx.type === 'expense' && tx.finCategoryId !== LOAN_OUT_CAT_ID) exp += tx.amount;
         }
       });
       months.push({ label: d.toLocaleDateString('es-ES', { month: 'short' }), income: inc, gastos: exp });
@@ -210,8 +218,8 @@ const Dinero: React.FC<DineroProps> = ({
   }, [transactions, viewDate]);
 
   const allTimeStats = useMemo(() => {
-    const totalIncome   = transactions.filter(t => t.type === 'income').reduce((s, t) => s + t.amount, 0);
-    const totalExpenses = transactions.filter(t => t.type === 'expense').reduce((s, t) => s + t.amount, 0);
+    const totalIncome   = transactions.filter(t => t.type === 'income'  && t.finCategoryId !== LOAN_IN_CAT_ID).reduce((s, t) => s + t.amount, 0);
+    const totalExpenses = transactions.filter(t => t.type === 'expense' && t.finCategoryId !== LOAN_OUT_CAT_ID).reduce((s, t) => s + t.amount, 0);
     const totalSavingsDeposited = savings.reduce((s, x) => s + x.amount, 0);
     return { totalIncome, totalExpenses, netBalance: totalIncome - totalExpenses, totalSavingsDeposited };
   }, [transactions, savings]);
@@ -253,8 +261,8 @@ const Dinero: React.FC<DineroProps> = ({
   const annualStats = useMemo(() => {
     const year = viewDate.getFullYear();
     const yearStr = String(year);
-    const yearIncome    = transactions.filter(t => t.type === 'income'  && t.date.startsWith(yearStr)).reduce((s, t) => s + t.amount, 0);
-    const yearExpenses  = transactions.filter(t => t.type === 'expense' && t.date.startsWith(yearStr)).reduce((s, t) => s + t.amount, 0);
+    const yearIncome    = transactions.filter(t => t.type === 'income'  && t.date.startsWith(yearStr) && t.finCategoryId !== LOAN_IN_CAT_ID).reduce((s, t) => s + t.amount, 0);
+    const yearExpenses  = transactions.filter(t => t.type === 'expense' && t.date.startsWith(yearStr) && t.finCategoryId !== LOAN_OUT_CAT_ID).reduce((s, t) => s + t.amount, 0);
     const yearDeposited = savings.filter(s => s.date.startsWith(yearStr)).reduce((s, x) => s + x.amount, 0);
     const yearWithdrawn = savingsWithdrawals.filter(w => w.date.startsWith(yearStr)).reduce((s, w) => s + w.amount, 0);
     const yearEntry = savingsYearBalances.find(b => b.year === year);
@@ -317,7 +325,8 @@ const Dinero: React.FC<DineroProps> = ({
     };
     setTransactions(prev => [...prev.filter(t => t.id !== tx.id), tx]);
 
-    if (tx.type === 'income' && !isEditingTx) {
+    const isLoanTx = tx.finCategoryId === LOAN_IN_CAT_ID || tx.finCategoryId === LOAN_OUT_CAT_ID;
+    if (tx.type === 'income' && !isEditingTx && !isLoanTx) {
       setPendingTxId(txId);
       setPendingTxAmount(tx.amount);
       setSavingsPercent(10);
@@ -1004,6 +1013,19 @@ const Dinero: React.FC<DineroProps> = ({
               )}
             </div>
           </div>
+        )}
+
+        {/* ─── PRÉSTAMOS ─── */}
+        {tab === 'prestamos' && (
+          <PrestamosTab
+            loans={loans}
+            setLoans={setLoans}
+            loanPayments={loanPayments}
+            setLoanPayments={setLoanPayments}
+            transactions={transactions}
+            setTransactions={setTransactions}
+            finCategories={finCategories}
+          />
         )}
       </div>
 

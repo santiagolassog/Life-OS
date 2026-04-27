@@ -10,13 +10,14 @@ import {
 import Dinero from './modules/Dinero';
 import Objetivos from './modules/Objetivos';
 import Revision from './modules/Revision';
-import type { Transaction, FinCategory, Goal, Savings, MonthBalance, SavingsWithdrawal, SavingsPocket, PocketFunding, SavingsYearBalance } from '../types';
+import type { Transaction, FinCategory, Goal, Savings, MonthBalance, SavingsWithdrawal, SavingsPocket, PocketFunding, SavingsYearBalance, Loan, LoanPayment } from '../types';
+import { LOAN_OUT_CAT_ID, LOAN_IN_CAT_ID } from '../types';
 import { generateId, formatDateId as fmtDateId, getWeekDays, GRID_HOURS } from '../lib/utils';
 import {
   loadAllData, migrateFromLocalStorage,
   syncEvents, syncCategories, syncTransactions, syncFinCategories, syncGoals,
   syncSavings, syncMonthBalances, syncSavingsWithdrawals, syncSavingsPockets,
-  syncPocketFundings, syncSavingsYearBalances,
+  syncPocketFundings, syncSavingsYearBalances, syncLoans, syncLoanPayments,
 } from '../lib/db';
 import { useAuth } from '../hooks/useAuth';
 
@@ -73,6 +74,8 @@ const INITIAL_FIN_CATEGORIES: FinCategory[] = [
   { id: 'finc-e8', label: 'Compromisos Financieros', color: '#f97316', type: 'expense', description: 'Cuotas de crédito, préstamos, deudas, tarjetas' },
   { id: 'finc-e9', label: 'Ahorro e Inversión',   color: '#14b8a6', type: 'expense', description: 'Fondos de ahorro, CDTs, inversiones, fondo de emergencias' },
   { id: 'finc-e10', label: 'Otros / Imprevistos', color: '#64748b', type: 'expense', description: 'Gastos inesperados o que no encajan en otra categoría' },
+  { id: LOAN_OUT_CAT_ID, label: 'Préstamos',  color: '#f97316', type: 'expense', description: 'Dinero prestado a otras personas' },
+  { id: LOAN_IN_CAT_ID,  label: 'Reintegros', color: '#22c55e', type: 'income',  description: 'Devoluciones de préstamos recibidas' },
 ];
 
 const MIN_OPTIONS = ['00', '15', '30', '45'];
@@ -219,6 +222,8 @@ const App = () => {
   const [savingsPockets, setSavingsPockets] = useState<SavingsPocket[]>([]);
   const [pocketFundings, setPocketFundings] = useState<PocketFunding[]>([]);
   const [savingsYearBalances, setSavingsYearBalances] = useState<SavingsYearBalance[]>([]);
+  const [loans, setLoans]                           = useState<Loan[]>([]);
+  const [loanPayments, setLoanPayments]             = useState<LoanPayment[]>([]);
 
   // ── Carga inicial desde Supabase (con migración automática de localStorage) ─
   useEffect(() => {
@@ -236,7 +241,14 @@ const App = () => {
           : remote;
 
         const finalCategories   = Object.keys(d.categories).length > 0 ? d.categories : INITIAL_CATEGORIES;
-        const finalFinCategories = d.finCategories.length > 0 ? d.finCategories : INITIAL_FIN_CATEGORIES;
+
+        // Ensure loan categories always exist in finCategories
+        let finalFinCategories = d.finCategories.length > 0 ? d.finCategories : INITIAL_FIN_CATEGORIES;
+        const loanCatIds = [LOAN_OUT_CAT_ID, LOAN_IN_CAT_ID];
+        const missingLoanCats = INITIAL_FIN_CATEGORIES.filter(
+          c => loanCatIds.includes(c.id) && !finalFinCategories.some(fc => fc.id === c.id)
+        );
+        if (missingLoanCats.length > 0) finalFinCategories = [...finalFinCategories, ...missingLoanCats];
 
         // Actualizar state
         setEvents(d.events);
@@ -250,6 +262,8 @@ const App = () => {
         setSavingsPockets(d.savingsPockets);
         setPocketFundings(d.pocketFundings);
         setSavingsYearBalances(d.savingsYearBalances);
+        setLoans(d.loans);
+        setLoanPayments(d.loanPayments);
 
         // Sincronizar refs con los datos cargados ANTES de setLoading(false).
         // Así los sync-effects ven prev === curr y no re-suben nada a Supabase.
@@ -264,6 +278,8 @@ const App = () => {
         prevSavingsPockets.current     = d.savingsPockets;
         prevPocketFundings.current     = d.pocketFundings;
         prevSavingsYearBalances.current = d.savingsYearBalances;
+        prevLoans.current              = d.loans;
+        prevLoanPayments.current       = d.loanPayments;
 
       } catch (err) {
         console.error('Error al cargar datos de Supabase:', err);
@@ -286,6 +302,8 @@ const App = () => {
   const prevSavingsPockets = useRef(savingsPockets);
   const prevPocketFundings = useRef(pocketFundings);
   const prevSavingsYearBalances = useRef(savingsYearBalances);
+  const prevLoans               = useRef(loans);
+  const prevLoanPayments        = useRef(loanPayments);
 
   // ── Sincronización con Supabase (fire-and-forget, sin bloquear la UI) ───────
   useEffect(() => {
@@ -353,6 +371,18 @@ const App = () => {
     syncSavingsYearBalances(prevSavingsYearBalances.current, savingsYearBalances, userId).catch(console.error);
     prevSavingsYearBalances.current = savingsYearBalances;
   }, [savingsYearBalances, loading, userId]);
+
+  useEffect(() => {
+    if (loading || !userId) return;
+    syncLoans(prevLoans.current, loans, userId).catch(console.error);
+    prevLoans.current = loans;
+  }, [loans, loading, userId]);
+
+  useEffect(() => {
+    if (loading || !userId) return;
+    syncLoanPayments(prevLoanPayments.current, loanPayments, userId).catch(console.error);
+    prevLoanPayments.current = loanPayments;
+  }, [loanPayments, loading, userId]);
 
   useEffect(() => {
     const handleResize = () => setWindowWidth(window.innerWidth);
@@ -859,6 +889,10 @@ const App = () => {
               setPocketFundings={setPocketFundings}
               savingsYearBalances={savingsYearBalances}
               setSavingsYearBalances={setSavingsYearBalances}
+              loans={loans}
+              setLoans={setLoans}
+              loanPayments={loanPayments}
+              setLoanPayments={setLoanPayments}
               currentDate={currentDate}
             />
           )}

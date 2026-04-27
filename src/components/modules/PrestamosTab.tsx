@@ -1,0 +1,395 @@
+import React, { useState, useMemo } from 'react';
+import { Plus, X, Check, ChevronDown, ChevronUp, DollarSign, User, Calendar, AlertCircle, CheckCircle2 } from 'lucide-react';
+import type { Loan, LoanPayment, Transaction, FinCategory } from '../../types';
+import { LOAN_OUT_CAT_ID, LOAN_IN_CAT_ID } from '../../types';
+import { generateId, fmtCurrency as fmt } from '../../lib/utils';
+
+interface PrestamosTabProps {
+  loans: Loan[];
+  setLoans: React.Dispatch<React.SetStateAction<Loan[]>>;
+  loanPayments: LoanPayment[];
+  setLoanPayments: React.Dispatch<React.SetStateAction<LoanPayment[]>>;
+  transactions: Transaction[];
+  setTransactions: React.Dispatch<React.SetStateAction<Transaction[]>>;
+  finCategories: FinCategory[];
+}
+
+type LoanForm = { personName: string; amount: string; date: string; description: string };
+type PaymentForm = { amount: string; date: string; description: string };
+
+const PrestamosTab: React.FC<PrestamosTabProps> = ({
+  loans, setLoans, loanPayments, setLoanPayments,
+  transactions, setTransactions, finCategories,
+}) => {
+  const today = new Date().toISOString().split('T')[0];
+
+  const [loanModal, setLoanModal]     = useState<LoanForm | null>(null);
+  const [payModal, setPayModal]       = useState<{ loanId: string; form: PaymentForm } | null>(null);
+  const [showCompleted, setShowCompleted] = useState(false);
+
+  const activeLoans    = useMemo(() => loans.filter(l => l.status === 'active'), [loans]);
+  const completedLoans = useMemo(() => loans.filter(l => l.status === 'completed'), [loans]);
+
+  const paidByLoan = useMemo(() => {
+    const map: Record<string, number> = {};
+    loanPayments.forEach(p => { map[p.loanId] = (map[p.loanId] || 0) + p.amount; });
+    return map;
+  }, [loanPayments]);
+
+  const totalActive   = activeLoans.reduce((s, l) => s + l.amount, 0);
+  const totalRecovered = activeLoans.reduce((s, l) => s + (paidByLoan[l.id] || 0), 0);
+  const totalPending  = totalActive - totalRecovered;
+
+  const handleAddLoan = () => {
+    if (!loanModal) return;
+    const amount = parseFloat(loanModal.amount.replace(/,/g, '')) || 0;
+    if (!loanModal.personName.trim() || amount <= 0) return;
+
+    const now   = new Date().toISOString();
+    const loanId = generateId();
+    const txId   = generateId();
+
+    const newLoan: Loan = {
+      id: loanId,
+      personName: loanModal.personName.trim(),
+      amount,
+      date: loanModal.date,
+      description: loanModal.description.trim() || undefined,
+      transactionId: txId,
+      status: 'active',
+      createdAt: now,
+    };
+
+    const newTx: Transaction = {
+      id: txId,
+      date: loanModal.date,
+      type: 'expense',
+      amount,
+      finCategoryId: LOAN_OUT_CAT_ID,
+      description: `Préstamo a ${loanModal.personName.trim()}${loanModal.description ? ` – ${loanModal.description}` : ''}`,
+      linkedEventId: undefined,
+    };
+
+    setLoans(prev => [newLoan, ...prev]);
+    setTransactions(prev => [newTx, ...prev]);
+    setLoanModal(null);
+  };
+
+  const handleAddPayment = () => {
+    if (!payModal) return;
+    const amount = parseFloat(payModal.form.amount.replace(/,/g, '')) || 0;
+    if (amount <= 0) return;
+
+    const loan  = loans.find(l => l.id === payModal.loanId);
+    if (!loan) return;
+
+    const now    = new Date().toISOString();
+    const payId  = generateId();
+    const txId   = generateId();
+
+    const paidSoFar = paidByLoan[loan.id] || 0;
+    const remaining = loan.amount - paidSoFar;
+    const isFullyPaid = amount >= remaining;
+
+    const newPayment: LoanPayment = {
+      id: payId,
+      loanId: payModal.loanId,
+      amount,
+      date: payModal.form.date,
+      description: payModal.form.description.trim() || undefined,
+      transactionId: txId,
+      createdAt: now,
+    };
+
+    const newTx: Transaction = {
+      id: txId,
+      date: payModal.form.date,
+      type: 'income',
+      amount,
+      finCategoryId: LOAN_IN_CAT_ID,
+      description: `Reintegro de ${loan.personName}${payModal.form.description ? ` – ${payModal.form.description}` : ''}`,
+      linkedEventId: undefined,
+    };
+
+    setLoanPayments(prev => [...prev, newPayment]);
+    setTransactions(prev => [newTx, ...prev]);
+
+    if (isFullyPaid) {
+      setLoans(prev => prev.map(l =>
+        l.id === payModal.loanId
+          ? { ...l, status: 'completed', completedAt: now }
+          : l
+      ));
+    }
+
+    setPayModal(null);
+  };
+
+  return (
+    <div className="flex-1 overflow-y-auto custom-scrollbar p-4 md:p-6 space-y-6">
+
+      {/* Summary cards */}
+      <div className="grid grid-cols-3 gap-3">
+        <div className="bg-white rounded-2xl p-4 border border-slate-100 shadow-sm">
+          <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">Prestado</p>
+          <p className="text-lg font-black text-slate-800">{fmt(totalActive)}</p>
+        </div>
+        <div className="bg-white rounded-2xl p-4 border border-slate-100 shadow-sm">
+          <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">Recuperado</p>
+          <p className="text-lg font-black text-emerald-600">{fmt(totalRecovered)}</p>
+        </div>
+        <div className="bg-white rounded-2xl p-4 border border-slate-100 shadow-sm">
+          <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">Pendiente</p>
+          <p className={`text-lg font-black ${totalPending > 0 ? 'text-orange-500' : 'text-slate-400'}`}>{fmt(totalPending)}</p>
+        </div>
+      </div>
+
+      {/* Active loans */}
+      <div>
+        <div className="flex items-center justify-between mb-3">
+          <h3 className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Préstamos activos ({activeLoans.length})</h3>
+          <button
+            onClick={() => setLoanModal({ personName: '', amount: '', date: today, description: '' })}
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-orange-500 text-white rounded-xl text-[10px] font-black uppercase tracking-wide hover:bg-orange-600 transition-all active:scale-95"
+          >
+            <Plus size={12} /> Nuevo préstamo
+          </button>
+        </div>
+
+        {activeLoans.length === 0 ? (
+          <div className="bg-white rounded-2xl p-8 border border-slate-100 text-center">
+            <DollarSign size={32} className="text-slate-200 mx-auto mb-2" />
+            <p className="text-xs font-bold text-slate-400">No hay préstamos activos</p>
+          </div>
+        ) : (
+          <div className="space-y-3">
+            {activeLoans.map(loan => {
+              const paid      = paidByLoan[loan.id] || 0;
+              const remaining = Math.max(0, loan.amount - paid);
+              const progress  = Math.min(100, (paid / loan.amount) * 100);
+              return (
+                <div key={loan.id} className="bg-white rounded-2xl p-4 border border-slate-100 shadow-sm">
+                  <div className="flex items-start justify-between mb-3">
+                    <div className="flex items-center gap-2">
+                      <div className="w-8 h-8 rounded-xl bg-orange-100 flex items-center justify-center">
+                        <User size={14} className="text-orange-500" />
+                      </div>
+                      <div>
+                        <p className="text-sm font-black text-slate-800">{loan.personName}</p>
+                        {loan.description && <p className="text-[10px] text-slate-400">{loan.description}</p>}
+                        <p className="text-[9px] text-slate-300 flex items-center gap-1 mt-0.5">
+                          <Calendar size={9} /> {loan.date}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-base font-black text-slate-800">{fmt(loan.amount)}</p>
+                      <p className="text-[10px] text-orange-500 font-bold">{fmt(remaining)} pendiente</p>
+                    </div>
+                  </div>
+
+                  <div className="mb-3">
+                    <div className="flex justify-between text-[9px] text-slate-400 mb-1">
+                      <span>Progreso</span>
+                      <span>{progress.toFixed(0)}%</span>
+                    </div>
+                    <div className="w-full h-1.5 bg-slate-100 rounded-full overflow-hidden">
+                      <div
+                        className="h-full bg-emerald-500 rounded-full transition-all duration-500"
+                        style={{ width: `${progress}%` }}
+                      />
+                    </div>
+                  </div>
+
+                  <button
+                    onClick={() => setPayModal({ loanId: loan.id, form: { amount: '', date: today, description: '' } })}
+                    className="w-full py-2 rounded-xl bg-emerald-50 text-emerald-600 text-[10px] font-black uppercase tracking-wide hover:bg-emerald-100 transition-all border border-emerald-100"
+                  >
+                    Registrar pago
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
+      {/* Completed loans */}
+      {completedLoans.length > 0 && (
+        <div>
+          <button
+            onClick={() => setShowCompleted(v => !v)}
+            className="flex items-center gap-2 text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3 hover:text-slate-600 transition-colors"
+          >
+            {showCompleted ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
+            Completados ({completedLoans.length})
+          </button>
+          {showCompleted && (
+            <div className="space-y-2">
+              {completedLoans.map(loan => (
+                <div key={loan.id} className="bg-slate-50 rounded-2xl p-4 border border-slate-100 flex items-center justify-between opacity-60">
+                  <div className="flex items-center gap-3">
+                    <CheckCircle2 size={16} className="text-emerald-500 shrink-0" />
+                    <div>
+                      <p className="text-xs font-black text-slate-600">{loan.personName}</p>
+                      <p className="text-[9px] text-slate-400">{loan.date}</p>
+                    </div>
+                  </div>
+                  <p className="text-sm font-black text-slate-500">{fmt(loan.amount)}</p>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* New Loan Modal */}
+      {loanModal && (
+        <div className="fixed inset-0 z-[300] flex items-end md:items-center justify-center bg-slate-900/60 backdrop-blur-sm animate-in fade-in">
+          <div className="bg-white rounded-t-3xl md:rounded-[2rem] shadow-2xl w-full max-w-md flex flex-col max-h-[85vh]">
+            <div className="flex justify-center pt-3 pb-1 md:hidden">
+              <div className="w-10 h-1 bg-slate-200 rounded-full" />
+            </div>
+            <div className="px-5 py-4 border-b flex justify-between items-center">
+              <h2 className="text-base font-black text-slate-800 uppercase italic">Nuevo Préstamo</h2>
+              <button onClick={() => setLoanModal(null)} className="p-2 hover:bg-slate-100 rounded-full"><X size={18}/></button>
+            </div>
+            <div className="p-5 space-y-4 overflow-y-auto flex-1">
+              <div className="space-y-1.5">
+                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Persona</label>
+                <input
+                  type="text"
+                  placeholder="Nombre de quien recibe el préstamo"
+                  value={loanModal.personName}
+                  onChange={e => setLoanModal({ ...loanModal, personName: e.target.value })}
+                  className="w-full bg-slate-50 border-2 border-transparent focus:border-indigo-200 rounded-2xl px-4 py-3 text-sm font-bold outline-none transition-all"
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Monto</label>
+                  <input
+                    type="number"
+                    placeholder="0"
+                    value={loanModal.amount}
+                    onChange={e => setLoanModal({ ...loanModal, amount: e.target.value })}
+                    className="w-full bg-slate-50 border-2 border-transparent focus:border-indigo-200 rounded-2xl px-4 py-3 text-sm font-bold outline-none transition-all"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Fecha</label>
+                  <input
+                    type="date"
+                    value={loanModal.date}
+                    onChange={e => setLoanModal({ ...loanModal, date: e.target.value })}
+                    className="w-full bg-slate-50 border-2 border-transparent focus:border-indigo-200 rounded-2xl px-4 py-3 text-sm font-bold outline-none transition-all"
+                  />
+                </div>
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Descripción (opcional)</label>
+                <input
+                  type="text"
+                  placeholder="¿Para qué fue el préstamo?"
+                  value={loanModal.description}
+                  onChange={e => setLoanModal({ ...loanModal, description: e.target.value })}
+                  className="w-full bg-slate-50 border-2 border-transparent focus:border-indigo-200 rounded-2xl px-4 py-3 text-sm font-bold outline-none transition-all"
+                />
+              </div>
+              <div className="bg-orange-50 rounded-2xl p-3 flex gap-2 border border-orange-100">
+                <AlertCircle size={14} className="text-orange-400 shrink-0 mt-0.5" />
+                <p className="text-[10px] text-orange-600 font-medium">Se registrará automáticamente como gasto en la categoría "Préstamos".</p>
+              </div>
+            </div>
+            <div className="px-5 py-4 border-t" style={{ paddingBottom: 'max(1rem, env(safe-area-inset-bottom, 1rem))' }}>
+              <button
+                onClick={handleAddLoan}
+                disabled={!loanModal.personName.trim() || !loanModal.amount}
+                className="w-full py-4 bg-orange-500 text-white rounded-2xl font-black text-xs uppercase tracking-widest hover:bg-orange-600 disabled:opacity-40 disabled:cursor-not-allowed transition-all active:scale-[0.98]"
+              >
+                Registrar Préstamo
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Payment Modal */}
+      {payModal && (() => {
+        const loan      = loans.find(l => l.id === payModal.loanId);
+        const paid      = paidByLoan[payModal.loanId] || 0;
+        const remaining = loan ? Math.max(0, loan.amount - paid) : 0;
+        return (
+          <div className="fixed inset-0 z-[300] flex items-end md:items-center justify-center bg-slate-900/60 backdrop-blur-sm animate-in fade-in">
+            <div className="bg-white rounded-t-3xl md:rounded-[2rem] shadow-2xl w-full max-w-md flex flex-col max-h-[85vh]">
+              <div className="flex justify-center pt-3 pb-1 md:hidden">
+                <div className="w-10 h-1 bg-slate-200 rounded-full" />
+              </div>
+              <div className="px-5 py-4 border-b flex justify-between items-center">
+                <div>
+                  <h2 className="text-base font-black text-slate-800 uppercase italic">Registrar Pago</h2>
+                  <p className="text-[10px] text-slate-400">{loan?.personName} · {fmt(remaining)} pendiente</p>
+                </div>
+                <button onClick={() => setPayModal(null)} className="p-2 hover:bg-slate-100 rounded-full"><X size={18}/></button>
+              </div>
+              <div className="p-5 space-y-4 overflow-y-auto flex-1">
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Monto pagado</label>
+                    <input
+                      type="number"
+                      placeholder="0"
+                      value={payModal.form.amount}
+                      onChange={e => setPayModal({ ...payModal, form: { ...payModal.form, amount: e.target.value } })}
+                      className="w-full bg-slate-50 border-2 border-transparent focus:border-indigo-200 rounded-2xl px-4 py-3 text-sm font-bold outline-none transition-all"
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Fecha</label>
+                    <input
+                      type="date"
+                      value={payModal.form.date}
+                      onChange={e => setPayModal({ ...payModal, form: { ...payModal.form, date: e.target.value } })}
+                      className="w-full bg-slate-50 border-2 border-transparent focus:border-indigo-200 rounded-2xl px-4 py-3 text-sm font-bold outline-none transition-all"
+                    />
+                  </div>
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Descripción (opcional)</label>
+                  <input
+                    type="text"
+                    placeholder="Ej: Pago parcial, transferencia..."
+                    value={payModal.form.description}
+                    onChange={e => setPayModal({ ...payModal, form: { ...payModal.form, description: e.target.value } })}
+                    className="w-full bg-slate-50 border-2 border-transparent focus:border-indigo-200 rounded-2xl px-4 py-3 text-sm font-bold outline-none transition-all"
+                  />
+                </div>
+                <button
+                  onClick={() => setPayModal({ ...payModal, form: { ...payModal.form, amount: remaining.toString() } })}
+                  className="w-full py-2 rounded-xl bg-emerald-50 text-emerald-600 text-[10px] font-black border border-emerald-100 hover:bg-emerald-100 transition-all"
+                >
+                  Pagar saldo completo ({fmt(remaining)})
+                </button>
+                <div className="bg-emerald-50 rounded-2xl p-3 flex gap-2 border border-emerald-100">
+                  <Check size={14} className="text-emerald-500 shrink-0 mt-0.5" />
+                  <p className="text-[10px] text-emerald-600 font-medium">Se registrará como ingreso en la categoría "Reintegros".</p>
+                </div>
+              </div>
+              <div className="px-5 py-4 border-t" style={{ paddingBottom: 'max(1rem, env(safe-area-inset-bottom, 1rem))' }}>
+                <button
+                  onClick={handleAddPayment}
+                  disabled={!payModal.form.amount}
+                  className="w-full py-4 bg-emerald-500 text-white rounded-2xl font-black text-xs uppercase tracking-widest hover:bg-emerald-600 disabled:opacity-40 disabled:cursor-not-allowed transition-all active:scale-[0.98]"
+                >
+                  Confirmar Pago
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+    </div>
+  );
+};
+
+export default PrestamosTab;

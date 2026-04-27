@@ -9,6 +9,7 @@ import {
   ChevronLeft, ChevronRight, Zap, Star
 } from 'lucide-react';
 import type { Events, Categories, Transaction, FinCategory, Goal } from '../../types';
+import { LOAN_IN_CAT_ID, LOAN_OUT_CAT_ID } from '../../types';
 import { getWeekId, getWeekDays, formatDateId, GRID_HOURS, fmtCurrency as fmt } from '../../lib/utils';
 
 const DAY_LABELS = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'];
@@ -123,8 +124,8 @@ const Revision: React.FC<RevisionProps> = ({
     transactions.forEach(tx => {
       if (!isInRange(tx.date)) return;
       count++;
-      if (tx.type === 'income') income += tx.amount;
-      else expenses += tx.amount;
+      if (tx.type === 'income' && tx.finCategoryId !== LOAN_IN_CAT_ID) income += tx.amount;
+      else if (tx.type === 'expense' && tx.finCategoryId !== LOAN_OUT_CAT_ID) expenses += tx.amount;
       const cat = finCategories.find(c => c.id === tx.finCategoryId);
       if (cat) {
         if (!byCategory[tx.finCategoryId]) byCategory[tx.finCategoryId] = { label: cat.label, color: cat.color, total: 0 };

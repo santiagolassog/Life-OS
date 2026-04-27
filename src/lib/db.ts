@@ -16,6 +16,7 @@ import type {
   Transaction, FinCategory, Goal,
   Savings, MonthBalance, SavingsWithdrawal,
   SavingsPocket, PocketFunding, SavingsYearBalance,
+  Loan, LoanPayment,
 } from '../types'
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -331,22 +332,101 @@ export async function loadSavingsYearBalances(): Promise<SavingsYearBalance[]> {
   return data?.map(rowToSavingsYearBalance) ?? []
 }
 
+// ── Loans ────────────────────────────────────────────────────────────────────
+
+const rowToLoan = (row: Record<string, unknown>): Loan => ({
+  id:            row.id as string,
+  personName:    row.person_name as string,
+  amount:        Number(row.amount),
+  date:          row.date as string,
+  description:   row.description ? (row.description as string) : undefined,
+  transactionId: row.transaction_id ? (row.transaction_id as string) : undefined,
+  status:        row.status as 'active' | 'completed',
+  completedAt:   row.completed_at ? (row.completed_at as string) : undefined,
+  createdAt:     row.created_at as string,
+})
+
+const rowToLoanPayment = (row: Record<string, unknown>): LoanPayment => ({
+  id:            row.id as string,
+  loanId:        row.loan_id as string,
+  amount:        Number(row.amount),
+  date:          row.date as string,
+  description:   row.description ? (row.description as string) : undefined,
+  transactionId: row.transaction_id ? (row.transaction_id as string) : undefined,
+  createdAt:     row.created_at as string,
+})
+
+const loanToDb = (l: Loan) => ({
+  id:             l.id,
+  person_name:    l.personName,
+  amount:         l.amount,
+  date:           l.date,
+  description:    l.description ?? null,
+  transaction_id: l.transactionId ?? null,
+  status:         l.status,
+  completed_at:   l.completedAt ?? null,
+  created_at:     l.createdAt,
+})
+
+const loanPaymentToDb = (p: LoanPayment) => ({
+  id:             p.id,
+  loan_id:        p.loanId,
+  amount:         p.amount,
+  date:           p.date,
+  description:    p.description ?? null,
+  transaction_id: p.transactionId ?? null,
+  created_at:     p.createdAt,
+})
+
+export async function loadLoans(): Promise<Loan[]> {
+  const { data, error } = await supabase.from('loans').select('*').order('date', { ascending: false })
+  if (error) { console.error('loadLoans:', error); return [] }
+  return data?.map(rowToLoan) ?? []
+}
+
+export async function loadLoanPayments(): Promise<LoanPayment[]> {
+  const { data, error } = await supabase.from('loan_payments').select('*')
+  if (error) { console.error('loadLoanPayments:', error); return [] }
+  return data?.map(rowToLoanPayment) ?? []
+}
+
+export async function syncLoans(prev: Loan[], curr: Loan[], userId: string) {
+  const { upserted, deletedIds } = diffArrays(prev, curr)
+  const ops: Promise<unknown>[] = []
+  if (deletedIds.length > 0)
+    ops.push(supabase.from('loans').delete().in('id', deletedIds).then(({ error }) => { if (error) console.error('syncLoans delete:', error) }))
+  if (upserted.length > 0)
+    ops.push(supabase.from('loans').upsert(upserted.map(l => withUser(loanToDb(l), userId))).then(({ error }) => { if (error) console.error('syncLoans upsert:', error) }))
+  await Promise.all(ops)
+}
+
+export async function syncLoanPayments(prev: LoanPayment[], curr: LoanPayment[], userId: string) {
+  const { upserted, deletedIds } = diffArrays(prev, curr)
+  const ops: Promise<unknown>[] = []
+  if (deletedIds.length > 0)
+    ops.push(supabase.from('loan_payments').delete().in('id', deletedIds).then(({ error }) => { if (error) console.error('syncLoanPayments delete:', error) }))
+  if (upserted.length > 0)
+    ops.push(supabase.from('loan_payments').upsert(upserted.map(p => withUser(loanPaymentToDb(p), userId))).then(({ error }) => { if (error) console.error('syncLoanPayments upsert:', error) }))
+  await Promise.all(ops)
+}
+
 /** Carga todos los datos en paralelo. */
 export async function loadAllData() {
   const [
     events, categories, transactions, finCategories, goals,
     savings, monthBalances, savingsWithdrawals, savingsPockets,
-    pocketFundings, savingsYearBalances,
+    pocketFundings, savingsYearBalances, loans, loanPayments,
   ] = await Promise.all([
     loadEvents(), loadCategories(), loadTransactions(), loadFinCategories(),
     loadGoals(), loadSavings(), loadMonthBalances(), loadSavingsWithdrawals(),
     loadSavingsPockets(), loadPocketFundings(), loadSavingsYearBalances(),
+    loadLoans(), loadLoanPayments(),
   ])
 
   return {
     events, categories, transactions, finCategories, goals,
     savings, monthBalances, savingsWithdrawals, savingsPockets,
-    pocketFundings, savingsYearBalances,
+    pocketFundings, savingsYearBalances, loans, loanPayments,
   }
 }
 
