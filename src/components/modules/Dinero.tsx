@@ -49,20 +49,24 @@ const POCKET_EMOJIS = ['💰', '🏠', '✈️', '🎓', '🚗', '📱', '🎉',
 const POCKET_COLORS = ['#10b981', '#3b82f6', '#8b5cf6', '#f59e0b', '#ec4899', '#6366f1', '#ef4444', '#0ea5e9', '#f97316', '#14b8a6'];
 
 const DEFAULT_FIN_CATEGORIES: FinCategory[] = [
-  { id: 'finc-i1', label: 'Marca Personal',         color: '#ec4899', type: 'income' },
-  { id: 'finc-i2', label: 'Mentalidad Campeona',     color: '#f59e0b', type: 'income' },
-  { id: 'finc-i3', label: 'Comisiones',              color: '#10b981', type: 'income' },
-  { id: 'finc-i4', label: 'Otros conceptos',         color: '#94a3b8', type: 'income' },
-  { id: 'finc-e1', label: 'Vivienda y Servicios',    color: '#6366f1', type: 'expense', description: 'Arriendo, agua, luz, gas, internet, teléfono fijo' },
-  { id: 'finc-e2', label: 'Alimentación',            color: '#f59e0b', type: 'expense', description: 'Mercado, restaurantes, domicilios, cafés' },
-  { id: 'finc-e3', label: 'Transporte',              color: '#3b82f6', type: 'expense', description: 'Gasolina, Uber, bus, taxi, parqueadero' },
-  { id: 'finc-e4', label: 'Salud',                   color: '#ef4444', type: 'expense', description: 'Médico, medicamentos, consultas, óptica, gimnasio' },
-  { id: 'finc-e5', label: 'Estilo de vida',          color: '#ec4899', type: 'expense', description: 'Ropa, cuidado personal, entretenimiento, salidas, regalos' },
-  { id: 'finc-e6', label: 'Suscripciones',           color: '#8b5cf6', type: 'expense', description: 'Netflix, Spotify, apps, herramientas digitales, membresías' },
-  { id: 'finc-e7', label: 'Finanzas',                color: '#0ea5e9', type: 'expense', description: 'Comisiones bancarias, seguros, impuestos, declaraciones' },
-  { id: 'finc-e8', label: 'Compromisos Financieros', color: '#f97316', type: 'expense', description: 'Cuotas de crédito, préstamos, deudas, tarjetas' },
-  { id: 'finc-e9', label: 'Ahorro e Inversión',      color: '#14b8a6', type: 'expense', description: 'Fondos de ahorro, CDTs, inversiones, fondo de emergencias' },
-  { id: 'finc-e10', label: 'Otros / Imprevistos',    color: '#64748b', type: 'expense', description: 'Gastos inesperados o que no encajan en otra categoría' },
+  { id: 'finc-i1', label: 'Marca Personal',     color: '#ec4899', type: 'income' },
+  { id: 'finc-i2', label: 'Mentalidad Campeona', color: '#f59e0b', type: 'income' },
+  { id: 'finc-i3', label: 'Comisiones',          color: '#10b981', type: 'income' },
+  { id: 'finc-i4', label: 'Otros ingresos',      color: '#94a3b8', type: 'income' },
+  { id: 'finc-e1',  label: 'Vivienda',                color: '#6366f1', type: 'expense', description: 'Arriendo, agua, energía, gas, internet y servicios del hogar' },
+  { id: 'finc-e2',  label: 'Alimentación',            color: '#f59e0b', type: 'expense', description: 'Mercado, tienda y compras de comida para preparar en casa' },
+  { id: 'finc-e3',  label: 'Transporte',              color: '#3b82f6', type: 'expense', description: 'Uber, Didi, transporte público, taxis y movilidad en general' },
+  { id: 'finc-e4',  label: 'Salud',                   color: '#ef4444', type: 'expense', description: 'Médicos, medicamentos, fisioterapia, nutrición y citas de bienestar' },
+  { id: 'finc-e5',  label: 'Ocio y Entretenimiento',  color: '#ec4899', type: 'expense', description: 'Comidas fuera de casa, cine, salidas, discotecas y entretenimiento en general' },
+  { id: 'finc-e6',  label: 'Suscripciones',           color: '#8b5cf6', type: 'expense', description: 'Netflix, Spotify, Prime, Disney, Google One, gimnasio y apps digitales' },
+  { id: 'finc-e7',  label: 'Impuestos y Comisiones',  color: '#0ea5e9', type: 'expense', description: 'Comisiones de pasarelas de pago, impuestos y costos financieros varios' },
+  { id: 'finc-e8',  label: 'Compromisos Financieros', color: '#f97316', type: 'expense', description: 'Cuotas a bancos, personas o entidades y pago de dispositivos a crédito' },
+  { id: 'finc-e9',  label: 'Inversión Personal',      color: '#14b8a6', type: 'expense', description: 'Cursos, libros, herramientas de aprendizaje y desarrollo propio' },
+  { id: 'finc-e10', label: 'Imprevistos',             color: '#64748b', type: 'expense', description: 'Gastos no presupuestados que no encajan en ninguna otra categoría' },
+  { id: 'finc-e11', label: 'Ropa y Estilo',           color: '#f43f5e', type: 'expense', description: 'Ropa, zapatos, gafas, cinturones y accesorios personales' },
+  { id: 'finc-e12', label: 'Hogar',                   color: '#84cc16', type: 'expense', description: 'Utensilios de cocina, muebles, mejoras del hogar, ferretería y compras para la casa' },
+  { id: 'finc-e13', label: 'Familia y Aportes',       color: '#fb923c', type: 'expense', description: 'Apoyo a padres, esposa y contribuciones familiares sin retorno esperado' },
+  { id: 'finc-e14', label: 'Detalles y Regalos',      color: '#a78bfa', type: 'expense', description: 'Regalos y detalles para amigos, pareja y familiares' },
 ];
 
 const TABS: Array<{ key: DineroTab; label: string; Icon: React.FC<{ size?: number }> }> = [
@@ -1076,9 +1080,19 @@ const Dinero: React.FC<DineroProps> = ({
                         ))}
                       </div>
                       {selectedCatObj?.description && (
-                        <div className="mt-2.5 flex items-start gap-2 bg-slate-50 rounded-xl px-3 py-2.5 border border-slate-100">
-                          <Info size={11} className="text-slate-400 mt-0.5 shrink-0" />
-                          <p className="text-[10px] text-slate-500 font-semibold leading-snug">{selectedCatObj.description}</p>
+                        <div
+                          className="mt-3 rounded-2xl px-4 py-3 flex items-start gap-3 animate-in fade-in slide-in-from-top-1 duration-200"
+                          style={{ backgroundColor: `${selectedCatObj.color}12`, border: `1px solid ${selectedCatObj.color}30` }}
+                        >
+                          <div className="w-5 h-5 rounded-full shrink-0 mt-0.5 flex items-center justify-center" style={{ backgroundColor: `${selectedCatObj.color}25` }}>
+                            <Info size={10} style={{ color: selectedCatObj.color }} />
+                          </div>
+                          <div>
+                            <p className="text-[9px] font-black uppercase tracking-widest mb-0.5" style={{ color: selectedCatObj.color }}>
+                              ¿Qué registrar aquí?
+                            </p>
+                            <p className="text-[11px] text-slate-600 font-medium leading-snug">{selectedCatObj.description}</p>
+                          </div>
                         </div>
                       )}
                     </div>
