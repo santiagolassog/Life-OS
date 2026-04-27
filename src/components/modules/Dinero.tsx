@@ -49,32 +49,32 @@ const POCKET_EMOJIS = ['💰', '🏠', '✈️', '🎓', '🚗', '📱', '🎉',
 const POCKET_COLORS = ['#10b981', '#3b82f6', '#8b5cf6', '#f59e0b', '#ec4899', '#6366f1', '#ef4444', '#0ea5e9', '#f97316', '#14b8a6'];
 
 const DEFAULT_FIN_CATEGORIES: FinCategory[] = [
-  { id: 'finc-i1', label: 'Marca Personal',     color: '#ec4899', type: 'income' },
+  { id: 'finc-i1', label: 'Marca Personal', color: '#ec4899', type: 'income' },
   { id: 'finc-i2', label: 'Mentalidad Campeona', color: '#f59e0b', type: 'income' },
-  { id: 'finc-i3', label: 'Comisiones',          color: '#10b981', type: 'income' },
-  { id: 'finc-i4', label: 'Otros ingresos',      color: '#94a3b8', type: 'income' },
-  { id: 'finc-e1',  label: 'Vivienda',                color: '#6366f1', type: 'expense', description: 'Arriendo, agua, energía, gas, internet y servicios del hogar' },
-  { id: 'finc-e2',  label: 'Alimentación',            color: '#f59e0b', type: 'expense', description: 'Mercado, tienda y compras de comida para preparar en casa' },
-  { id: 'finc-e3',  label: 'Transporte',              color: '#3b82f6', type: 'expense', description: 'Uber, Didi, transporte público, taxis y movilidad en general' },
-  { id: 'finc-e4',  label: 'Salud',                   color: '#ef4444', type: 'expense', description: 'Médicos, medicamentos, fisioterapia, nutrición y citas de bienestar' },
-  { id: 'finc-e5',  label: 'Ocio y Entretenimiento',  color: '#ec4899', type: 'expense', description: 'Comidas fuera de casa, cine, salidas, discotecas y entretenimiento en general' },
-  { id: 'finc-e6',  label: 'Suscripciones',           color: '#8b5cf6', type: 'expense', description: 'Netflix, Spotify, Prime, Disney, Google One, gimnasio y apps digitales' },
-  { id: 'finc-e7',  label: 'Impuestos y Comisiones',  color: '#0ea5e9', type: 'expense', description: 'Comisiones de pasarelas de pago, impuestos y costos financieros varios' },
-  { id: 'finc-e8',  label: 'Compromisos Financieros', color: '#f97316', type: 'expense', description: 'Cuotas a bancos, personas o entidades y pago de dispositivos a crédito' },
-  { id: 'finc-e9',  label: 'Inversión Personal',      color: '#14b8a6', type: 'expense', description: 'Cursos, libros, herramientas de aprendizaje y desarrollo propio' },
-  { id: 'finc-e10', label: 'Imprevistos',             color: '#64748b', type: 'expense', description: 'Gastos no presupuestados que no encajan en ninguna otra categoría' },
-  { id: 'finc-e11', label: 'Ropa y Estilo',           color: '#f43f5e', type: 'expense', description: 'Ropa, zapatos, gafas, cinturones y accesorios personales' },
-  { id: 'finc-e12', label: 'Hogar',                   color: '#84cc16', type: 'expense', description: 'Utensilios de cocina, muebles, mejoras del hogar, ferretería y compras para la casa' },
-  { id: 'finc-e13', label: 'Familia y Aportes',       color: '#fb923c', type: 'expense', description: 'Apoyo a padres, esposa y contribuciones familiares sin retorno esperado' },
-  { id: 'finc-e14', label: 'Detalles y Regalos',      color: '#a78bfa', type: 'expense', description: 'Regalos y detalles para amigos, pareja y familiares' },
+  { id: 'finc-i3', label: 'Comisiones', color: '#10b981', type: 'income' },
+  { id: 'finc-i4', label: 'Otros ingresos', color: '#94a3b8', type: 'income' },
+  { id: 'finc-e1', label: 'Vivienda', color: '#6366f1', type: 'expense', description: 'Arriendo, agua, energía, gas, internet y servicios del hogar' },
+  { id: 'finc-e2', label: 'Alimentación', color: '#f59e0b', type: 'expense', description: 'Mercado, tienda y compras de comida para preparar en casa' },
+  { id: 'finc-e3', label: 'Transporte', color: '#3b82f6', type: 'expense', description: 'Uber, Didi, transporte público, taxis y movilidad en general' },
+  { id: 'finc-e4', label: 'Salud', color: '#ef4444', type: 'expense', description: 'Médicos, medicamentos, fisioterapia, nutrición y citas de bienestar' },
+  { id: 'finc-e5', label: 'Ocio y Entretenimiento', color: '#ec4899', type: 'expense', description: 'Comidas fuera de casa, cine, salidas, discotecas y entretenimiento en general' },
+  { id: 'finc-e6', label: 'Suscripciones', color: '#8b5cf6', type: 'expense', description: 'Netflix, Spotify, Prime, Disney, Google One, gimnasio y apps digitales' },
+  { id: 'finc-e7', label: 'Impuestos y Comisiones', color: '#0ea5e9', type: 'expense', description: 'Comisiones de pasarelas de pago, impuestos y costos financieros varios' },
+  { id: 'finc-e8', label: 'Compromisos Financieros', color: '#f97316', type: 'expense', description: 'Cuotas a bancos, personas o entidades y pago de dispositivos a crédito' },
+  { id: 'finc-e9', label: 'Inversión Personal', color: '#14b8a6', type: 'expense', description: 'Cursos, libros, herramientas de aprendizaje y desarrollo propio' },
+  { id: 'finc-e10', label: 'Imprevistos', color: '#64748b', type: 'expense', description: 'Gastos no presupuestados que no encajan en ninguna otra categoría' },
+  { id: 'finc-e11', label: 'Ropa y Estilo', color: '#f43f5e', type: 'expense', description: 'Ropa, zapatos, gafas, cinturones y accesorios personales' },
+  { id: 'finc-e12', label: 'Hogar', color: '#84cc16', type: 'expense', description: 'Utensilios de cocina, muebles, mejoras del hogar, ferretería y compras para la casa' },
+  { id: 'finc-e13', label: 'Familia y Aportes', color: '#fb923c', type: 'expense', description: 'Apoyo a padres, esposa y contribuciones familiares sin retorno esperado' },
+  { id: 'finc-e14', label: 'Detalles y Regalos', color: '#a78bfa', type: 'expense', description: 'Regalos y detalles para amigos, pareja y familiares' },
 ];
 
 const TABS: Array<{ key: DineroTab; label: string; Icon: React.FC<{ size?: number }> }> = [
   { key: 'movimientos', label: 'Movimientos', Icon: List },
-  { key: 'categorias',  label: 'Categorías',  Icon: Tag },
-  { key: 'dashboard',   label: 'Dashboard',   Icon: BarChart3 },
-  { key: 'ahorros',     label: 'Ahorros',     Icon: PiggyBank },
-  { key: 'prestamos',   label: 'Préstamos',   Icon: ArrowLeftRight },
+  { key: 'categorias', label: 'Categorías', Icon: Tag },
+  { key: 'dashboard', label: 'Dashboard', Icon: BarChart3 },
+  { key: 'ahorros', label: 'Ahorros', Icon: PiggyBank },
+  { key: 'prestamos', label: 'Préstamos', Icon: ArrowLeftRight },
 ];
 
 type WithdrawalModal = { amount: number; description: string; date: string; fromPocketId: string };
@@ -96,29 +96,29 @@ const Dinero: React.FC<DineroProps> = ({
   const [viewDate, setViewDate] = useState(new Date(currentDate));
 
   // Transaction form
-  const [formOpen, setFormOpen]         = useState(false);
-  const [formStep, setFormStep]         = useState<1 | 2>(1);
-  const [editTx, setEditTx]             = useState<Partial<Transaction> | null>(null);
-  const [isEditingTx, setIsEditingTx]   = useState(false);
+  const [formOpen, setFormOpen] = useState(false);
+  const [formStep, setFormStep] = useState<1 | 2>(1);
+  const [editTx, setEditTx] = useState<Partial<Transaction> | null>(null);
+  const [isEditingTx, setIsEditingTx] = useState(false);
   const [savingsPercent, setSavingsPercent] = useState(10);
   const [pendingTxAmount, setPendingTxAmount] = useState(0);
-  const [pendingTxId, setPendingTxId]         = useState('');
+  const [pendingTxId, setPendingTxId] = useState('');
 
   // Opening-balance editing
   const [editingBalance, setEditingBalance] = useState(false);
-  const [balanceInput, setBalanceInput]     = useState('');
+  const [balanceInput, setBalanceInput] = useState('');
 
   // Category CRUD
   const [catModal, setCatModal] = useState<Partial<FinCategory> | null>(null);
 
   // Savings modals
   const [withdrawalModal, setWithdrawalModal] = useState<WithdrawalModal | null>(null);
-  const [pocketModal, setPocketModal]         = useState<PocketModal | null>(null);
-  const [allocateModal, setAllocateModal]     = useState<AllocateModal | null>(null);
+  const [pocketModal, setPocketModal] = useState<PocketModal | null>(null);
+  const [allocateModal, setAllocateModal] = useState<AllocateModal | null>(null);
 
   // Year opening balance editor
   const [editingYearOpening, setEditingYearOpening] = useState<'savings' | 'general' | null>(null);
-  const [yearOpeningInput, setYearOpeningInput]     = useState('');
+  const [yearOpeningInput, setYearOpeningInput] = useState('');
   const [editSaving, setEditSaving] = useState<any | null>(null);
 
 
@@ -167,14 +167,33 @@ const Dinero: React.FC<DineroProps> = ({
       g[tx.date].push(tx);
     });
 
+    // Ahorros depositados y retirados en este mes
+    const monthSavingsDeposits = savings
+      .filter(s => {
+        const [sy, sm] = s.date.split('-').map(Number);
+        return sy === y && sm - 1 === m;
+      })
+      .reduce((s, x) => s + x.amount, 0);
+
+    const monthSavingsWithdrawn = savingsWithdrawals
+      .filter(w => {
+        const [wy, wm] = w.date.split('-').map(Number);
+        return wy === y && wm - 1 === m;
+      })
+      .reduce((s, x) => s + x.amount, 0);
+
     const expenseChart = Object.values(byCategory)
       .filter(c => c.txType === 'expense')
       .sort((a, b) => b.total - a.total);
 
-    return { stats: { income, expenses, balance: income - expenses, expenseChart }, grouped: g };
-  }, [monthTxs, finCategories]);
+    const balance = income - expenses - monthSavingsDeposits + monthSavingsWithdrawn;
 
-  const closingBalance = openingBalance !== null ? openingBalance + stats.income - stats.expenses : null;
+    return { stats: { income, expenses, monthSavingsDeposits, monthSavingsWithdrawn, balance, expenseChart }, grouped: g };
+  }, [monthTxs, finCategories, savings, savingsWithdrawals, y, m]);
+
+  const closingBalance = openingBalance !== null
+    ? openingBalance + stats.income - stats.expenses - stats.monthSavingsDeposits + stats.monthSavingsWithdrawn
+    : null;
 
   const prevClosingBalance = useMemo(() => {
     const prevDate = new Date(y, m - 1, 1);
@@ -183,16 +202,32 @@ const Dinero: React.FC<DineroProps> = ({
     const prevYearMonth = `${prevY}-${String(prevM + 1).padStart(2, '0')}`;
     const prevOpening = monthBalances.find(b => b.yearMonth === prevYearMonth)?.openingBalance ?? null;
     if (prevOpening === null) return null;
+
     let prevIncome = 0, prevExpenses = 0;
     transactions.forEach(tx => {
       const [ty, tm] = tx.date.split('-').map(Number);
       if (ty === prevY && tm - 1 === prevM) {
-        if (tx.type === 'income') prevIncome += tx.amount;
-        else prevExpenses += tx.amount;
+        if (tx.type === 'income' && tx.finCategoryId !== LOAN_IN_CAT_ID) prevIncome += tx.amount;
+        else if (tx.type === 'expense' && tx.finCategoryId !== LOAN_OUT_CAT_ID) prevExpenses += tx.amount;
       }
     });
-    return prevOpening + prevIncome - prevExpenses;
-  }, [y, m, monthBalances, transactions]);
+
+    const prevSavingsDeposits = savings
+      .filter(s => {
+        const [sy, sm] = s.date.split('-').map(Number);
+        return sy === prevY && sm - 1 === prevM;
+      })
+      .reduce((s, x) => s + x.amount, 0);
+
+    const prevSavingsWithdrawn = savingsWithdrawals
+      .filter(w => {
+        const [wy, wm] = w.date.split('-').map(Number);
+        return wy === prevY && wm - 1 === prevM;
+      })
+      .reduce((s, x) => s + x.amount, 0);
+
+    return prevOpening + prevIncome - prevExpenses - prevSavingsDeposits + prevSavingsWithdrawn;
+  }, [y, m, monthBalances, transactions, savings, savingsWithdrawals]);
 
   const prevMonthLabel = new Date(y, m - 1, 1).toLocaleDateString('es-ES', { month: 'long' });
 
@@ -224,7 +259,7 @@ const Dinero: React.FC<DineroProps> = ({
   }, [transactions, viewDate]);
 
   const allTimeStats = useMemo(() => {
-    const totalIncome   = transactions.filter(t => t.type === 'income'  && t.finCategoryId !== LOAN_IN_CAT_ID).reduce((s, t) => s + t.amount, 0);
+    const totalIncome = transactions.filter(t => t.type === 'income' && t.finCategoryId !== LOAN_IN_CAT_ID).reduce((s, t) => s + t.amount, 0);
     const totalExpenses = transactions.filter(t => t.type === 'expense' && t.finCategoryId !== LOAN_OUT_CAT_ID).reduce((s, t) => s + t.amount, 0);
     const totalSavingsDeposited = savings.reduce((s, x) => s + x.amount, 0);
     return { totalIncome, totalExpenses, netBalance: totalIncome - totalExpenses, totalSavingsDeposited };
@@ -267,15 +302,17 @@ const Dinero: React.FC<DineroProps> = ({
   const annualStats = useMemo(() => {
     const year = viewDate.getFullYear();
     const yearStr = String(year);
-    const yearIncome    = transactions.filter(t => t.type === 'income'  && t.date.startsWith(yearStr) && t.finCategoryId !== LOAN_IN_CAT_ID).reduce((s, t) => s + t.amount, 0);
-    const yearExpenses  = transactions.filter(t => t.type === 'expense' && t.date.startsWith(yearStr) && t.finCategoryId !== LOAN_OUT_CAT_ID).reduce((s, t) => s + t.amount, 0);
+    const yearIncome = transactions.filter(t => t.type === 'income' && t.date.startsWith(yearStr) && t.finCategoryId !== LOAN_IN_CAT_ID).reduce((s, t) => s + t.amount, 0);
+    const yearExpenses = transactions.filter(t => t.type === 'expense' && t.date.startsWith(yearStr) && t.finCategoryId !== LOAN_OUT_CAT_ID).reduce((s, t) => s + t.amount, 0);
     const yearDeposited = savings.filter(s => s.date.startsWith(yearStr)).reduce((s, x) => s + x.amount, 0);
     const yearWithdrawn = savingsWithdrawals.filter(w => w.date.startsWith(yearStr)).reduce((s, w) => s + w.amount, 0);
     const yearEntry = savingsYearBalances.find(b => b.year === year);
     const yearOpeningSavings = yearEntry?.savingsOpening ?? null;
     const yearClosingSavings = yearOpeningSavings !== null ? yearOpeningSavings + yearDeposited - yearWithdrawn : null;
-    return { year, yearIncome, yearExpenses, yearDeposited, yearWithdrawn,
-             yearNetSavings: yearDeposited - yearWithdrawn, yearOpeningSavings, yearClosingSavings };
+    return {
+      year, yearIncome, yearExpenses, yearDeposited, yearWithdrawn,
+      yearNetSavings: yearDeposited - yearWithdrawn, yearOpeningSavings, yearClosingSavings
+    };
   }, [viewDate, transactions, savings, savingsWithdrawals, savingsYearBalances]);
 
   // Savings history grouped by month (full year)
@@ -574,8 +611,8 @@ const Dinero: React.FC<DineroProps> = ({
 
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
               {[
-                { label: 'Ingresos',    value: stats.income,   cls: 'bg-emerald-50 border-emerald-100', txtCls: 'text-emerald-600', Icon: TrendingUp,  iconBg: 'bg-emerald-500' },
-                { label: 'Gastos',      value: stats.expenses, cls: 'bg-red-50 border-red-100',         txtCls: 'text-red-500',     Icon: TrendingDown, iconBg: 'bg-red-500' },
+                { label: 'Ingresos', value: stats.income, cls: 'bg-emerald-50 border-emerald-100', txtCls: 'text-emerald-600', Icon: TrendingUp, iconBg: 'bg-emerald-500' },
+                { label: 'Gastos', value: stats.expenses, cls: 'bg-red-50 border-red-100', txtCls: 'text-red-500', Icon: TrendingDown, iconBg: 'bg-red-500' },
                 { label: 'Ahorros acum.', value: savingsStats.totalNetSavings, cls: 'bg-violet-50 border-violet-100', txtCls: 'text-violet-600', Icon: PiggyBank, iconBg: 'bg-violet-500' },
                 {
                   label: 'Saldo final', value: closingBalance ?? stats.balance,
@@ -715,9 +752,11 @@ const Dinero: React.FC<DineroProps> = ({
                 {[
                   { label: 'Ingresos', value: annualStats.yearIncome, cls: 'text-emerald-400' },
                   { label: 'Gastos', value: annualStats.yearExpenses, cls: 'text-red-400' },
-                  { label: annualStats.yearClosingSavings !== null ? 'Ahorro cierre' : 'Ahorro neto',
+                  {
+                    label: annualStats.yearClosingSavings !== null ? 'Ahorro cierre' : 'Ahorro neto',
                     value: annualStats.yearClosingSavings !== null ? annualStats.yearClosingSavings : annualStats.yearNetSavings,
-                    cls: 'text-violet-300' },
+                    cls: 'text-violet-300'
+                  },
                 ].map(({ label, value, cls }) => (
                   <div key={label} className="text-center">
                     <p className="text-[9px] font-black text-indigo-400 uppercase tracking-widest mb-1">{label}</p>
@@ -740,13 +779,15 @@ const Dinero: React.FC<DineroProps> = ({
 
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
               {[
-                { label: 'Ingresos',    value: annualStats.yearIncome,                           cls: 'bg-emerald-50 border-emerald-100', txtCls: 'text-emerald-600', Icon: TrendingUp,  iconBg: 'bg-emerald-500' },
-                { label: 'Gastos',      value: annualStats.yearExpenses,                          cls: 'bg-red-50 border-red-100',         txtCls: 'text-red-500',     Icon: TrendingDown, iconBg: 'bg-red-500' },
-                { label: 'Ahorro neto', value: annualStats.yearNetSavings,                        cls: 'bg-violet-50 border-violet-100',   txtCls: 'text-violet-600',  Icon: PiggyBank,    iconBg: 'bg-violet-500' },
-                { label: 'Balance',     value: annualStats.yearIncome - annualStats.yearExpenses,
+                { label: 'Ingresos', value: annualStats.yearIncome, cls: 'bg-emerald-50 border-emerald-100', txtCls: 'text-emerald-600', Icon: TrendingUp, iconBg: 'bg-emerald-500' },
+                { label: 'Gastos', value: annualStats.yearExpenses, cls: 'bg-red-50 border-red-100', txtCls: 'text-red-500', Icon: TrendingDown, iconBg: 'bg-red-500' },
+                { label: 'Ahorro neto', value: annualStats.yearNetSavings, cls: 'bg-violet-50 border-violet-100', txtCls: 'text-violet-600', Icon: PiggyBank, iconBg: 'bg-violet-500' },
+                {
+                  label: 'Balance', value: annualStats.yearIncome - annualStats.yearExpenses,
                   cls: (annualStats.yearIncome - annualStats.yearExpenses) >= 0 ? 'bg-blue-50 border-blue-100' : 'bg-orange-50 border-orange-100',
                   txtCls: (annualStats.yearIncome - annualStats.yearExpenses) >= 0 ? 'text-blue-600' : 'text-orange-500',
-                  Icon: Wallet, iconBg: (annualStats.yearIncome - annualStats.yearExpenses) >= 0 ? 'bg-blue-500' : 'bg-orange-500' },
+                  Icon: Wallet, iconBg: (annualStats.yearIncome - annualStats.yearExpenses) >= 0 ? 'bg-blue-500' : 'bg-orange-500'
+                },
               ].map(({ label, value, cls, txtCls, Icon, iconBg }) => (
                 <div key={label} className={`rounded-2xl p-4 border ${cls} flex items-center gap-3`}>
                   <div className={`${iconBg} p-2 rounded-xl shrink-0 shadow-sm`}><Icon size={16} className="text-white" /></div>
@@ -1087,11 +1128,16 @@ const Dinero: React.FC<DineroProps> = ({
                         className={`flex-1 py-3 rounded-xl text-xs font-black uppercase tracking-wide transition-all active:scale-[0.98] ${editTx.type === 'income' ? 'bg-emerald-500 text-white shadow-lg' : 'text-slate-500'}`}>Ingreso</button>
                     </div>
                     <div>
+                      <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 block">Fecha</label>
+                      <input type="date" value={editTx.date || ''} onChange={e => setEditTx({ ...editTx, date: e.target.value })}
+                        className="w-full bg-slate-50 border-2 border-transparent focus:border-indigo-200 rounded-2xl p-4 font-bold outline-none transition-all" autoFocus />
+                    </div>
+                    <div>
                       <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 block">Monto</label>
                       <div className="relative">
                         <span className="absolute left-4 top-1/2 -translate-y-1/2 text-xl font-black text-slate-300">$</span>
                         <input type="number" step="1" min="0" value={editTx.amount || ''} onChange={e => setEditTx({ ...editTx, amount: parseFloat(e.target.value) || 0 })}
-                          className="w-full bg-slate-50 border-2 border-transparent focus:border-indigo-200 rounded-2xl pl-10 pr-4 py-4 text-2xl font-black outline-none transition-all" placeholder="0" autoFocus />
+                          className="w-full bg-slate-50 border-2 border-transparent focus:border-indigo-200 rounded-2xl pl-10 pr-4 py-4 text-2xl font-black outline-none transition-all" placeholder="0" />
                       </div>
                     </div>
                     <div>
@@ -1127,11 +1173,7 @@ const Dinero: React.FC<DineroProps> = ({
                         </div>
                       )}
                     </div>
-                    <div>
-                      <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 block">Fecha</label>
-                      <input type="date" value={editTx.date || ''} onChange={e => setEditTx({ ...editTx, date: e.target.value })}
-                        className="w-full bg-slate-50 border-2 border-transparent focus:border-indigo-200 rounded-2xl p-4 font-bold outline-none transition-all" />
-                    </div>
+
                   </div>
                 </div>
                 <div className="px-5 py-4 border-t shrink-0" style={{ paddingBottom: 'max(1rem, env(safe-area-inset-bottom, 1rem))' }}>
