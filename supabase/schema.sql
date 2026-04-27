@@ -57,7 +57,7 @@ CREATE TABLE IF NOT EXISTS transactions (
   date              TEXT NOT NULL,          -- "YYYY-MM-DD"
   type              TEXT NOT NULL CHECK (type IN ('income', 'expense')),
   amount            DECIMAL(14, 2) NOT NULL,
-  fin_category_id   TEXT NOT NULL REFERENCES fin_categories(id) ON DELETE RESTRICT,
+  fin_category_id   TEXT NOT NULL,
   description       TEXT NOT NULL DEFAULT '',
   linked_event_id   TEXT,                   -- referencia suave a events.id
   created_at        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -107,7 +107,7 @@ CREATE TABLE IF NOT EXISTS savings_pockets (
 -- ----------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS pocket_fundings (
   id          TEXT PRIMARY KEY,
-  pocket_id   TEXT NOT NULL REFERENCES savings_pockets(id) ON DELETE CASCADE,
+  pocket_id   TEXT NOT NULL,
   date        TEXT NOT NULL,          -- "YYYY-MM-DD"
   amount      DECIMAL(14, 2) NOT NULL,  -- positivo = entrada, negativo = salida
   description TEXT NOT NULL DEFAULT '',
@@ -123,7 +123,7 @@ CREATE TABLE IF NOT EXISTS savings_withdrawals (
   date           TEXT NOT NULL,          -- "YYYY-MM-DD"
   amount         DECIMAL(14, 2) NOT NULL,
   description    TEXT NOT NULL DEFAULT '',
-  from_pocket_id TEXT REFERENCES savings_pockets(id) ON DELETE SET NULL,
+  from_pocket_id TEXT,
   created_at     TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at     TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );

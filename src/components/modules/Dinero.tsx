@@ -119,6 +119,8 @@ const Dinero: React.FC<DineroProps> = ({
   // Year opening balance editor
   const [editingYearOpening, setEditingYearOpening] = useState<'savings' | 'general' | null>(null);
   const [yearOpeningInput, setYearOpeningInput]     = useState('');
+  const [editSaving, setEditSaving] = useState<any | null>(null);
+
 
   const y = viewDate.getFullYear();
   const m = viewDate.getMonth();
@@ -370,6 +372,31 @@ const Dinero: React.FC<DineroProps> = ({
     setCatModal(null);
   };
   const deleteCat = (id: string) => { setFinCategories(prev => prev.filter(c => c.id !== id)); setCatModal(null); };
+
+  const handleDeleteHistoryEvent = (e: any) => {
+    if (window.confirm('¿Estás seguro de que deseas eliminar este movimiento de ahorro?')) {
+      if (e.type === 'deposit') setSavings(prev => prev.filter(s => s.id !== e.id));
+      else if (e.type === 'withdrawal') setSavingsWithdrawals(prev => prev.filter(w => w.id !== e.id));
+      else if (e.type === 'pocket_in' || e.type === 'pocket_out') setPocketFundings(prev => prev.filter(f => f.id !== e.id));
+    }
+  };
+
+  const handleSaveEditSaving = () => {
+    if (!editSaving) return;
+    const { id, type, amount, description, date, pocketId, direction } = editSaving;
+    if (!description.trim() || amount <= 0) return;
+
+    if (type === 'deposit') {
+      setSavings(prev => prev.map(s => s.id === id ? { ...s, amount, description, date } : s));
+    } else if (type === 'withdrawal') {
+      setSavingsWithdrawals(prev => prev.map(w => w.id === id ? { ...w, amount, description, date, fromPocketId: pocketId || undefined } : w));
+    } else if (type === 'pocket_in' || type === 'pocket_out') {
+      const finalAmount = direction === 'from' ? -Math.abs(amount) : Math.abs(amount);
+      setPocketFundings(prev => prev.map(f => f.id === id ? { ...f, amount: finalAmount, description, date, pocketId } : f));
+    }
+    setEditSaving(null);
+  };
+
 
   // ─── SAVINGS HANDLERS ────────────────────────────────────────────────────
   const handleWithdrawal = () => {
@@ -1001,12 +1028,16 @@ const Dinero: React.FC<DineroProps> = ({
                               <span className={`text-sm font-black shrink-0 ${isDeposit ? 'text-emerald-600' : isWithdrawal ? 'text-red-500' : 'text-indigo-500'}`}>
                                 {isDeposit ? '+' : isWithdrawal ? '-' : '↔'}${fmt(e.amount)}
                               </span>
-                              {isWithdrawal && (
-                                <button onClick={() => setSavingsWithdrawals(prev => prev.filter(w => w.id !== e.id))}
-                                  className="opacity-0 group-hover:opacity-100 p-1 text-slate-200 hover:text-red-500 transition-all">
-                                  <Trash2 size={11} />
+                              <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-all">
+                                <button onClick={() => setEditSaving({ ...e, direction: e.type === 'pocket_in' ? 'to' : e.type === 'pocket_out' ? 'from' : undefined })}
+                                  className="p-1 text-slate-300 hover:text-indigo-500 transition-all">
+                                  <Edit2 size={12} />
                                 </button>
-                              )}
+                                <button onClick={() => handleDeleteHistoryEvent(e)}
+                                  className="p-1 text-slate-300 hover:text-red-500 transition-all">
+                                  <Trash2 size={12} />
+                                </button>
+                              </div>
                             </div>
                           );
                         })}
@@ -1419,7 +1450,92 @@ const Dinero: React.FC<DineroProps> = ({
           </div>
         </div>
       )}
+      {/* ─── MODAL: Edit Saving Movement ─── */}
+      {editSaving && (
+        <div className="fixed inset-0 z-[200] flex items-end md:items-center justify-center bg-slate-900/60 backdrop-blur-sm animate-in fade-in">
+          <div className="bg-white rounded-t-3xl md:rounded-[2rem] w-full max-w-md shadow-2xl flex flex-col md:mx-4" style={{ maxHeight: 'calc(95vh - env(safe-area-inset-top, 0px))' }}>
+            <div className="flex justify-center pt-3 pb-1 shrink-0 md:hidden">
+              <div className="w-10 h-1 bg-slate-200 rounded-full" />
+            </div>
+            <div className="px-5 py-4 border-b flex justify-between items-center shrink-0">
+              <h3 className="text-base font-black text-slate-800 uppercase italic">Editar ahorro</h3>
+              <button onClick={() => setEditSaving(null)} className="p-2.5 hover:bg-slate-100 rounded-full transition-all"><X size={18} /></button>
+            </div>
+            <div className="flex-1 overflow-y-auto custom-scrollbar">
+              <div className="p-5 space-y-4">
+                <div>
+                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 block">Monto</label>
+                  <div className="relative">
+                    <span className="absolute left-4 top-1/2 -translate-y-1/2 text-xl font-black text-slate-300">$</span>
+                    <input type="number" step="1" min="0" value={editSaving.amount || ''}
+                      onChange={e => setEditSaving({ ...editSaving, amount: parseFloat(e.target.value) || 0 })}
+                      className="w-full bg-slate-50 border-2 border-transparent focus:border-indigo-200 rounded-2xl pl-10 pr-4 py-4 text-2xl font-black outline-none transition-all"
+                      placeholder="0" autoFocus />
+                  </div>
+                </div>
+                <div>
+                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 block">Descripción</label>
+                  <input type="text" value={editSaving.description}
+                    onChange={e => setEditSaving({ ...editSaving, description: e.target.value })}
+                    className="w-full bg-slate-50 border-2 border-transparent focus:border-indigo-200 rounded-2xl p-4 font-bold outline-none transition-all"
+                    placeholder="Descripción..." />
+                </div>
+
+                {(editSaving.type === 'withdrawal' || editSaving.type === 'pocket_in' || editSaving.type === 'pocket_out') && (
+                  <div>
+                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 block">Bolsillo</label>
+                    <div className="grid grid-cols-2 gap-2">
+                      {editSaving.type === 'withdrawal' && (
+                        <button onClick={() => setEditSaving({ ...editSaving, pocketId: '' })}
+                          className={`flex items-center gap-2 px-3 py-2 rounded-xl border-2 transition-all ${!editSaving.pocketId ? 'border-indigo-400 bg-indigo-50' : 'border-transparent bg-slate-50'}`}>
+                          <span>💼</span><span className="text-[10px] font-black text-slate-700">General</span>
+                        </button>
+                      )}
+                      {savingsPockets.map(pocket => (
+                        <button key={pocket.id} onClick={() => setEditSaving({ ...editSaving, pocketId: pocket.id })}
+                          className={`flex items-center gap-2 px-3 py-2 rounded-xl border-2 transition-all ${editSaving.pocketId === pocket.id ? 'border-indigo-400 bg-indigo-50' : 'border-transparent bg-slate-50'}`}>
+                          <span>{pocket.emoji}</span><span className="text-[10px] font-black text-slate-700 truncate">{pocket.name}</span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {(editSaving.type === 'pocket_in' || editSaving.type === 'pocket_out') && (
+                  <div>
+                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 block">Dirección</label>
+                    <div className="flex bg-slate-100 p-1 rounded-2xl gap-1">
+                      <button onClick={() => setEditSaving({ ...editSaving, direction: 'to' })}
+                        className={`flex-1 py-2 rounded-xl text-[10px] font-black uppercase transition-all ${editSaving.direction === 'to' ? 'bg-indigo-500 text-white shadow-sm' : 'text-slate-500'}`}>
+                        Hacia Bolsillo
+                      </button>
+                      <button onClick={() => setEditSaving({ ...editSaving, direction: 'from' })}
+                        className={`flex-1 py-2 rounded-xl text-[10px] font-black uppercase transition-all ${editSaving.direction === 'from' ? 'bg-indigo-500 text-white shadow-sm' : 'text-slate-500'}`}>
+                        Desde Bolsillo
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                <div>
+                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 block">Fecha</label>
+                  <input type="date" value={editSaving.date}
+                    onChange={e => setEditSaving({ ...editSaving, date: e.target.value })}
+                    className="w-full bg-slate-50 border-2 border-transparent focus:border-indigo-200 rounded-2xl p-4 font-bold outline-none transition-all" />
+                </div>
+              </div>
+            </div>
+            <div className="px-5 py-4 border-t shrink-0" style={{ paddingBottom: 'max(1rem, env(safe-area-inset-bottom, 1rem))' }}>
+              <button onClick={handleSaveEditSaving}
+                className="w-full bg-indigo-600 text-white font-black py-4 rounded-2xl uppercase text-xs tracking-widest shadow-md hover:bg-indigo-700 transition-all active:scale-[0.98]">
+                Guardar cambios
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
+
   );
 };
 

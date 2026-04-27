@@ -28,7 +28,7 @@ CREATE INDEX IF NOT EXISTS loans_user_status_idx ON loans(user_id, status);
 CREATE TABLE IF NOT EXISTS loan_payments (
   id             TEXT PRIMARY KEY,
   user_id        UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
-  loan_id        TEXT NOT NULL REFERENCES loans(id) ON DELETE CASCADE,
+  loan_id        TEXT NOT NULL,
   amount         DECIMAL(14, 2) NOT NULL,
   date           TEXT NOT NULL,        -- "YYYY-MM-DD"
   description    TEXT,
