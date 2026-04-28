@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { Plus, X, Check, ChevronDown, ChevronUp, DollarSign, User, Calendar, AlertCircle, CheckCircle2 } from 'lucide-react';
+import { Plus, X, Check, ChevronDown, ChevronUp, DollarSign, User, Calendar, AlertCircle, CheckCircle2, Edit2, Trash2 } from 'lucide-react';
 import type { Loan, LoanPayment, Transaction, FinCategory } from '../../types';
 import { LOAN_OUT_CAT_ID, LOAN_IN_CAT_ID } from '../../types';
 import { generateId, fmtCurrency as fmt } from '../../lib/utils';
@@ -24,6 +24,7 @@ const PrestamosTab: React.FC<PrestamosTabProps> = ({
   const today = new Date().toISOString().split('T')[0];
 
   const [loanModal, setLoanModal]     = useState<LoanForm | null>(null);
+  const [editingLoanId, setEditingLoanId] = useState<string | null>(null);
   const [payModal, setPayModal]       = useState<{ loanId: string; form: PaymentForm } | null>(null);
   const [showCompleted, setShowCompleted] = useState(false);
 
@@ -42,6 +43,10 @@ const PrestamosTab: React.FC<PrestamosTabProps> = ({
 
   const handleAddLoan = () => {
     if (!loanModal) return;
+    if (editingLoanId) {
+      handleSaveEditLoan();
+      return;
+    }
     const amount = parseFloat(loanModal.amount.replace(/,/g, '')) || 0;
     if (!loanModal.personName.trim() || amount <= 0) return;
 
@@ -73,6 +78,42 @@ const PrestamosTab: React.FC<PrestamosTabProps> = ({
     setLoans(prev => [newLoan, ...prev]);
     setTransactions(prev => [newTx, ...prev]);
     setLoanModal(null);
+  };
+
+  const handleSaveEditLoan = () => {
+    if (!loanModal || !editingLoanId) return;
+    const amount = parseFloat(loanModal.amount.replace(/,/g, '')) || 0;
+    if (!loanModal.personName.trim() || amount <= 0) return;
+
+    setLoans(prev => prev.map(l => l.id === editingLoanId ? {
+      ...l,
+      personName: loanModal.personName.trim(),
+      amount,
+      date: loanModal.date,
+      description: loanModal.description.trim() || undefined
+    } : l));
+
+    const loan = loans.find(l => l.id === editingLoanId);
+    if (loan?.transactionId) {
+      setTransactions(prev => prev.map(t => t.id === loan.transactionId ? {
+        ...t,
+        amount,
+        date: loanModal.date,
+        description: `Préstamo a ${loanModal.personName.trim()}${loanModal.description ? ` – ${loanModal.description}` : ''}`
+      } : t));
+    }
+
+    setLoanModal(null);
+    setEditingLoanId(null);
+  };
+
+  const handleDeleteLoan = (loan: Loan) => {
+    if (window.confirm(`¿Seguro que quieres eliminar el préstamo a ${loan.personName}? Esto también borrará todos sus pagos registrados.`)) {
+      const pTxs = loanPayments.filter(p => p.loanId === loan.id).map(p => p.transactionId).filter(Boolean) as string[];
+      setLoans(prev => prev.filter(l => l.id !== loan.id));
+      setLoanPayments(prev => prev.filter(p => p.loanId !== loan.id));
+      setTransactions(prev => prev.filter(t => t.id !== loan.transactionId && !pTxs.includes(t.id)));
+    }
   };
 
   const handleAddPayment = () => {
@@ -182,7 +223,11 @@ const PrestamosTab: React.FC<PrestamosTabProps> = ({
                         </p>
                       </div>
                     </div>
-                    <div className="text-right">
+                    <div className="text-right flex flex-col items-end">
+                      <div className="flex gap-1 mb-1">
+                        <button onClick={() => { setEditingLoanId(loan.id); setLoanModal({ personName: loan.personName, amount: loan.amount.toString(), date: loan.date, description: loan.description || '' }); }} className="p-1.5 text-slate-300 hover:text-indigo-500 transition-all"><Edit2 size={13} /></button>
+                        <button onClick={() => handleDeleteLoan(loan)} className="p-1.5 text-slate-300 hover:text-red-500 transition-all"><Trash2 size={13} /></button>
+                      </div>
                       <p className="text-base font-black text-slate-800">{fmt(loan.amount)}</p>
                       <p className="text-[10px] text-orange-500 font-bold">{fmt(remaining)} pendiente</p>
                     </div>
@@ -214,28 +259,40 @@ const PrestamosTab: React.FC<PrestamosTabProps> = ({
         )}
       </div>
 
-      {/* Completed loans */}
       {completedLoans.length > 0 && (
-        <div>
+        <div className="pt-4 border-t border-slate-100">
           <button
             onClick={() => setShowCompleted(v => !v)}
-            className="flex items-center gap-2 text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3 hover:text-slate-600 transition-colors"
+            className="flex items-center justify-between w-full text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3 hover:text-slate-600 transition-colors bg-slate-50/50 p-3 rounded-xl"
           >
+            <div className="flex items-center gap-2">
+              <CheckCircle2 size={13} className="text-emerald-500" />
+              Préstamos Saldados ({completedLoans.length})
+            </div>
             {showCompleted ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
-            Completados ({completedLoans.length})
           </button>
           {showCompleted && (
-            <div className="space-y-2">
+            <div className="space-y-3 animate-in fade-in slide-in-from-top-2 duration-300">
               {completedLoans.map(loan => (
-                <div key={loan.id} className="bg-slate-50 rounded-2xl p-4 border border-slate-100 flex items-center justify-between opacity-60">
+                <div key={loan.id} className="bg-white rounded-2xl p-4 border border-slate-100 flex items-center justify-between shadow-sm border-l-4 border-l-emerald-500/30">
                   <div className="flex items-center gap-3">
-                    <CheckCircle2 size={16} className="text-emerald-500 shrink-0" />
+                    <div className="w-8 h-8 rounded-xl bg-emerald-50 flex items-center justify-center">
+                      <Check size={14} className="text-emerald-500" />
+                    </div>
                     <div>
-                      <p className="text-xs font-black text-slate-600">{loan.personName}</p>
-                      <p className="text-[9px] text-slate-400">{loan.date}</p>
+                      <p className="text-sm font-black text-slate-400 line-through decoration-slate-300 decoration-2">{loan.personName}</p>
+                      <div className="flex items-center gap-2 mt-0.5">
+                        <p className="text-[9px] text-slate-400 font-bold uppercase tracking-tight">{loan.date}</p>
+                        <span className="text-[8px] bg-emerald-100 text-emerald-600 px-1.5 py-0.5 rounded-full font-black uppercase tracking-tighter">Saldado</span>
+                      </div>
                     </div>
                   </div>
-                  <p className="text-sm font-black text-slate-500">{fmt(loan.amount)}</p>
+                  <div className="text-right">
+                    <p className="text-sm font-black text-slate-300 line-through decoration-slate-200">{fmt(loan.amount)}</p>
+                    <p className="text-[9px] font-black text-emerald-500 uppercase tracking-widest flex items-center justify-end gap-1">
+                      <Check size={8} strokeWidth={4} /> Pagado
+                    </p>
+                  </div>
                 </div>
               ))}
             </div>
@@ -251,8 +308,8 @@ const PrestamosTab: React.FC<PrestamosTabProps> = ({
               <div className="w-10 h-1 bg-slate-200 rounded-full" />
             </div>
             <div className="px-5 py-4 border-b flex justify-between items-center">
-              <h2 className="text-base font-black text-slate-800 uppercase italic">Nuevo Préstamo</h2>
-              <button onClick={() => setLoanModal(null)} className="p-2 hover:bg-slate-100 rounded-full"><X size={18}/></button>
+              <h2 className="text-base font-black text-slate-800 uppercase italic">{editingLoanId ? 'Editar Préstamo' : 'Nuevo Préstamo'}</h2>
+              <button onClick={() => { setLoanModal(null); setEditingLoanId(null); }} className="p-2 hover:bg-slate-100 rounded-full"><X size={18}/></button>
             </div>
             <div className="p-5 space-y-4 overflow-y-auto flex-1">
               <div className="space-y-1.5">
@@ -305,9 +362,9 @@ const PrestamosTab: React.FC<PrestamosTabProps> = ({
               <button
                 onClick={handleAddLoan}
                 disabled={!loanModal.personName.trim() || !loanModal.amount}
-                className="w-full py-4 bg-orange-500 text-white rounded-2xl font-black text-xs uppercase tracking-widest hover:bg-orange-600 disabled:opacity-40 disabled:cursor-not-allowed transition-all active:scale-[0.98]"
+                className={`w-full py-4 text-white rounded-2xl font-black text-xs uppercase tracking-widest disabled:opacity-40 disabled:cursor-not-allowed transition-all active:scale-[0.98] ${editingLoanId ? 'bg-indigo-600 hover:bg-indigo-700' : 'bg-orange-500 hover:bg-orange-600'}`}
               >
-                Registrar Préstamo
+                {editingLoanId ? 'Guardar Cambios' : 'Registrar Préstamo'}
               </button>
             </div>
           </div>

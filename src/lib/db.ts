@@ -597,6 +597,8 @@ export async function migrateFromLocalStorage(
   const lsSavingsPockets: SavingsPocket[] = lsGet(LS_KEYS.savingsPockets, [])
   const lsPocketFundings: PocketFunding[] = lsGet(LS_KEYS.pocketFundings, [])
   const lsSavingsYearBalances: SavingsYearBalance[] = lsGet(LS_KEYS.savingsYearBalances, [])
+  const lsLoans: Loan[] = lsGet('lifeos-loans', [])
+  const lsLoanPayments: LoanPayment[] = lsGet('lifeos-loan-payments', [])
 
   const u = (row: object) => withUser(row, userId)
 
@@ -634,6 +636,12 @@ export async function migrateFromLocalStorage(
   const pfRows = lsPocketFundings.map(f => u(pocketFundingToDb(f)))
   if (pfRows.length) await supabase.from('pocket_fundings').upsert(pfRows)
 
+  const loanRows = lsLoans.map(l => u(loanToDb(l)))
+  if (loanRows.length) await supabase.from('loans').upsert(loanRows)
+
+  const lpRows = lsLoanPayments.map(p => u(loanPaymentToDb(p)))
+  if (lpRows.length) await supabase.from('loan_payments').upsert(lpRows)
+
   return {
     events: lsEvents,
     categories: lsCategories,
@@ -646,5 +654,7 @@ export async function migrateFromLocalStorage(
     savingsPockets: lsSavingsPockets,
     pocketFundings: lsPocketFundings,
     savingsYearBalances: lsSavingsYearBalances,
+    loans: lsLoans,
+    loanPayments: lsLoanPayments,
   }
 }

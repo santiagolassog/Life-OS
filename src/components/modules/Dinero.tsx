@@ -6,7 +6,7 @@ import {
 import {
   Plus, X, TrendingUp, TrendingDown, DollarSign, Trash2,
   ChevronLeft, ChevronRight, Wallet, PiggyBank, Edit2, BarChart3, List, Tag,
-  Info, Pencil, Check, ArrowLeftRight,
+  Info, Pencil, Check, ArrowLeftRight, User, AlertCircle, CheckCircle2,
 } from 'lucide-react';
 import type { Transaction, FinCategory, Savings, MonthBalance, SavingsWithdrawal, SavingsPocket, PocketFunding, SavingsYearBalance, Loan, LoanPayment } from '../../types';
 import { LOAN_OUT_CAT_ID, LOAN_IN_CAT_ID } from '../../types';
@@ -97,7 +97,7 @@ const Dinero: React.FC<DineroProps> = ({
 
   // Transaction form
   const [formOpen, setFormOpen] = useState(false);
-  const [formStep, setFormStep] = useState<1 | 2>(1);
+  const [formStep, setFormStep] = useState<number>(1);
   const [editTx, setEditTx] = useState<Partial<Transaction> | null>(null);
   const [isEditingTx, setIsEditingTx] = useState(false);
   const [savingsPercent, setSavingsPercent] = useState(10);
@@ -107,6 +107,8 @@ const Dinero: React.FC<DineroProps> = ({
   // Opening-balance editing
   const [editingBalance, setEditingBalance] = useState(false);
   const [balanceInput, setBalanceInput] = useState('');
+
+  const [linkingLoanId, setLinkingLoanId] = useState('');
 
   // Category CRUD
   const [catModal, setCatModal] = useState<Partial<FinCategory> | null>(null);
@@ -150,12 +152,16 @@ const Dinero: React.FC<DineroProps> = ({
 
   const { stats, grouped } = useMemo(() => {
     let income = 0, expenses = 0;
+    let monthLoansIn = 0, monthLoansOut = 0;
     const byCategory: Record<string, { label: string; color: string; total: number; txType: string }> = {};
     const g: Record<string, Transaction[]> = {};
 
     monthTxs.forEach(tx => {
       if (tx.type === 'income' && tx.finCategoryId !== LOAN_IN_CAT_ID) income += tx.amount;
       else if (tx.type === 'expense' && tx.finCategoryId !== LOAN_OUT_CAT_ID) expenses += tx.amount;
+      
+      if (tx.finCategoryId === LOAN_IN_CAT_ID) monthLoansIn += tx.amount;
+      if (tx.finCategoryId === LOAN_OUT_CAT_ID) monthLoansOut += tx.amount;
 
       const cat = finCategories.find(c => c.id === tx.finCategoryId);
       if (cat) {
@@ -168,31 +174,34 @@ const Dinero: React.FC<DineroProps> = ({
     });
 
     // Ahorros depositados y retirados en este mes
-    const monthSavingsDeposits = savings
+    const safeSavings = Array.isArray(savings) ? savings : [];
+    const safeWithdrawals = Array.isArray(savingsWithdrawals) ? savingsWithdrawals : [];
+
+    const monthSavingsDeposits = safeSavings
       .filter(s => {
-        const [sy, sm] = s.date.split('-').map(Number);
+        const [sy, sm] = (s.date || '').split('-').map(Number);
         return sy === y && sm - 1 === m;
       })
-      .reduce((s, x) => s + x.amount, 0);
+      .reduce((s, x) => s + (x.amount || 0), 0);
 
-    const monthSavingsWithdrawn = savingsWithdrawals
+    const monthSavingsWithdrawn = safeWithdrawals
       .filter(w => {
-        const [wy, wm] = w.date.split('-').map(Number);
+        const [wy, wm] = (w.date || '').split('-').map(Number);
         return wy === y && wm - 1 === m;
       })
-      .reduce((s, x) => s + x.amount, 0);
+      .reduce((s, x) => s + (x.amount || 0), 0);
 
     const expenseChart = Object.values(byCategory)
       .filter(c => c.txType === 'expense')
       .sort((a, b) => b.total - a.total);
 
-    const balance = income - expenses - monthSavingsDeposits + monthSavingsWithdrawn;
+    const balance = income - expenses - monthSavingsDeposits + monthSavingsWithdrawn + monthLoansIn - monthLoansOut;
 
-    return { stats: { income, expenses, monthSavingsDeposits, monthSavingsWithdrawn, balance, expenseChart }, grouped: g };
+    return { stats: { income, expenses, monthSavingsDeposits, monthSavingsWithdrawn, monthLoansIn, monthLoansOut, balance, expenseChart }, grouped: g };
   }, [monthTxs, finCategories, savings, savingsWithdrawals, y, m]);
 
   const closingBalance = openingBalance !== null
-    ? openingBalance + stats.income - stats.expenses - stats.monthSavingsDeposits + stats.monthSavingsWithdrawn
+    ? openingBalance + stats.income - stats.expenses - stats.monthSavingsDeposits + stats.monthSavingsWithdrawn + stats.monthLoansIn - stats.monthLoansOut
     : null;
 
   const prevClosingBalance = useMemo(() => {
@@ -203,12 +212,15 @@ const Dinero: React.FC<DineroProps> = ({
     const prevOpening = monthBalances.find(b => b.yearMonth === prevYearMonth)?.openingBalance ?? null;
     if (prevOpening === null) return null;
 
-    let prevIncome = 0, prevExpenses = 0;
+    let prevIncome = 0, prevExpenses = 0, prevLoansIn = 0, prevLoansOut = 0;
     transactions.forEach(tx => {
       const [ty, tm] = tx.date.split('-').map(Number);
       if (ty === prevY && tm - 1 === prevM) {
         if (tx.type === 'income' && tx.finCategoryId !== LOAN_IN_CAT_ID) prevIncome += tx.amount;
         else if (tx.type === 'expense' && tx.finCategoryId !== LOAN_OUT_CAT_ID) prevExpenses += tx.amount;
+        
+        if (tx.finCategoryId === LOAN_IN_CAT_ID) prevLoansIn += tx.amount;
+        if (tx.finCategoryId === LOAN_OUT_CAT_ID) prevLoansOut += tx.amount;
       }
     });
 
@@ -226,7 +238,7 @@ const Dinero: React.FC<DineroProps> = ({
       })
       .reduce((s, x) => s + x.amount, 0);
 
-    return prevOpening + prevIncome - prevExpenses - prevSavingsDeposits + prevSavingsWithdrawn;
+    return prevOpening + prevIncome - prevExpenses - prevSavingsDeposits + prevSavingsWithdrawn + prevLoansIn - prevLoansOut;
   }, [y, m, monthBalances, transactions, savings, savingsWithdrawals]);
 
   const prevMonthLabel = new Date(y, m - 1, 1).toLocaleDateString('es-ES', { month: 'long' });
@@ -369,14 +381,78 @@ const Dinero: React.FC<DineroProps> = ({
     setTransactions(prev => [...prev.filter(t => t.id !== tx.id), tx]);
 
     const isLoanTx = tx.finCategoryId === LOAN_IN_CAT_ID || tx.finCategoryId === LOAN_OUT_CAT_ID;
-    if (tx.type === 'income' && !isEditingTx && !isLoanTx) {
-      setPendingTxId(txId);
-      setPendingTxAmount(tx.amount);
-      setSavingsPercent(10);
-      setFormStep(2);
+
+    if (tx.type === 'income' && !isEditingTx) {
+      if (tx.finCategoryId === LOAN_IN_CAT_ID && linkingLoanId) {
+        // Registrar el vínculo inmediatamente si ya se seleccionó en el paso 1
+        const payId = generateId();
+        const loan = (Array.isArray(loans) ? loans : []).find(l => l.id === linkingLoanId);
+        if (loan) {
+          const newPayment: LoanPayment = {
+            id: payId, loanId: linkingLoanId, amount: tx.amount, date: tx.date,
+            description: `Reintegro: ${tx.description}`, transactionId: txId,
+            createdAt: new Date().toISOString()
+          };
+          setLoanPayments(prev => [...(Array.isArray(prev) ? prev : []), newPayment]);
+          
+          const loanPaymentsArr = Array.isArray(loanPayments) ? loanPayments : [];
+          const paidSoFar = loanPaymentsArr
+            .filter(p => p.loanId === linkingLoanId)
+            .reduce((s, p) => s + (p.amount || 0), 0) + (tx.amount || 0);
+          
+          if (paidSoFar >= (loan.amount || 0)) {
+            setLoans(prev => (Array.isArray(prev) ? prev : []).map(l => 
+              l.id === linkingLoanId ? { ...l, status: 'completed', completedAt: new Date().toISOString() } : l
+            ));
+          }
+        }
+        setLinkingLoanId('');
+        setEditTx(null); setFormOpen(false);
+      } else if (tx.finCategoryId === LOAN_IN_CAT_ID) {
+        // Si no se seleccionó, ir al paso de vinculación
+        setPendingTxId(txId);
+        setPendingTxAmount(tx.amount);
+        setFormStep(3);
+      } else {
+        setPendingTxId(txId);
+        setPendingTxAmount(tx.amount);
+        setSavingsPercent(10);
+        setFormStep(2);
+      }
     } else {
       setEditTx(null); setFormOpen(false); setIsEditingTx(false);
     }
+  };
+
+  const handleConfirmLoanLink = () => {
+    if (!linkingLoanId || !pendingTxId) return;
+    const amount = pendingTxAmount;
+    const safeLoans = Array.isArray(loans) ? loans : [];
+    const loan = safeLoans.find(l => l.id === linkingLoanId);
+    if (!loan) return;
+
+    const payId = generateId();
+    const newPayment: LoanPayment = {
+      id: payId,
+      loanId: linkingLoanId,
+      amount,
+      date: editTx?.date || today,
+      description: `Reintegro vía movimientos: ${editTx?.description || ''}`,
+      transactionId: pendingTxId,
+      createdAt: new Date().toISOString(),
+    };
+
+    setLoanPayments(prev => [...(Array.isArray(prev) ? prev : []), newPayment]);
+
+    // Verificar si se saldó
+    const safePayments = Array.isArray(loanPayments) ? loanPayments : [];
+    const paidSoFar = safePayments.filter(p => p.loanId === linkingLoanId).reduce((s, p) => s + (p.amount || 0), 0) + amount;
+    if (paidSoFar >= (loan.amount || 0)) {
+      setLoans(prev => (Array.isArray(prev) ? prev : []).map(l => l.id === linkingLoanId ? { ...l, status: 'completed', completedAt: new Date().toISOString() } : l));
+    }
+
+    setPendingTxId(''); setPendingTxAmount(0); setLinkingLoanId('');
+    setEditTx(null); setFormOpen(false); setFormStep(1);
   };
 
   const handleConfirmSavings = (save: boolean) => {
@@ -395,7 +471,38 @@ const Dinero: React.FC<DineroProps> = ({
     setEditTx(null); setFormOpen(false); setFormStep(1);
   };
 
-  const handleDelete = (id: string) => setTransactions(prev => prev.filter(t => t.id !== id));
+  const handleDelete = (id: string) => {
+    const safeTxs = Array.isArray(transactions) ? transactions : [];
+    const tx = safeTxs.find(t => t.id === id);
+    if (!tx) return;
+
+    // 1. Verificar si es un pago de préstamo (Reintegro)
+    const safePayments = Array.isArray(loanPayments) ? loanPayments : [];
+    const payment = safePayments.find(p => p.transactionId === id);
+    if (payment) {
+      if (window.confirm('Este movimiento está vinculado a un pago de préstamo. Al eliminarlo, el saldo pendiente del préstamo se actualizará. ¿Continuar?')) {
+        setLoanPayments(prev => (Array.isArray(prev) ? prev : []).filter(p => p.id !== payment.id));
+        setLoans(prev => (Array.isArray(prev) ? prev : []).map(l => l.id === payment.loanId ? { ...l, status: 'active', completedAt: undefined } : l));
+        setTransactions(prev => (Array.isArray(prev) ? prev : []).filter(t => t.id !== id));
+      }
+      return;
+    }
+
+    // 2. Verificar si es el préstamo original
+    const safeLoans = Array.isArray(loans) ? loans : [];
+    const loan = safeLoans.find(l => l.transactionId === id);
+    if (loan) {
+      if (window.confirm(`Este movimiento es el origen del préstamo a ${loan.personName}. Si lo eliminas, se borrará el préstamo y sus registros asociados. ¿Deseas continuar?`)) {
+        const pTxs = safePayments.filter(p => p.loanId === loan.id).map(p => p.transactionId).filter(Boolean) as string[];
+        setLoans(prev => (Array.isArray(prev) ? prev : []).filter(l => l.id !== loan.id));
+        setLoanPayments(prev => (Array.isArray(prev) ? prev : []).filter(p => p.loanId !== loan.id));
+        setTransactions(prev => (Array.isArray(prev) ? prev : []).filter(t => t.id !== id && !pTxs.includes(t.id)));
+      }
+      return;
+    }
+
+    setTransactions(prev => prev.filter(t => t.id !== id));
+  };
 
   // ─── CATEGORY CRUD ───────────────────────────────────────────────────────
   const saveCat = () => {
@@ -533,7 +640,7 @@ const Dinero: React.FC<DineroProps> = ({
               </>
             )}
             {tab === 'categorias' && (
-              <button onClick={() => setCatModal({ type: 'expense', color: COLOR_PALETTE[0] })} className="bg-emerald-500 hover:bg-emerald-400 text-white px-4 py-2 rounded-xl font-bold text-xs flex items-center gap-2 shadow-lg transition-all">
+              <button onClick={() => setCatModal({ type: 'income', color: COLOR_PALETTE[0] })} className="bg-emerald-500 hover:bg-emerald-400 text-white px-4 py-2 rounded-xl font-bold text-xs flex items-center gap-2 shadow-lg transition-all">
                 <Plus size={14} /> Nueva categoría
               </button>
             )}
@@ -728,7 +835,9 @@ const Dinero: React.FC<DineroProps> = ({
                           {cat.description && <p className="text-[10px] text-slate-400 mt-0.5 leading-snug">{cat.description}</p>}
                         </div>
                         <button onClick={() => setCatModal({ ...cat })} className="opacity-0 group-hover:opacity-100 p-1.5 text-slate-300 hover:text-indigo-500 transition-all shrink-0"><Edit2 size={13} /></button>
-                        <button onClick={() => deleteCat(cat.id)} className="opacity-0 group-hover:opacity-100 p-1.5 text-slate-300 hover:text-red-500 transition-all shrink-0"><Trash2 size={13} /></button>
+                        {cat.id !== LOAN_IN_CAT_ID && cat.id !== LOAN_OUT_CAT_ID && (
+                          <button onClick={() => deleteCat(cat.id)} className="opacity-0 group-hover:opacity-100 p-1.5 text-slate-300 hover:text-red-500 transition-all shrink-0"><Trash2 size={13} /></button>
+                        )}
                       </div>
                     ))}
                   </div>
@@ -1159,30 +1268,63 @@ const Dinero: React.FC<DineroProps> = ({
                       {selectedCatObj?.description && (
                         <div
                           className="mt-3 rounded-2xl px-4 py-3 flex items-start gap-3 animate-in fade-in slide-in-from-top-1 duration-200"
-                          style={{ backgroundColor: `${selectedCatObj.color}12`, border: `1px solid ${selectedCatObj.color}30` }}
+                          style={{ backgroundColor: `${selectedCatObj?.color || '#6366f1'}12`, border: `1px solid ${selectedCatObj?.color || '#6366f1'}30` }}
                         >
-                          <div className="w-5 h-5 rounded-full shrink-0 mt-0.5 flex items-center justify-center" style={{ backgroundColor: `${selectedCatObj.color}25` }}>
-                            <Info size={10} style={{ color: selectedCatObj.color }} />
+                          <div className="w-5 h-5 rounded-full shrink-0 mt-0.5 flex items-center justify-center" style={{ backgroundColor: `${selectedCatObj?.color || '#6366f1'}25` }}>
+                            <Info size={10} style={{ color: selectedCatObj?.color || '#6366f1' }} />
                           </div>
                           <div>
-                            <p className="text-[9px] font-black uppercase tracking-widest mb-0.5" style={{ color: selectedCatObj.color }}>
+                            <p className="text-[9px] font-black uppercase tracking-widest mb-0.5" style={{ color: selectedCatObj?.color || '#6366f1' }}>
                               ¿Qué registrar aquí?
                             </p>
-                            <p className="text-[11px] text-slate-600 font-medium leading-snug">{selectedCatObj.description}</p>
+                            <p className="text-[11px] text-slate-600 font-medium leading-snug">{selectedCatObj?.description || 'Registra tus movimientos financieros.'}</p>
                           </div>
                         </div>
                       )}
-                    </div>
 
+                      {editTx.finCategoryId === LOAN_IN_CAT_ID && (
+                        <div className="mt-4 p-4 bg-emerald-50 rounded-2xl border border-emerald-100 animate-in fade-in zoom-in-95 duration-300">
+                          <div className="flex items-center gap-2 mb-2">
+                            <User size={12} className="text-emerald-500" />
+                            <label className="text-[10px] font-black text-emerald-600 uppercase tracking-widest">Vincular al préstamo de:</label>
+                          </div>
+                          <select
+                            value={linkingLoanId}
+                            onChange={e => setLinkingLoanId(e.target.value)}
+                            className="w-full bg-white border-2 border-emerald-200 focus:border-emerald-400 rounded-xl px-3 py-2.5 text-sm font-bold outline-none transition-all shadow-sm"
+                          >
+                            <option value="">(Opcional) Selecciona una persona...</option>
+                            {(Array.isArray(loans) ? loans : []).filter(l => l.status === 'active').map(l => {
+                              const paid = (Array.isArray(loanPayments) ? loanPayments : [])
+                                .filter(p => p && p.loanId === l.id)
+                                .reduce((s, p) => s + (p.amount || 0), 0);
+                              const remaining = Math.max(0, (l.amount || 0) - paid);
+                              return (
+                                <option key={l.id} value={l.id}>
+                                  {l.personName || 'Sin nombre'} (Pendiente: ${fmt(remaining)})
+                                </option>
+                              );
+                            })}
+                          </select>
+                        </div>
+                      )}
+                    </div>
                   </div>
                 </div>
                 <div className="px-5 py-4 border-t shrink-0" style={{ paddingBottom: 'max(1rem, env(safe-area-inset-bottom, 1rem))' }}>
-                  <button onClick={handleSave} className="w-full bg-indigo-600 text-white font-black py-4 rounded-2xl uppercase text-xs tracking-widest shadow-lg hover:bg-indigo-700 transition-all active:scale-[0.98]">
-                    {isEditingTx ? 'Guardar cambios' : editTx.type === 'income' ? 'Continuar →' : 'Guardar'}
+                  <button 
+                    onClick={handleSave} 
+                    disabled={!editTx?.description?.trim() || !editTx?.amount || !editTx?.finCategoryId}
+                    className="w-full bg-indigo-600 text-white font-black py-4 rounded-2xl uppercase text-xs tracking-widest shadow-lg hover:bg-indigo-700 transition-all active:scale-[0.98] disabled:opacity-40 disabled:cursor-not-allowed"
+                  >
+                    {isEditingTx ? 'Guardar cambios' : (editTx.finCategoryId === LOAN_IN_CAT_ID && linkingLoanId) ? 'Confirmar Reintegro' : editTx.type === 'income' ? 'Continuar →' : 'Guardar'}
                   </button>
+                  {(!editTx?.description?.trim() || !editTx?.amount) && (
+                    <p className="text-[9px] text-slate-400 font-bold text-center mt-2 uppercase tracking-tighter italic">Ingresa descripción y monto para continuar</p>
+                  )}
                 </div>
               </>
-            ) : (
+            ) : formStep === 2 ? (
               <>
                 <div className="px-5 py-4 border-b flex justify-between items-center shrink-0">
                   <div>
@@ -1216,6 +1358,51 @@ const Dinero: React.FC<DineroProps> = ({
                   <button onClick={() => handleConfirmSavings(false)} className="w-full bg-slate-100 text-slate-500 font-black py-3 rounded-2xl uppercase text-xs tracking-widest hover:bg-slate-200 transition-all active:scale-[0.98]">
                     No, solo registrar ingreso
                   </button>
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="px-5 py-4 border-b flex justify-between items-center shrink-0">
+                  <div>
+                    <h3 className="text-base font-black text-slate-800 uppercase italic">Vincular Préstamo</h3>
+                    <p className="text-xs text-slate-400 mt-0.5">Monto del reintegro: <span className="font-black text-emerald-600">${fmt(pendingTxAmount)}</span></p>
+                  </div>
+                  <button onClick={() => { setFormOpen(false); setFormStep(1); }} className="p-2.5 hover:bg-slate-100 rounded-full transition-all"><X size={18} /></button>
+                </div>
+                <div className="flex-1 overflow-y-auto custom-scrollbar">
+                  <div className="p-5 space-y-4">
+                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Selecciona el préstamo correspondiente:</p>
+                    <div className="space-y-2">
+                      {(() => {
+                        const activeLoans = (Array.isArray(loans) ? loans : []).filter(l => l.status === 'active');
+                        if (activeLoans.length === 0) {
+                          return (
+                            <div className="p-8 text-center bg-slate-50 rounded-2xl border border-dashed border-slate-200">
+                              <AlertCircle size={24} className="mx-auto text-slate-300 mb-2" />
+                              <p className="text-xs font-bold text-slate-400">No hay préstamos activos para vincular.</p>
+                            </div>
+                          );
+                        }
+                        return activeLoans.map(loan => (
+                          <button key={loan.id} onClick={() => setLinkingLoanId(loan.id)}
+                            className={`w-full p-4 rounded-2xl border-2 text-left transition-all flex justify-between items-center ${linkingLoanId === loan.id ? 'border-indigo-500 bg-indigo-50' : 'border-slate-100 bg-white hover:border-slate-200'}`}>
+                            <div>
+                              <p className="text-sm font-black text-slate-700">{loan.personName}</p>
+                              <p className="text-[10px] text-slate-400">{loan.date} · ${fmt(loan.amount)}</p>
+                            </div>
+                            {linkingLoanId === loan.id && <CheckCircle2 size={16} className="text-indigo-500" />}
+                          </button>
+                        ));
+                      })()}
+                    </div>
+                  </div>
+                </div>
+                <div className="px-5 py-4 border-t shrink-0" style={{ paddingBottom: 'max(1rem, env(safe-area-inset-bottom, 1rem))' }}>
+                  <button onClick={handleConfirmLoanLink} disabled={!linkingLoanId}
+                    className="w-full bg-emerald-500 text-white font-black py-4 rounded-2xl uppercase text-xs tracking-widest shadow-lg hover:bg-emerald-600 transition-all active:scale-[0.98] disabled:opacity-40">
+                    Confirmar Vínculo
+                  </button>
+                  <button onClick={() => { setFormOpen(false); setFormStep(1); }} className="w-full py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest hover:text-slate-600 transition-all text-center">Cancelar registro</button>
                 </div>
               </>
             )}

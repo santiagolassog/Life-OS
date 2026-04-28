@@ -204,6 +204,8 @@ const App = () => {
   const userId = user?.id ?? '';
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const userMenuRef = useRef<HTMLDivElement>(null);
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const hasAutoScrolled = useRef(false);
 
   // ── Estado principal ────────────────────────────────────────────────────────
   const [loading, setLoading] = useState(true);
@@ -249,21 +251,28 @@ const App = () => {
 
         const finalCategories   = Object.keys(d.categories).length > 0 ? d.categories : INITIAL_CATEGORIES;
 
-        // Migración de categorías financieras:
-        // - Actualiza label/description de categorías existentes (preserva color e ID → no rompe transacciones)
-        // - Agrega categorías nuevas que no existan aún
-        // - Conserva categorías personalizadas del usuario
-        let finalFinCategories = d.finCategories.length > 0 ? d.finCategories : INITIAL_FIN_CATEGORIES;
-        if (d.finCategories.length > 0) {
-          const updatedExisting = finalFinCategories.map(fc => {
-            const canonical = INITIAL_FIN_CATEGORIES.find(c => c.id === fc.id);
-            if (!canonical) return fc; // categoría personalizada del usuario, se conserva
-            return { ...fc, label: canonical.label, description: canonical.description };
-          });
-          const newOnes = INITIAL_FIN_CATEGORIES.filter(
-            c => !finalFinCategories.some(fc => fc.id === c.id)
-          );
-          finalFinCategories = [...updatedExisting, ...newOnes];
+        // Procesamiento de categorías financieras:
+        // 1. Si la DB está totalmente vacía, cargamos todos los valores por defecto
+        // 2. Si ya existen categorías, respetamos lo que hay en la DB para permitir CRUD
+        // 3. Casos especiales: Asegurar que las categorías de Préstamos/Reintegros siempre existan
+        // y que la migración inicial de gastos ocurra si es necesario.
+        let finalFinCategories = d.finCategories;
+        if (finalFinCategories.length === 0) {
+          finalFinCategories = INITIAL_FIN_CATEGORIES;
+        } else {
+          // Asegurar categorías de préstamos (necesarias para la lógica del sistema)
+          const loanIn = INITIAL_FIN_CATEGORIES.find(c => c.id === LOAN_IN_CAT_ID)!;
+          const loanOut = INITIAL_FIN_CATEGORIES.find(c => c.id === LOAN_OUT_CAT_ID)!;
+          
+          if (!finalFinCategories.some(c => c.id === LOAN_IN_CAT_ID)) finalFinCategories.push(loanIn);
+          if (!finalFinCategories.some(c => c.id === LOAN_OUT_CAT_ID)) finalFinCategories.push(loanOut);
+
+          // Migración inicial de gastos si el usuario no tiene ninguno
+          const hasExpenses = finalFinCategories.some(c => (c.type === 'expense' || c.type === 'both') && c.id !== LOAN_OUT_CAT_ID);
+          if (!hasExpenses) {
+            const defaultExpenses = INITIAL_FIN_CATEGORIES.filter(c => c.type === 'expense' && c.id !== LOAN_OUT_CAT_ID);
+            finalFinCategories = [...finalFinCategories, ...defaultExpenses];
+          }
         }
 
         // Actualizar state
@@ -405,6 +414,32 @@ const App = () => {
     window.addEventListener('resize', handleResize);
     return () => window.removeEventListener('resize', handleResize);
   }, []);
+
+  // Auto-scroll a la primera actividad del día
+  useEffect(() => {
+    if (section === 'tiempo' && !loading) {
+      const todayId = formatDateId(new Date());
+      const todayEvents = events[todayId] || [];
+      
+      let scrollIdx = -1;
+      if (todayEvents.length > 0) {
+        const sorted = [...todayEvents].sort((a, b) => GRID_HOURS.indexOf(a.startHour) - GRID_HOURS.indexOf(b.startHour));
+        scrollIdx = GRID_HOURS.indexOf(sorted[0].startHour);
+      } else {
+        // Fallback a las 8:00 AM si no hay eventos
+        scrollIdx = GRID_HOURS.indexOf('08:00');
+      }
+
+      if (scrollIdx !== -1) {
+        setTimeout(() => {
+          if (scrollContainerRef.current) {
+            const pos = Math.max(0, scrollIdx * SEGMENT_HEIGHT - (SEGMENT_HEIGHT * 4));
+            scrollContainerRef.current.scrollTop = pos;
+          }
+        }, 150);
+      }
+    }
+  }, [section, loading, events]);
 
   useEffect(() => {
     const handler = (e: MouseEvent) => {
@@ -819,7 +854,7 @@ const App = () => {
                 </div>
               )}
 
-              <div className="flex-1 overflow-auto custom-scrollbar scroll-smooth">
+              <div ref={scrollContainerRef} className="flex-1 overflow-auto custom-scrollbar scroll-smooth">
                 <div className="mt-3 md:mt-6 px-3 pb-3 md:px-6 md:pb-6">
                   <div className="inline-block min-w-full bg-white rounded-[2.5rem] shadow-sm border border-slate-200 relative overflow-hidden">
                     <div className={`grid ${isMobile ? 'grid-cols-[60px_1fr]' : 'grid-cols-[80px_repeat(7,1fr)]'} sticky top-0 z-[50] bg-indigo-950 text-white`}>
