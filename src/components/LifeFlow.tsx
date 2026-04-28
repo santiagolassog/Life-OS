@@ -1,4 +1,6 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
+import { jsPDF } from 'jspdf';
+import html2canvas from 'html2canvas';
 import {
   PieChart as RechartsPieChart, Pie, Cell, Tooltip, ResponsiveContainer
 } from 'recharts';
@@ -12,7 +14,7 @@ import Objetivos from './modules/Objetivos';
 import Revision from './modules/Revision';
 import type { Transaction, FinCategory, Goal, Savings, MonthBalance, SavingsWithdrawal, SavingsPocket, PocketFunding, SavingsYearBalance, Loan, LoanPayment } from '../types';
 import { LOAN_OUT_CAT_ID, LOAN_IN_CAT_ID } from '../types';
-import { generateId, formatDateId as fmtDateId, getWeekDays, GRID_HOURS } from '../lib/utils';
+import { generateId, formatDateId as fmtDateId, getWeekDays, GRID_HOURS, fmtCurrency, getWeekId } from '../lib/utils';
 import {
   loadAllData, migrateFromLocalStorage,
   syncEvents, syncCategories, syncTransactions, syncFinCategories, syncGoals,
@@ -193,8 +195,8 @@ const CustomTimePicker = ({ label, hour, minute, onTimeChange, minTime = "00:00"
 type SectionKey = 'tiempo' | 'dinero' | 'objetivos' | 'revision';
 
 const SECTIONS: Array<{ key: SectionKey; label: string; Icon: React.FC<{ size?: number }> }> = [
-  { key: 'tiempo', label: 'Tiempo', Icon: CalendarDays },
   { key: 'dinero', label: 'Dinero', Icon: DollarSign },
+  { key: 'tiempo', label: 'Tiempo', Icon: CalendarDays },
   { key: 'objetivos', label: 'Objetivos', Icon: Target },
   { key: 'revision', label: 'Revisión', Icon: BarChart3 },
 ];
@@ -220,8 +222,10 @@ const App = () => {
   const [windowWidth, setWindowWidth] = useState(typeof window !== 'undefined' ? window.innerWidth : 1200);
   const [newPreset, setNewPreset] = useState("");
   const [reportRange, setReportRange] = useState('week');
+  const [isExporting, setIsExporting] = useState(false);
+  const reportRef = useRef<HTMLDivElement>(null);
 
-  const [section, setSection] = useState<SectionKey>('tiempo');
+  const [section, setSection] = useState<SectionKey>('dinero');
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [finCategories, setFinCategories] = useState<FinCategory[]>(INITIAL_FIN_CATEGORIES);
   const [goals, setGoals] = useState<Goal[]>([]);
@@ -439,7 +443,7 @@ const App = () => {
         }, 150);
       }
     }
-  }, [section, loading, events]);
+  }, [section, loading]);
 
   useEffect(() => {
     const handler = (e: MouseEvent) => {
@@ -620,6 +624,35 @@ const App = () => {
     const subStats = Object.entries(subCatHours).map(([name, hours]: [string, number]) => ({ name: String(name), hours })).filter(s => s.hours > 0).sort((a,b) => b.hours - a.hours);
     return { main: mainStats, sub: subStats, total };
   }, [events, categories, currentDate, reportRange, weekDays]);
+
+  const downloadReport = async () => {
+    if (!reportRef.current) return;
+    setIsExporting(true);
+    
+    // Pequeña espera para asegurar que el DOM esté listo y las animaciones terminadas
+    setTimeout(async () => {
+      try {
+        const canvas = await html2canvas(reportRef.current!, {
+          scale: 2,
+          useCORS: true,
+          backgroundColor: '#f8fafc',
+          logging: false,
+        });
+        
+        const imgData = canvas.toDataURL('image/png');
+        const pdf = new jsPDF('p', 'mm', 'a4');
+        const pdfWidth = pdf.internal.pageSize.getWidth();
+        const pdfHeight = (canvas.height * pdfWidth) / canvas.width;
+        
+        pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, pdfHeight);
+        pdf.save(`LifeOS-Reporte-${reportRange}-${new Date().toISOString().split('T')[0]}.pdf`);
+      } catch (error) {
+        console.error('Error al generar PDF:', error);
+      } finally {
+        setIsExporting(false);
+      }
+    }, 100);
+  };
 
   if (loading) {
     return (
@@ -826,13 +859,160 @@ const App = () => {
                 </div>
               </section>
             </div>
-            <div className="mt-auto p-6 border-t border-slate-100">
-              <button className="w-full flex items-center justify-center gap-3 p-3 bg-slate-50 rounded-xl text-slate-400 text-xs font-bold hover:bg-slate-100 transition-all"><Download size={16} /> Descargar Reporte</button>
-            </div>
           </aside>
         )}
 
         <main className={`flex-1 overflow-hidden flex flex-col bg-slate-100/30 relative ${isMobile ? 'pb-16' : ''}`}>
+
+          {/* Template oculto para exportación PDF (A4 optimizado) */}
+          <div style={{ position: 'absolute', left: '-9999px', top: 0 }}>
+            <div ref={reportRef} className="w-[210mm] p-[20mm] bg-slate-50 font-sans text-slate-900">
+              <div className="flex justify-between items-start border-b-2 border-indigo-600 pb-6 mb-8">
+                <div>
+                  <div className="flex items-center gap-2 mb-2">
+                    <div className="bg-indigo-600 p-2 rounded-lg"><Zap size={24} className="text-white" fill="white" /></div>
+                    <h1 className="text-3xl font-black italic uppercase tracking-tighter text-indigo-950">LifeOS</h1>
+                  </div>
+                  <p className="text-sm font-bold text-slate-500 uppercase tracking-widest text-indigo-600">Reporte de Revisión Integral</p>
+                </div>
+                <div className="text-right">
+                  <p className="text-xs font-black text-slate-400 uppercase">Periodo de Análisis</p>
+                  <p className="text-lg font-black text-slate-800 capitalize">
+                    {reportRange === 'week' ? 'Semana Actual' : reportRange === 'month' ? 'Mes Actual' : 'Año Actual'}
+                  </p>
+                  <p className="text-xs font-bold text-slate-500">{new Date().toLocaleDateString('es-ES', { day: 'numeric', month: 'long', year: 'numeric' })}</p>
+                </div>
+              </div>
+
+              {/* Grid Principal: Tiempo y Dinero */}
+              <div className="grid grid-cols-2 gap-10 mb-10">
+                {/* Columna Izquierda: Gestión del Tiempo */}
+                <div className="space-y-8">
+                  <div className="bg-white p-8 rounded-[2rem] shadow-sm border border-slate-100">
+                    <h3 className="text-xs font-black text-slate-400 uppercase tracking-widest mb-6 border-b border-slate-100 pb-2">Distribución del Tiempo</h3>
+                    <div className="space-y-4">
+                      {stats.main.map(s => (
+                        <div key={s.id} className="space-y-2">
+                          <div className="flex items-center justify-between text-xs font-black uppercase gap-4">
+                            <span className="text-slate-600 flex-1">{s.name}</span>
+                            <span className="text-indigo-600 shrink-0">{s.hours}h ({s.percentage}%)</span>
+                          </div>
+                          <div className="w-full h-2 bg-slate-100 rounded-full overflow-hidden">
+                            <div className="h-full" style={{ backgroundColor: s.color, width: `${s.percentage}%` }} />
+                          </div>
+                        </div>
+                      ))}
+                      <div className="pt-6 border-t border-slate-100 mt-6 flex justify-between items-center">
+                        <span className="text-sm font-black text-slate-400 uppercase">Total Productivo</span>
+                        <span className="text-2xl font-black text-indigo-600">{stats.total}h</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Columna Derecha: Finanzas y Objetivos */}
+                <div className="space-y-8">
+                  {/* Finanzas */}
+                  <div className="bg-white p-8 rounded-[2rem] shadow-sm border border-slate-100">
+                    <h3 className="text-xs font-black text-slate-400 uppercase tracking-widest mb-6 border-b border-slate-100 pb-2">Resumen Financiero</h3>
+                    <div className="grid grid-cols-1 gap-4">
+                      {(() => {
+                        const rangeTxs = transactions.filter(tx => {
+                          const [y, m, d] = tx.date.split('-').map(Number);
+                          const date = new Date(y, m - 1, d);
+                          if (reportRange === 'week') return date >= weekDays[0] && date <= weekDays[6];
+                          if (reportRange === 'month') return y === currentDate.getFullYear() && m - 1 === currentDate.getMonth();
+                          return y === currentDate.getFullYear();
+                        });
+                        const income = rangeTxs.filter(t => t.type === 'income' && t.finCategoryId !== LOAN_IN_CAT_ID).reduce((s, t) => s + t.amount, 0);
+                        const expenses = rangeTxs.filter(t => t.type === 'expense' && t.finCategoryId !== LOAN_OUT_CAT_ID).reduce((s, t) => s + t.amount, 0);
+                        return (
+                          <>
+                            <div className="bg-emerald-50 p-4 rounded-2xl flex justify-between items-center">
+                              <span className="text-xs font-black text-slate-500 uppercase">Ingresos</span>
+                              <span className="text-lg font-black text-emerald-600">${fmtCurrency(income)}</span>
+                            </div>
+                            <div className="bg-red-50 p-4 rounded-2xl flex justify-between items-center">
+                              <span className="text-xs font-black text-slate-500 uppercase">Gastos</span>
+                              <span className="text-lg font-black text-red-500">${fmtCurrency(expenses)}</span>
+                            </div>
+                            <div className="pt-4 border-t border-slate-100 mt-2 flex justify-between items-center px-4">
+                              <span className="text-sm font-black text-slate-400 uppercase">Balance Neto</span>
+                              <span className="text-2xl font-black text-indigo-600">${fmtCurrency(income - expenses)}</span>
+                            </div>
+                          </>
+                        );
+                      })()}
+                    </div>
+                  </div>
+
+                  {/* Objetivos */}
+                  <div className="bg-white p-8 rounded-[2rem] shadow-sm border border-slate-100">
+                    <h3 className="text-xs font-black text-slate-400 uppercase tracking-widest mb-6 border-b border-slate-100 pb-2">Cumplimiento de Objetivos</h3>
+                    <div className="flex items-center gap-6">
+                      {(() => {
+                        const weekId = formatDateId(weekDays[0]); // Aproximación, pero mejor usar getWeekId si estuviera disponible
+                        // Nota: getWeekId está en utils. Usémoslo.
+                        const rangeGoals = goals.filter(g => {
+                          if (reportRange === 'week') return g.weekId === getWeekId(currentDate);
+                          if (reportRange === 'month') {
+                             const [gy, gm] = (g.createdAt || "").split('-').map(Number);
+                             return gy === currentDate.getFullYear() && gm - 1 === currentDate.getMonth();
+                          }
+                          return new Date(g.createdAt).getFullYear() === currentDate.getFullYear();
+                        });
+                        const completed = rangeGoals.filter(g => g.completed).length;
+                        const total = rangeGoals.length;
+                        const rate = total > 0 ? Math.round((completed / total) * 100) : 0;
+                        return (
+                          <>
+                            <div className="flex-1">
+                              <p className="text-sm font-black text-slate-700 uppercase">Logrados / Planeados</p>
+                              <p className="text-3xl font-black text-indigo-600">{completed} / {total}</p>
+                            </div>
+                            <div className="w-16 h-16 rounded-full border-4 border-indigo-600 flex items-center justify-center">
+                              <span className="text-sm font-black text-indigo-600">{rate}%</span>
+                            </div>
+                          </>
+                        );
+                      })()}
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Actividades Detalladas */}
+              <div className="bg-white p-8 rounded-[2rem] shadow-sm border border-slate-100 mb-10">
+                <h3 className="text-xs font-black text-slate-400 uppercase tracking-widest mb-6 border-b border-slate-100 pb-2">Top Actividades Realizadas</h3>
+                <div className="grid grid-cols-2 gap-4">
+                  {stats.sub.slice(0, 10).map((s, i) => (
+                    <div key={i} className="flex items-center justify-between bg-slate-50 p-4 rounded-2xl border border-slate-100">
+                      <span className="text-xs font-black text-slate-700 uppercase pr-4 leading-tight flex-1">{s.name}</span>
+                      <span className="text-xs font-black text-indigo-600 bg-white px-3 py-1 rounded-lg shadow-sm border border-indigo-50 shrink-0">{s.hours}h</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Footer / Nota Final */}
+              <div className="bg-indigo-900 rounded-[2.5rem] p-10 text-white relative overflow-hidden">
+                <div className="relative z-10 flex justify-between items-center">
+                  <div className="max-w-xl">
+                    <h2 className="text-2xl font-black mb-2 uppercase italic">Análisis Estratégico</h2>
+                    <p className="text-indigo-200 text-sm leading-relaxed font-medium">
+                      Este reporte consolida tu ejecución en tiempo, finanzas y objetivos. 
+                      La clave del crecimiento es la revisión constante. Utiliza estos datos para ajustar tu enfoque en la siguiente semana y maximizar tu impacto personal.
+                    </p>
+                  </div>
+                  <Zap size={100} className="text-white/10 shrink-0" fill="white" />
+                </div>
+              </div>
+              
+              <div className="mt-12 text-center border-t border-slate-200 pt-8">
+                <p className="text-[10px] font-black text-slate-300 uppercase tracking-[0.4em]">LifeOS — Generado Automáticamente por tu Sistema de Vida</p>
+              </div>
+            </div>
+          </div>
 
           {/* ---- TIEMPO SECTION ---- */}
           {section === 'tiempo' && (
@@ -901,11 +1081,15 @@ const App = () => {
                                 <div key={event.id} draggable onDragStart={(e) => handleDragStart(e, event, dateId)} onClick={(e) => { e.stopPropagation(); handleOpenModal(date, event.startHour, event); }}
                                   className={`absolute inset-x-1 z-10 rounded-xl overflow-hidden cursor-pointer transition-all ${draggedItem?.id === event.id ? 'opacity-20 scale-95' : 'hover:brightness-95 active:scale-[0.98]'}`}
                                   style={{ top: `${sIdx * SEGMENT_HEIGHT + 2}px`, height: `${(eIdx - sIdx) * SEGMENT_HEIGHT - 4}px`, backgroundColor: event.completed ? `${cat.color}18` : 'white', border: `1px solid ${event.completed ? cat.color + '40' : '#e2e8f0'}`, borderLeft: `3px solid ${cat.color}`, boxShadow: '0 1px 3px rgba(0,0,0,0.06)' }}>
-                                  <div className={`h-full flex flex-col overflow-hidden ${isSmall ? 'px-2 py-1' : 'px-2.5 pt-1.5 pb-1.5'}`}>
-                                    <div className="flex items-start gap-1 overflow-hidden">
-                                      <span className={`font-black leading-tight flex-1 overflow-hidden ${isSmall ? 'text-[9px]' : 'text-[10px]'} ${event.completed ? 'text-slate-600' : 'text-slate-800'}`}>{event.task}</span>
-                                      {event.completed && <CheckCircle2 size={isSmall ? 9 : 11} className="text-emerald-500 shrink-0 mt-0.5" />}
+                                  <div className={`h-full flex flex-col overflow-hidden relative ${span === 1 ? 'px-2 py-0 justify-center' : isSmall ? 'px-2 py-1' : 'px-2.5 pt-1.5 pb-1.5'}`}>
+                                    <div className={`flex items-start gap-1 overflow-hidden ${event.completed ? 'pr-4' : ''}`}>
+                                      <span className={`font-black leading-tight flex-1 overflow-hidden ${isSmall ? 'text-[9px]' : 'text-[10px]'} ${event.completed ? 'text-slate-600' : 'text-slate-800'} ${span === 1 ? 'leading-[1.1]' : ''}`}>{event.task}</span>
                                     </div>
+                                    {event.completed && (
+                                      <div className={`absolute right-1.5 ${span === 1 ? 'top-1/2 -translate-y-1/2' : 'top-2'}`}>
+                                        <CheckCircle2 size={12} className="text-emerald-500 bg-white/20 rounded-full" />
+                                      </div>
+                                    )}
                                     {!isSmall && <span className="text-[8px] font-bold mt-auto leading-none" style={{ color: `${cat.color}bb` }}>{event.startHour} – {event.endHour}</span>}
                                   </div>
                                 </div>
@@ -964,6 +1148,8 @@ const App = () => {
               finCategories={finCategories}
               goals={goals}
               currentDate={currentDate}
+              onDownloadReport={downloadReport}
+              isExporting={isExporting}
             />
           )}
         </main>

@@ -6,7 +6,7 @@ import {
 import {
   BarChart3, Clock, DollarSign, Lightbulb,
   CheckCircle2, AlertTriangle,
-  ChevronLeft, ChevronRight, Zap, Star
+  ChevronLeft, ChevronRight, Zap, Star, Download
 } from 'lucide-react';
 import type { Events, Categories, Transaction, FinCategory, Goal } from '../../types';
 import { LOAN_IN_CAT_ID, LOAN_OUT_CAT_ID } from '../../types';
@@ -21,8 +21,22 @@ const PERA = {
   adjust: { label: 'AJUSTAR', badge: 'bg-amber-500', bg: 'bg-amber-50', border: 'border-amber-200', text: 'text-amber-600' },
 };
 
+interface RevisionProps {
+  events: Events;
+  categories: Categories;
+  transactions: Transaction[];
+  finCategories: FinCategory[];
+  goals: Goal[];
+  currentDate: Date;
+  onDownloadReport: () => void;
+  isExporting: boolean;
+}
+
+type Range = 'week' | 'month' | 'year';
+
 const Revision: React.FC<RevisionProps> = ({
-  events, categories, transactions, finCategories, goals, currentDate
+  events, categories, transactions, finCategories, goals, currentDate,
+  onDownloadReport, isExporting
 }) => {
   const [range, setRange] = useState<Range>('week');
   const [viewDate, setViewDate] = useState(new Date(currentDate));
@@ -243,6 +257,14 @@ const Revision: React.FC<RevisionProps> = ({
               <span className="px-2 text-[10px] font-bold text-slate-600 min-w-[120px] text-center capitalize">{periodLabel}</span>
               <button onClick={nextPeriod} className="p-1.5 hover:bg-white rounded-full transition-all"><ChevronRight size={14} /></button>
             </div>
+            <button
+              onClick={onDownloadReport}
+              disabled={isExporting}
+              className={`flex items-center gap-2 px-4 py-2 rounded-full text-[10px] font-black uppercase transition-all ${isExporting ? 'bg-slate-200 text-slate-400' : 'bg-indigo-600 text-white hover:bg-indigo-700 shadow-lg active:scale-95'}`}
+            >
+              {isExporting ? <div className="w-3 h-3 border-2 border-indigo-200 border-t-white rounded-full animate-spin" /> : <Download size={14} />}
+              {isExporting ? 'Generando...' : 'Descargar Reporte'}
+            </button>
           </div>
         </div>
 

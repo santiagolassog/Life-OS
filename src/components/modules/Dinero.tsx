@@ -728,11 +728,13 @@ const Dinero: React.FC<DineroProps> = ({
                   Icon: Wallet, iconBg: (closingBalance ?? stats.balance) >= 0 ? 'bg-blue-500' : 'bg-orange-500',
                 },
               ].map(({ label, value, cls, txtCls, Icon, iconBg }) => (
-                <div key={label} className={`rounded-2xl p-4 border ${cls} flex items-center gap-3`}>
-                  <div className={`${iconBg} p-2 rounded-xl shrink-0 shadow-sm`}><Icon size={16} className="text-white" /></div>
-                  <div className="min-w-0">
-                    <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest truncate">{label}</p>
-                    <p className={`text-base font-black ${txtCls}`}>${fmt(value)}</p>
+                <div key={label} className={`rounded-2xl p-3 md:p-4 border ${cls} flex flex-col sm:flex-row sm:items-center gap-2 md:gap-3 min-w-0 shadow-sm transition-all hover:shadow-md`}>
+                  <div className={`${iconBg} p-1.5 md:p-2 rounded-xl shrink-0 shadow-sm w-fit`}>
+                    <Icon size={14} className="text-white md:w-4 md:h-4" />
+                  </div>
+                  <div className="min-w-0 w-full overflow-hidden">
+                    <p className="text-[8px] md:text-[9px] font-black text-slate-400 uppercase tracking-widest truncate">{label}</p>
+                    <p className={`text-sm md:text-base font-black ${txtCls} truncate w-full`}>${fmt(value)}</p>
                   </div>
                 </div>
               ))}
@@ -857,7 +859,7 @@ const Dinero: React.FC<DineroProps> = ({
             {/* Annual tracker */}
             <div className="bg-indigo-950 rounded-2xl p-5 text-white">
               <p className="text-[9px] font-black text-indigo-400 uppercase tracking-widest mb-4">Resumen {annualStats.year} — año completo</p>
-              <div className="grid grid-cols-3 gap-3 mb-4">
+              <div className="flex flex-col sm:grid sm:grid-cols-3 gap-3 mb-6 sm:mb-4">
                 {[
                   { label: 'Ingresos', value: annualStats.yearIncome, cls: 'text-emerald-400' },
                   { label: 'Gastos', value: annualStats.yearExpenses, cls: 'text-red-400' },
@@ -867,9 +869,9 @@ const Dinero: React.FC<DineroProps> = ({
                     cls: 'text-violet-300'
                   },
                 ].map(({ label, value, cls }) => (
-                  <div key={label} className="text-center">
-                    <p className="text-[9px] font-black text-indigo-400 uppercase tracking-widest mb-1">{label}</p>
-                    <p className={`text-lg font-black ${cls}`}>${fmt(value)}</p>
+                  <div key={label} className="flex justify-between items-center sm:block sm:text-center bg-white/5 sm:bg-transparent p-3 sm:p-0 rounded-xl sm:rounded-none">
+                    <p className="text-[9px] font-black text-indigo-400 uppercase tracking-widest sm:mb-1">{label}</p>
+                    <p className={`text-base sm:text-lg font-black ${cls}`}>${fmt(value)}</p>
                   </div>
                 ))}
               </div>
@@ -898,11 +900,13 @@ const Dinero: React.FC<DineroProps> = ({
                   Icon: Wallet, iconBg: (annualStats.yearIncome - annualStats.yearExpenses) >= 0 ? 'bg-blue-500' : 'bg-orange-500'
                 },
               ].map(({ label, value, cls, txtCls, Icon, iconBg }) => (
-                <div key={label} className={`rounded-2xl p-4 border ${cls} flex items-center gap-3`}>
-                  <div className={`${iconBg} p-2 rounded-xl shrink-0 shadow-sm`}><Icon size={16} className="text-white" /></div>
-                  <div className="min-w-0">
-                    <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest truncate">{label}</p>
-                    <p className={`text-base font-black ${txtCls}`}>${fmt(value)}</p>
+                <div key={label} className={`rounded-2xl p-3 md:p-4 border ${cls} flex flex-col sm:flex-row sm:items-center gap-2 md:gap-3 min-w-0 shadow-sm transition-all hover:shadow-md`}>
+                  <div className={`${iconBg} p-1.5 md:p-2 rounded-xl shrink-0 shadow-sm w-fit`}>
+                    <Icon size={14} className="text-white md:w-4 md:h-4" />
+                  </div>
+                  <div className="min-w-0 w-full overflow-hidden">
+                    <p className="text-[8px] md:text-[9px] font-black text-slate-400 uppercase tracking-widest truncate">{label}</p>
+                    <p className={`text-sm md:text-base font-black ${txtCls} truncate w-full`}>${fmt(value)}</p>
                   </div>
                 </div>
               ))}
@@ -951,35 +955,35 @@ const Dinero: React.FC<DineroProps> = ({
               </div>
               {/* Opening / closing savings for the year */}
               {annualStats.yearOpeningSavings !== null ? (
-                <div className="grid grid-cols-3 gap-2 mb-4 bg-white/5 rounded-xl p-3">
-                  <div className="text-center">
-                    <p className="text-[8px] font-black text-indigo-400 uppercase tracking-widest mb-1">Apertura</p>
+                <div className="flex flex-col sm:grid sm:grid-cols-3 gap-2 mb-4 bg-white/5 rounded-xl p-3">
+                  <div className="flex justify-between items-center sm:block text-center p-2 sm:p-0">
+                    <p className="text-[8px] font-black text-indigo-400 uppercase tracking-widest sm:mb-1">Apertura</p>
                     <p className="text-base font-black text-white">${fmt(annualStats.yearOpeningSavings)}</p>
                   </div>
-                  <div className="text-center border-x border-indigo-800">
-                    <p className="text-[8px] font-black text-indigo-400 uppercase tracking-widest mb-1">Movimiento</p>
+                  <div className="flex justify-between items-center sm:block text-center border-y sm:border-y-0 sm:border-x border-indigo-800 p-2 sm:p-0">
+                    <p className="text-[8px] font-black text-indigo-400 uppercase tracking-widest sm:mb-1">Movimiento</p>
                     <p className={`text-base font-black ${annualStats.yearNetSavings >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
                       {annualStats.yearNetSavings >= 0 ? '+' : ''}{fmt(annualStats.yearNetSavings)}
                     </p>
                   </div>
-                  <div className="text-center">
-                    <p className="text-[8px] font-black text-indigo-400 uppercase tracking-widest mb-1">Cierre</p>
+                  <div className="flex justify-between items-center sm:block text-center p-2 sm:p-0">
+                    <p className="text-[8px] font-black text-indigo-400 uppercase tracking-widest sm:mb-1">Cierre</p>
                     <p className="text-base font-black text-violet-300">${fmt(annualStats.yearClosingSavings!)}</p>
                   </div>
                 </div>
               ) : (
-                <div className="grid grid-cols-3 gap-4 mb-4">
-                  <div className="text-center">
-                    <p className="text-[9px] font-black text-indigo-400 uppercase tracking-widest mb-1">Ingresos</p>
-                    <p className="text-xl font-black text-emerald-400">${fmt(annualStats.yearIncome)}</p>
+                <div className="flex flex-col sm:grid sm:grid-cols-3 gap-4 mb-4">
+                  <div className="flex justify-between items-center sm:block text-center bg-white/5 sm:bg-transparent p-3 sm:p-0 rounded-xl sm:rounded-none">
+                    <p className="text-[9px] font-black text-indigo-400 uppercase tracking-widest sm:mb-1">Ingresos</p>
+                    <p className="text-lg sm:text-xl font-black text-emerald-400">${fmt(annualStats.yearIncome)}</p>
                   </div>
-                  <div className="text-center border-x border-indigo-800">
-                    <p className="text-[9px] font-black text-indigo-400 uppercase tracking-widest mb-1">Gastos</p>
-                    <p className="text-xl font-black text-red-400">${fmt(annualStats.yearExpenses)}</p>
+                  <div className="flex justify-between items-center sm:block text-center bg-white/5 sm:bg-transparent p-3 sm:p-0 rounded-xl sm:rounded-none border-y sm:border-y-0 sm:border-x border-indigo-800">
+                    <p className="text-[9px] font-black text-indigo-400 uppercase tracking-widest sm:mb-1">Gastos</p>
+                    <p className="text-lg sm:text-xl font-black text-red-400">${fmt(annualStats.yearExpenses)}</p>
                   </div>
-                  <div className="text-center">
-                    <p className="text-[9px] font-black text-indigo-400 uppercase tracking-widest mb-1">Ahorro neto</p>
-                    <p className="text-xl font-black text-violet-300">${fmt(annualStats.yearNetSavings)}</p>
+                  <div className="flex justify-between items-center sm:block text-center bg-white/5 sm:bg-transparent p-3 sm:p-0 rounded-xl sm:rounded-none">
+                    <p className="text-[9px] font-black text-indigo-400 uppercase tracking-widest sm:mb-1">Ahorro neto</p>
+                    <p className="text-lg sm:text-xl font-black text-violet-300">${fmt(annualStats.yearNetSavings)}</p>
                   </div>
                 </div>
               )}
