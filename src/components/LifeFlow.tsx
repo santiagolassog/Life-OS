@@ -1102,6 +1102,18 @@ const App = () => {
                   </div>
                 </div>
               </div>
+
+              {/* Floating Action Button for Tiempo */}
+              <button
+                onClick={() => {
+                  const now = new Date();
+                  const currentHour = now.getHours().toString().padStart(2, '0');
+                  handleOpenModal(now, `${currentHour}:00`);
+                }}
+                className="fixed bottom-24 right-6 md:bottom-10 md:right-10 w-14 h-14 bg-indigo-600 text-white rounded-full flex items-center justify-center shadow-lg shadow-indigo-500/30 hover:bg-indigo-700 hover:scale-105 active:scale-95 transition-all z-[100]"
+              >
+                <Plus size={24} />
+              </button>
             </>
           )}
 

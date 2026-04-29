@@ -10,7 +10,7 @@ import {
 } from 'lucide-react';
 import type { Transaction, FinCategory, Savings, MonthBalance, SavingsWithdrawal, SavingsPocket, PocketFunding, SavingsYearBalance, Loan, LoanPayment } from '../../types';
 import { LOAN_OUT_CAT_ID, LOAN_IN_CAT_ID } from '../../types';
-import { generateId, fmtCurrency as fmt } from '../../lib/utils';
+import { generateId, fmtCurrency as fmt, formatCOPInput, parseCOPNumber, getLocalISODate } from '../../lib/utils';
 import PrestamosTab from './PrestamosTab';
 
 type DineroTab = 'movimientos' | 'categorias' | 'dashboard' | 'ahorros' | 'prestamos';
@@ -91,7 +91,7 @@ const Dinero: React.FC<DineroProps> = ({
   loans, setLoans, loanPayments, setLoanPayments,
   currentDate,
 }) => {
-  const today = new Date().toISOString().split('T')[0];
+  const today = getLocalISODate();
   const [tab, setTab] = useState<DineroTab>('movimientos');
   const [viewDate, setViewDate] = useState(new Date(currentDate));
 
@@ -103,12 +103,18 @@ const Dinero: React.FC<DineroProps> = ({
   const [savingsPercent, setSavingsPercent] = useState(10);
   const [pendingTxAmount, setPendingTxAmount] = useState(0);
   const [pendingTxId, setPendingTxId] = useState('');
+  // Formatted text inputs for amounts
+  const [amountInput, setAmountInput] = useState('');
+  const [withdrawalAmountInput, setWithdrawalAmountInput] = useState('');
+  const [allocateAmountInput, setAllocateAmountInput] = useState('');
+  const [editSavingAmountInput, setEditSavingAmountInput] = useState('');
 
   // Opening-balance editing
   const [editingBalance, setEditingBalance] = useState(false);
   const [balanceInput, setBalanceInput] = useState('');
 
   const [linkingLoanId, setLinkingLoanId] = useState('');
+  const [loanPersonName, setLoanPersonName] = useState('');
 
   // Category CRUD
   const [catModal, setCatModal] = useState<Partial<FinCategory> | null>(null);
@@ -132,7 +138,7 @@ const Dinero: React.FC<DineroProps> = ({
   const openingBalance = currentBalanceRecord?.openingBalance ?? null;
 
   const handleSaveBalance = () => {
-    const amount = parseFloat(balanceInput.replace(/,/g, '')) || 0;
+    const amount = parseCOPNumber(balanceInput) || 0;
     setMonthBalances(prev => [
       ...prev.filter(b => b.yearMonth !== yearMonth),
       { id: currentBalanceRecord?.id || generateId(), yearMonth, openingBalance: amount },
@@ -158,7 +164,7 @@ const Dinero: React.FC<DineroProps> = ({
 
     monthTxs.forEach(tx => {
       if (tx.type === 'income' && tx.finCategoryId !== LOAN_IN_CAT_ID) income += tx.amount;
-      else if (tx.type === 'expense' && tx.finCategoryId !== LOAN_OUT_CAT_ID) expenses += tx.amount;
+      else if (tx.type === 'expense') expenses += tx.amount;
       
       if (tx.finCategoryId === LOAN_IN_CAT_ID) monthLoansIn += tx.amount;
       if (tx.finCategoryId === LOAN_OUT_CAT_ID) monthLoansOut += tx.amount;
@@ -191,17 +197,21 @@ const Dinero: React.FC<DineroProps> = ({
       })
       .reduce((s, x) => s + (x.amount || 0), 0);
 
+    const incomeChart = Object.values(byCategory)
+      .filter(c => c.txType === 'income')
+      .sort((a, b) => b.total - a.total);
+
     const expenseChart = Object.values(byCategory)
       .filter(c => c.txType === 'expense')
       .sort((a, b) => b.total - a.total);
 
-    const balance = income - expenses - monthSavingsDeposits + monthSavingsWithdrawn + monthLoansIn - monthLoansOut;
+    const balance = income - expenses - monthSavingsDeposits + monthLoansIn;
 
-    return { stats: { income, expenses, monthSavingsDeposits, monthSavingsWithdrawn, monthLoansIn, monthLoansOut, balance, expenseChart }, grouped: g };
+    return { stats: { income, expenses, monthSavingsDeposits, monthSavingsWithdrawn, monthLoansIn, monthLoansOut, balance, incomeChart, expenseChart }, grouped: g };
   }, [monthTxs, finCategories, savings, savingsWithdrawals, y, m]);
 
   const closingBalance = openingBalance !== null
-    ? openingBalance + stats.income - stats.expenses - stats.monthSavingsDeposits + stats.monthSavingsWithdrawn + stats.monthLoansIn - stats.monthLoansOut
+    ? openingBalance + stats.income - stats.expenses - stats.monthSavingsDeposits + stats.monthLoansIn
     : null;
 
   const prevClosingBalance = useMemo(() => {
@@ -217,7 +227,7 @@ const Dinero: React.FC<DineroProps> = ({
       const [ty, tm] = tx.date.split('-').map(Number);
       if (ty === prevY && tm - 1 === prevM) {
         if (tx.type === 'income' && tx.finCategoryId !== LOAN_IN_CAT_ID) prevIncome += tx.amount;
-        else if (tx.type === 'expense' && tx.finCategoryId !== LOAN_OUT_CAT_ID) prevExpenses += tx.amount;
+        else if (tx.type === 'expense') prevExpenses += tx.amount;
         
         if (tx.finCategoryId === LOAN_IN_CAT_ID) prevLoansIn += tx.amount;
         if (tx.finCategoryId === LOAN_OUT_CAT_ID) prevLoansOut += tx.amount;
@@ -238,7 +248,7 @@ const Dinero: React.FC<DineroProps> = ({
       })
       .reduce((s, x) => s + x.amount, 0);
 
-    return prevOpening + prevIncome - prevExpenses - prevSavingsDeposits + prevSavingsWithdrawn + prevLoansIn - prevLoansOut;
+    return prevOpening + prevIncome - prevExpenses - prevSavingsDeposits + prevLoansIn;
   }, [y, m, monthBalances, transactions, savings, savingsWithdrawals]);
 
   const prevMonthLabel = new Date(y, m - 1, 1).toLocaleDateString('es-ES', { month: 'long' });
@@ -251,6 +261,36 @@ const Dinero: React.FC<DineroProps> = ({
     ]);
   };
 
+  const yearlyCategoryStats = useMemo(() => {
+    const year = viewDate.getFullYear();
+    const byCategory: Record<string, { label: string; color: string; total: number; txType: string }> = {};
+
+    transactions.forEach(tx => {
+      const [ty] = tx.date.split('-').map(Number);
+      if (ty === year) {
+        if (!byCategory[tx.finCategoryId]) {
+          const cat = finCategories.find(c => c.id === tx.finCategoryId);
+          if (cat) {
+            byCategory[tx.finCategoryId] = { label: cat.label, color: cat.color, total: 0, txType: tx.type };
+          }
+        }
+        if (byCategory[tx.finCategoryId]) {
+          byCategory[tx.finCategoryId].total += tx.amount;
+        }
+      }
+    });
+
+    const incomeChart = Object.values(byCategory)
+      .filter(c => c.txType === 'income')
+      .sort((a, b) => b.total - a.total);
+
+    const expenseChart = Object.values(byCategory)
+      .filter(c => c.txType === 'expense')
+      .sort((a, b) => b.total - a.total);
+
+    return { incomeChart, expenseChart };
+  }, [transactions, viewDate, finCategories]);
+
   // Dashboard data — Jan to Dec of selected year
   const dashboardData = useMemo(() => {
     const year = viewDate.getFullYear();
@@ -262,7 +302,7 @@ const Dinero: React.FC<DineroProps> = ({
         const [ty, tm] = tx.date.split('-').map(Number);
         if (ty === year && tm - 1 === m) {
           if (tx.type === 'income' && tx.finCategoryId !== LOAN_IN_CAT_ID) inc += tx.amount;
-          else if (tx.type === 'expense' && tx.finCategoryId !== LOAN_OUT_CAT_ID) exp += tx.amount;
+          else if (tx.type === 'expense') exp += tx.amount;
         }
       });
       months.push({ label: d.toLocaleDateString('es-ES', { month: 'short' }), income: inc, gastos: exp });
@@ -272,7 +312,7 @@ const Dinero: React.FC<DineroProps> = ({
 
   const allTimeStats = useMemo(() => {
     const totalIncome = transactions.filter(t => t.type === 'income' && t.finCategoryId !== LOAN_IN_CAT_ID).reduce((s, t) => s + t.amount, 0);
-    const totalExpenses = transactions.filter(t => t.type === 'expense' && t.finCategoryId !== LOAN_OUT_CAT_ID).reduce((s, t) => s + t.amount, 0);
+    const totalExpenses = transactions.filter(t => t.type === 'expense').reduce((s, t) => s + t.amount, 0);
     const totalSavingsDeposited = savings.reduce((s, x) => s + x.amount, 0);
     return { totalIncome, totalExpenses, netBalance: totalIncome - totalExpenses, totalSavingsDeposited };
   }, [transactions, savings]);
@@ -315,7 +355,7 @@ const Dinero: React.FC<DineroProps> = ({
     const year = viewDate.getFullYear();
     const yearStr = String(year);
     const yearIncome = transactions.filter(t => t.type === 'income' && t.date.startsWith(yearStr) && t.finCategoryId !== LOAN_IN_CAT_ID).reduce((s, t) => s + t.amount, 0);
-    const yearExpenses = transactions.filter(t => t.type === 'expense' && t.date.startsWith(yearStr) && t.finCategoryId !== LOAN_OUT_CAT_ID).reduce((s, t) => s + t.amount, 0);
+    const yearExpenses = transactions.filter(t => t.type === 'expense' && t.date.startsWith(yearStr)).reduce((s, t) => s + t.amount, 0);
     const yearDeposited = savings.filter(s => s.date.startsWith(yearStr)).reduce((s, x) => s + x.amount, 0);
     const yearWithdrawn = savingsWithdrawals.filter(w => w.date.startsWith(yearStr)).reduce((s, w) => s + w.amount, 0);
     const yearEntry = savingsYearBalances.find(b => b.year === year);
@@ -356,6 +396,7 @@ const Dinero: React.FC<DineroProps> = ({
   const openNew = (type: 'expense' | 'income' = 'expense') => {
     const defaultCat = finCategories.find(c => c.type === type || c.type === 'both');
     setEditTx({ date: today, type, amount: 0, finCategoryId: defaultCat?.id || '', description: '' });
+    setAmountInput('');
     setIsEditingTx(false);
     setFormStep(1);
     setFormOpen(true);
@@ -363,24 +404,49 @@ const Dinero: React.FC<DineroProps> = ({
 
   const openEdit = (tx: Transaction) => {
     setEditTx({ ...tx });
+    setAmountInput(tx.amount ? fmt(tx.amount) : '');
     setIsEditingTx(true);
     setFormStep(1);
     setFormOpen(true);
   };
 
   const handleSave = () => {
-    if (!editTx?.description?.trim() || !editTx.amount || !editTx.finCategoryId || !editTx.date) return;
-    const txId = editTx.id || generateId();
+    const parsedAmount = parseCOPNumber(amountInput);
+    const txWithAmount = { ...editTx, amount: parsedAmount };
+    if (!txWithAmount?.description?.trim() || !parsedAmount || !txWithAmount.finCategoryId || !txWithAmount.date) return;
+    const txId = txWithAmount.id || generateId();
     const tx: Transaction = {
-      id: txId, date: editTx.date,
-      type: editTx.type as 'income' | 'expense',
-      amount: Number(editTx.amount),
-      finCategoryId: editTx.finCategoryId,
-      description: editTx.description!,
+      id: txId, date: txWithAmount.date!,
+      type: txWithAmount.type as 'income' | 'expense',
+      amount: parsedAmount,
+      finCategoryId: txWithAmount.finCategoryId!,
+      description: txWithAmount.description!,
     };
     setTransactions(prev => [...prev.filter(t => t.id !== tx.id), tx]);
 
     const isLoanTx = tx.finCategoryId === LOAN_IN_CAT_ID || tx.finCategoryId === LOAN_OUT_CAT_ID;
+
+    if (tx.type === 'expense' && tx.finCategoryId === LOAN_OUT_CAT_ID && !isEditingTx) {
+      if (!loanPersonName.trim()) {
+        alert('Por favor ingresa a quién le haces el préstamo.');
+        setTransactions(prev => prev.filter(t => t.id !== tx.id));
+        return;
+      }
+      const loanId = generateId();
+      const newLoan: Loan = {
+        id: loanId,
+        personName: loanPersonName.trim(),
+        amount: parsedAmount,
+        date: tx.date,
+        description: tx.description,
+        transactionId: txId,
+        status: 'active',
+        createdAt: new Date().toISOString()
+      };
+      setLoans(prev => [newLoan, ...(Array.isArray(prev) ? prev : [])]);
+      setEditTx(null); setFormOpen(false); setLoanPersonName('');
+      return;
+    }
 
     if (tx.type === 'income' && !isEditingTx) {
       if (tx.finCategoryId === LOAN_IN_CAT_ID && linkingLoanId) {
@@ -653,12 +719,12 @@ const Dinero: React.FC<DineroProps> = ({
             )}
             {tab === 'ahorros' && (
               <>
-                <button onClick={() => setWithdrawalModal({ amount: 0, description: '', date: today, fromPocketId: '' })}
+                <button onClick={() => { setWithdrawalAmountInput(''); setWithdrawalModal({ amount: 0, description: '', date: today, fromPocketId: '' }); }}
                   className="border border-red-200 text-red-500 px-3 py-2 rounded-xl font-bold text-xs flex items-center gap-1.5 hover:bg-red-50 transition-all">
                   <TrendingDown size={13} /> Retirar
                 </button>
                 {savingsPockets.length > 0 && (
-                  <button onClick={() => setAllocateModal({ pocketId: savingsPockets[0].id, amount: 0, description: '', date: today, direction: 'to' })}
+                  <button onClick={() => { setAllocateAmountInput(''); setAllocateModal({ pocketId: savingsPockets[0].id, amount: 0, description: '', date: today, direction: 'to' }); }}
                     className="border border-indigo-200 text-indigo-500 px-3 py-2 rounded-xl font-bold text-xs flex items-center gap-1.5 hover:bg-indigo-50 transition-all">
                     <ArrowLeftRight size={13} /> Mover
                   </button>
@@ -684,31 +750,31 @@ const Dinero: React.FC<DineroProps> = ({
         {/* ─── MOVIMIENTOS ─── */}
         {tab === 'movimientos' && (
           <>
-            <div className="bg-white rounded-2xl border border-slate-100 px-5 py-4 shadow-sm flex items-center gap-4 flex-wrap">
-              <div className="flex items-center gap-2 flex-1 min-w-0">
+            <div className="bg-white rounded-2xl border border-slate-100 px-4 md:px-5 py-4 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-3 md:gap-4">
+              <div className="flex items-center gap-2">
                 <Wallet size={16} className="text-slate-400 shrink-0" />
-                <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Saldo inicial del mes</span>
+                <span className="text-[10px] sm:text-xs font-black text-slate-400 uppercase tracking-widest">Saldo inicial del mes</span>
               </div>
               {editingBalance ? (
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 flex-wrap">
                   <span className="text-slate-400 font-black">$</span>
-                  <input type="number" value={balanceInput} onChange={e => setBalanceInput(e.target.value)}
+                  <input type="text" inputMode="numeric" value={balanceInput} onChange={e => setBalanceInput(formatCOPInput(e.target.value))}
                     onKeyDown={e => { if (e.key === 'Enter') handleSaveBalance(); if (e.key === 'Escape') setEditingBalance(false); }}
-                    className="w-36 bg-slate-50 rounded-xl px-3 py-1.5 text-sm font-black outline-none focus:ring-2 ring-emerald-300 border border-slate-200"
+                    className="w-full max-w-[140px] bg-slate-50 rounded-xl px-3 py-1.5 text-sm font-black outline-none focus:ring-2 ring-emerald-300 border border-slate-200"
                     placeholder="0" autoFocus />
                   <button onClick={handleSaveBalance} className="p-1.5 bg-emerald-500 text-white rounded-lg hover:bg-emerald-600 transition-all"><Check size={14} /></button>
                   <button onClick={() => setEditingBalance(false)} className="p-1.5 text-slate-400 hover:text-slate-600"><X size={14} /></button>
                 </div>
               ) : (
-                <div className="flex items-center gap-2 flex-wrap justify-end">
+                <div className="flex items-center gap-2 flex-wrap md:justify-end">
                   {openingBalance !== null
-                    ? <span className="text-lg font-black text-slate-700">${fmt(openingBalance)}</span>
+                    ? <span className="text-lg md:text-xl font-black text-slate-700">${fmt(openingBalance)}</span>
                     : <span className="text-sm font-bold text-slate-300 italic">Sin definir</span>}
-                  <button onClick={() => { setBalanceInput(openingBalance !== null ? String(openingBalance) : ''); setEditingBalance(true); }}
+                  <button onClick={() => { setBalanceInput(openingBalance !== null ? fmt(openingBalance) : ''); setEditingBalance(true); }}
                     className="p-1.5 text-slate-300 hover:text-indigo-500 transition-all"><Pencil size={14} /></button>
                   {prevClosingBalance !== null && (
                     <button onClick={applyPrevBalance}
-                      className="flex items-center gap-1 px-2.5 py-1.5 bg-slate-50 hover:bg-emerald-50 border border-slate-200 hover:border-emerald-300 rounded-xl text-[9px] font-black text-slate-400 hover:text-emerald-600 transition-all capitalize">
+                      className="flex items-center gap-1 px-2.5 py-1.5 bg-slate-50 hover:bg-emerald-50 border border-slate-200 hover:border-emerald-300 rounded-xl text-[9px] md:text-[10px] font-black text-slate-400 hover:text-emerald-600 transition-all capitalize whitespace-nowrap">
                       <ChevronLeft size={10} />{prevMonthLabel}: ${fmt(prevClosingBalance)}
                     </button>
                   )}
@@ -740,9 +806,60 @@ const Dinero: React.FC<DineroProps> = ({
               ))}
             </div>
 
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-              <div className="lg:col-span-2 space-y-3">
-                {Object.keys(grouped).length === 0 ? (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-6">
+              {stats.incomeChart.length > 0 && (
+                <div className="bg-white rounded-3xl border border-slate-100 p-5 shadow-sm">
+                  <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-4">Ingresos por categoría</p>
+                  <div className="h-36">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <RechartsPieChart>
+                        <Pie data={stats.incomeChart} innerRadius={32} outerRadius={52} dataKey="total" strokeWidth={0}>
+                          {stats.incomeChart.map((e, i) => <Cell key={i} fill={e.color} />)}
+                        </Pie>
+                        <Tooltip contentStyle={{ borderRadius: '12px', border: 'none', fontSize: '10px', fontWeight: 800, boxShadow: '0 4px 12px rgba(0,0,0,.1)' }} formatter={(v: number) => [`$${fmt(v)}`, '']} />
+                      </RechartsPieChart>
+                    </ResponsiveContainer>
+                  </div>
+                  <div className="space-y-2 mt-3">
+                    {stats.incomeChart.slice(0, 6).map((cat, i) => (
+                      <div key={i} className="flex items-center gap-2">
+                        <div className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: cat.color }} />
+                        <span className="text-[10px] font-bold text-slate-600 flex-1 truncate">{cat.label}</span>
+                        <span className="text-[10px] font-black text-slate-800">${fmt(cat.total)}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {stats.expenseChart.length > 0 && (
+                <div className="bg-white rounded-3xl border border-slate-100 p-5 shadow-sm">
+                  <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-4">Gastos por categoría</p>
+                  <div className="h-36">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <RechartsPieChart>
+                        <Pie data={stats.expenseChart} innerRadius={32} outerRadius={52} dataKey="total" strokeWidth={0}>
+                          {stats.expenseChart.map((e, i) => <Cell key={i} fill={e.color} />)}
+                        </Pie>
+                        <Tooltip contentStyle={{ borderRadius: '12px', border: 'none', fontSize: '10px', fontWeight: 800, boxShadow: '0 4px 12px rgba(0,0,0,.1)' }} formatter={(v: number) => [`$${fmt(v)}`, '']} />
+                      </RechartsPieChart>
+                    </ResponsiveContainer>
+                  </div>
+                  <div className="space-y-2 mt-3">
+                    {stats.expenseChart.slice(0, 6).map((cat, i) => (
+                      <div key={i} className="flex items-center gap-2">
+                        <div className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: cat.color }} />
+                        <span className="text-[10px] font-bold text-slate-600 flex-1 truncate">{cat.label}</span>
+                        <span className="text-[10px] font-black text-slate-800">${fmt(cat.total)}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div className="space-y-3 mt-6">
+              {Object.keys(grouped).length === 0 ? (
                   <div className="bg-white rounded-3xl border border-slate-100 p-12 text-center shadow-sm">
                     <DollarSign size={40} className="mx-auto text-slate-200 mb-3" />
                     <p className="text-sm font-bold text-slate-400">Sin registros este mes</p>
@@ -781,35 +898,15 @@ const Dinero: React.FC<DineroProps> = ({
                     </div>
                   ))
                 )}
-              </div>
-
-              <div className="space-y-4">
-                {stats.expenseChart.length > 0 && (
-                  <div className="bg-white rounded-3xl border border-slate-100 p-5 shadow-sm">
-                    <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-4">Gastos por categoría</p>
-                    <div className="h-36">
-                      <ResponsiveContainer width="100%" height="100%">
-                        <RechartsPieChart>
-                          <Pie data={stats.expenseChart} innerRadius={32} outerRadius={52} dataKey="total" strokeWidth={0}>
-                            {stats.expenseChart.map((e, i) => <Cell key={i} fill={e.color} />)}
-                          </Pie>
-                          <Tooltip contentStyle={{ borderRadius: '12px', border: 'none', fontSize: '10px', fontWeight: 800, boxShadow: '0 4px 12px rgba(0,0,0,.1)' }} formatter={(v: number) => [`$${fmt(v)}`, '']} />
-                        </RechartsPieChart>
-                      </ResponsiveContainer>
-                    </div>
-                    <div className="space-y-2 mt-3">
-                      {stats.expenseChart.slice(0, 6).map((cat, i) => (
-                        <div key={i} className="flex items-center gap-2">
-                          <div className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: cat.color }} />
-                          <span className="text-[10px] font-bold text-slate-600 flex-1 truncate">{cat.label}</span>
-                          <span className="text-[10px] font-black text-slate-800">${fmt(cat.total)}</span>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-              </div>
             </div>
+
+            {/* Floating Action Button */}
+            <button
+              onClick={() => openNew('expense')}
+              className="fixed bottom-24 right-6 md:bottom-10 md:right-10 w-14 h-14 bg-emerald-500 text-white rounded-full flex items-center justify-center shadow-lg shadow-emerald-500/30 hover:bg-emerald-600 hover:scale-105 active:scale-95 transition-all z-[100]"
+            >
+              <Plus size={24} />
+            </button>
           </>
         )}
 
@@ -935,6 +1032,58 @@ const Dinero: React.FC<DineroProps> = ({
                   </div>
                 ))}
               </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {yearlyCategoryStats.incomeChart.length > 0 && (
+                <div className="bg-white rounded-3xl border border-slate-100 p-5 shadow-sm">
+                  <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-4">Ingresos por categoría — {annualStats.year}</p>
+                  <div className="h-44">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <RechartsPieChart>
+                        <Pie data={yearlyCategoryStats.incomeChart} innerRadius={40} outerRadius={70} dataKey="total" strokeWidth={0}>
+                          {yearlyCategoryStats.incomeChart.map((e, i) => <Cell key={i} fill={e.color} />)}
+                        </Pie>
+                        <Tooltip contentStyle={{ borderRadius: '12px', border: 'none', fontSize: '10px', fontWeight: 800, boxShadow: '0 4px 12px rgba(0,0,0,.1)' }} formatter={(v: number) => [`$${fmt(v)}`, '']} />
+                      </RechartsPieChart>
+                    </ResponsiveContainer>
+                  </div>
+                  <div className="space-y-2 mt-4">
+                    {yearlyCategoryStats.incomeChart.slice(0, 8).map((cat, i) => (
+                      <div key={i} className="flex items-center gap-2">
+                        <div className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: cat.color }} />
+                        <span className="text-[10px] sm:text-xs font-bold text-slate-600 flex-1 truncate">{cat.label}</span>
+                        <span className="text-[10px] sm:text-xs font-black text-slate-800">${fmt(cat.total)}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {yearlyCategoryStats.expenseChart.length > 0 && (
+                <div className="bg-white rounded-3xl border border-slate-100 p-5 shadow-sm">
+                  <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-4">Gastos por categoría — {annualStats.year}</p>
+                  <div className="h-44">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <RechartsPieChart>
+                        <Pie data={yearlyCategoryStats.expenseChart} innerRadius={40} outerRadius={70} dataKey="total" strokeWidth={0}>
+                          {yearlyCategoryStats.expenseChart.map((e, i) => <Cell key={i} fill={e.color} />)}
+                        </Pie>
+                        <Tooltip contentStyle={{ borderRadius: '12px', border: 'none', fontSize: '10px', fontWeight: 800, boxShadow: '0 4px 12px rgba(0,0,0,.1)' }} formatter={(v: number) => [`$${fmt(v)}`, '']} />
+                      </RechartsPieChart>
+                    </ResponsiveContainer>
+                  </div>
+                  <div className="space-y-2 mt-4">
+                    {yearlyCategoryStats.expenseChart.slice(0, 8).map((cat, i) => (
+                      <div key={i} className="flex items-center gap-2">
+                        <div className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: cat.color }} />
+                        <span className="text-[10px] sm:text-xs font-bold text-slate-600 flex-1 truncate">{cat.label}</span>
+                        <span className="text-[10px] sm:text-xs font-black text-slate-800">${fmt(cat.total)}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         )}
@@ -1109,7 +1258,7 @@ const Dinero: React.FC<DineroProps> = ({
                     <div key={pocket.id}
                       className="bg-white rounded-2xl border-2 p-4 shadow-sm cursor-pointer hover:shadow-md transition-all group relative active:scale-[0.98]"
                       style={{ borderColor: pocket.color + '50' }}
-                      onClick={() => setAllocateModal({ pocketId: pocket.id, amount: 0, description: '', date: today, direction: 'to' })}>
+                      onClick={() => { setAllocateAmountInput(''); setAllocateModal({ pocketId: pocket.id, amount: 0, description: '', date: today, direction: 'to' }); }}>
                       <button
                         onClick={e => { e.stopPropagation(); setPocketModal({ ...pocket }); }}
                         className="absolute top-2.5 right-2.5 opacity-0 group-hover:opacity-100 p-1 text-slate-300 hover:text-slate-600 transition-all">
@@ -1183,7 +1332,7 @@ const Dinero: React.FC<DineroProps> = ({
                                 {isDeposit ? '+' : isWithdrawal ? '-' : '↔'}${fmt(e.amount)}
                               </span>
                               <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-all">
-                                <button onClick={() => setEditSaving({ ...e, direction: e.type === 'pocket_in' ? 'to' : e.type === 'pocket_out' ? 'from' : undefined })}
+                                <button onClick={() => { setEditSavingAmountInput(e.amount ? fmt(e.amount) : ''); setEditSaving({ ...e, direction: e.type === 'pocket_in' ? 'to' : e.type === 'pocket_out' ? 'from' : undefined }); }}
                                   className="p-1 text-slate-300 hover:text-indigo-500 transition-all">
                                   <Edit2 size={12} />
                                 </button>
@@ -1249,8 +1398,14 @@ const Dinero: React.FC<DineroProps> = ({
                       <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 block">Monto</label>
                       <div className="relative">
                         <span className="absolute left-4 top-1/2 -translate-y-1/2 text-xl font-black text-slate-300">$</span>
-                        <input type="number" step="1" min="0" value={editTx.amount || ''} onChange={e => setEditTx({ ...editTx, amount: parseFloat(e.target.value) || 0 })}
-                          className="w-full bg-slate-50 border-2 border-transparent focus:border-indigo-200 rounded-2xl pl-10 pr-4 py-4 text-2xl font-black outline-none transition-all" placeholder="0" />
+                        <input
+                          type="text"
+                          inputMode="numeric"
+                          value={amountInput}
+                          onChange={e => setAmountInput(formatCOPInput(e.target.value))}
+                          className="w-full bg-slate-50 border-2 border-transparent focus:border-indigo-200 rounded-2xl pl-10 pr-4 py-4 text-2xl font-black outline-none transition-all"
+                          placeholder="0"
+                        />
                       </div>
                     </div>
                     <div>
@@ -1261,7 +1416,13 @@ const Dinero: React.FC<DineroProps> = ({
                     <div>
                       <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 block">Categoría</label>
                       <div className="grid grid-cols-2 gap-2">
-                        {finCategories.filter(c => c.type === editTx.type || c.type === 'both').map(cat => (
+                        {(() => {
+                          const visibleCats = finCategories.filter(c => c.type === editTx.type || c.type === 'both');
+                          if (editTx.type === 'expense' && !visibleCats.find(c => c.id === LOAN_OUT_CAT_ID)) {
+                            visibleCats.push({ id: LOAN_OUT_CAT_ID, label: 'Préstamo a Terceros', color: '#f97316', type: 'expense', description: 'Dinero que le prestas a alguien y esperas que te devuelva.' } as FinCategory);
+                          }
+                          return visibleCats;
+                        })().map(cat => (
                           <button key={cat.id} onClick={() => setEditTx({ ...editTx, finCategoryId: cat.id })}
                             className={`flex items-center gap-2.5 px-3 py-3 rounded-xl text-left border-2 transition-all active:scale-[0.98] ${editTx.finCategoryId === cat.id ? 'border-indigo-500 bg-indigo-50 shadow-sm' : 'border-transparent bg-slate-50 opacity-70 hover:opacity-100'}`}>
                             <div className="w-3 h-3 rounded-full shrink-0" style={{ backgroundColor: cat.color }} />
@@ -1312,18 +1473,34 @@ const Dinero: React.FC<DineroProps> = ({
                           </select>
                         </div>
                       )}
+
+                      {editTx.finCategoryId === LOAN_OUT_CAT_ID && (
+                        <div className="mt-4 p-4 bg-orange-50 rounded-2xl border border-orange-100 animate-in fade-in zoom-in-95 duration-300">
+                          <div className="flex items-center gap-2 mb-2">
+                            <User size={12} className="text-orange-500" />
+                            <label className="text-[10px] font-black text-orange-600 uppercase tracking-widest">¿A quién le prestas?</label>
+                          </div>
+                          <input
+                            type="text"
+                            value={loanPersonName}
+                            onChange={e => setLoanPersonName(e.target.value)}
+                            placeholder="Nombre de la persona"
+                            className="w-full bg-white border-2 border-orange-200 focus:border-orange-400 rounded-xl px-3 py-2.5 text-sm font-bold outline-none transition-all shadow-sm"
+                          />
+                        </div>
+                      )}
                     </div>
                   </div>
                 </div>
                 <div className="px-5 py-4 border-t shrink-0" style={{ paddingBottom: 'max(1rem, env(safe-area-inset-bottom, 1rem))' }}>
                   <button 
                     onClick={handleSave} 
-                    disabled={!editTx?.description?.trim() || !editTx?.amount || !editTx?.finCategoryId}
+                    disabled={!editTx?.description?.trim() || !amountInput || !parseCOPNumber(amountInput) || !editTx?.finCategoryId}
                     className="w-full bg-indigo-600 text-white font-black py-4 rounded-2xl uppercase text-xs tracking-widest shadow-lg hover:bg-indigo-700 transition-all active:scale-[0.98] disabled:opacity-40 disabled:cursor-not-allowed"
                   >
                     {isEditingTx ? 'Guardar cambios' : (editTx.finCategoryId === LOAN_IN_CAT_ID && linkingLoanId) ? 'Confirmar Reintegro' : editTx.type === 'income' ? 'Continuar →' : 'Guardar'}
                   </button>
-                  {(!editTx?.description?.trim() || !editTx?.amount) && (
+                  {(!editTx?.description?.trim() || !amountInput) && (
                     <p className="text-[9px] text-slate-400 font-bold text-center mt-2 uppercase tracking-tighter italic">Ingresa descripción y monto para continuar</p>
                   )}
                 </div>
@@ -1482,7 +1659,7 @@ const Dinero: React.FC<DineroProps> = ({
                 <h3 className="text-base font-black text-slate-800 uppercase italic">Retirar del ahorro</h3>
                 <p className="text-[10px] text-slate-400 font-bold mt-0.5">Saldo disponible: <span className="text-slate-600 font-black">${fmt(savingsStats.totalNetSavings)}</span></p>
               </div>
-              <button onClick={() => setWithdrawalModal(null)} className="p-2.5 hover:bg-slate-100 rounded-full transition-all"><X size={18} /></button>
+              <button onClick={() => { setWithdrawalAmountInput(''); setWithdrawalModal(null); }} className="p-2.5 hover:bg-slate-100 rounded-full transition-all"><X size={18} /></button>
             </div>
             <div className="flex-1 overflow-y-auto custom-scrollbar">
               <div className="p-5 space-y-4">
@@ -1490,8 +1667,15 @@ const Dinero: React.FC<DineroProps> = ({
                   <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 block">Monto retirado</label>
                   <div className="relative">
                     <span className="absolute left-4 top-1/2 -translate-y-1/2 text-xl font-black text-slate-300">$</span>
-                    <input type="number" step="1" min="0" value={withdrawalModal.amount || ''}
-                      onChange={e => setWithdrawalModal({ ...withdrawalModal, amount: parseFloat(e.target.value) || 0 })}
+                    <input
+                      type="text"
+                      inputMode="numeric"
+                      value={withdrawalAmountInput}
+                      onChange={e => {
+                        const formatted = formatCOPInput(e.target.value);
+                        setWithdrawalAmountInput(formatted);
+                        setWithdrawalModal({ ...withdrawalModal, amount: parseCOPNumber(formatted) });
+                      }}
                       className="w-full bg-slate-50 border-2 border-transparent focus:border-red-200 rounded-2xl pl-10 pr-4 py-4 text-2xl font-black outline-none transition-all"
                       placeholder="0" autoFocus />
                   </div>
@@ -1548,14 +1732,14 @@ const Dinero: React.FC<DineroProps> = ({
 
       {/* ─── MODAL: Allocate to pocket ─── */}
       {allocateModal && (
-        <div className="fixed inset-0 z-[200] flex items-end md:items-center justify-center bg-slate-900/60 backdrop-blur-sm animate-in fade-in">
+        <div className="fixed inset-0 z-[200] flex items-end md:items-center justify-center bg-slate-900/60 backdrop-blur-sm animate-in fade-in" key={allocateModal.pocketId}>
           <div className="bg-white rounded-t-3xl md:rounded-[2rem] w-full max-w-md shadow-2xl flex flex-col md:mx-4" style={{ maxHeight: 'calc(95vh - env(safe-area-inset-top, 0px))' }}>
             <div className="flex justify-center pt-3 pb-1 shrink-0 md:hidden">
               <div className="w-10 h-1 bg-slate-200 rounded-full" />
             </div>
             <div className="px-5 py-4 border-b flex justify-between items-center shrink-0">
               <h3 className="text-base font-black text-slate-800 uppercase italic">Mover dinero</h3>
-              <button onClick={() => setAllocateModal(null)} className="p-2.5 hover:bg-slate-100 rounded-full transition-all"><X size={18} /></button>
+              <button onClick={() => { setAllocateAmountInput(''); setAllocateModal(null); }} className="p-2.5 hover:bg-slate-100 rounded-full transition-all"><X size={18} /></button>
             </div>
             <div className="flex-1 overflow-y-auto custom-scrollbar">
               <div className="p-5 space-y-4">
@@ -1588,8 +1772,15 @@ const Dinero: React.FC<DineroProps> = ({
                   <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 block">Monto</label>
                   <div className="relative">
                     <span className="absolute left-4 top-1/2 -translate-y-1/2 text-xl font-black text-slate-300">$</span>
-                    <input type="number" step="1" min="0" value={allocateModal.amount || ''}
-                      onChange={e => setAllocateModal({ ...allocateModal, amount: parseFloat(e.target.value) || 0 })}
+                    <input
+                      type="text"
+                      inputMode="numeric"
+                      value={allocateAmountInput}
+                      onChange={e => {
+                        const formatted = formatCOPInput(e.target.value);
+                        setAllocateAmountInput(formatted);
+                        setAllocateModal({ ...allocateModal, amount: parseCOPNumber(formatted) });
+                      }}
                       className="w-full bg-slate-50 border-2 border-transparent focus:border-indigo-200 rounded-2xl pl-10 pr-4 py-4 text-2xl font-black outline-none transition-all"
                       placeholder="0" autoFocus />
                   </div>
@@ -1692,7 +1883,7 @@ const Dinero: React.FC<DineroProps> = ({
             </div>
             <div className="px-5 py-4 border-b flex justify-between items-center shrink-0">
               <h3 className="text-base font-black text-slate-800 uppercase italic">Editar ahorro</h3>
-              <button onClick={() => setEditSaving(null)} className="p-2.5 hover:bg-slate-100 rounded-full transition-all"><X size={18} /></button>
+              <button onClick={() => { setEditSavingAmountInput(''); setEditSaving(null); }} className="p-2.5 hover:bg-slate-100 rounded-full transition-all"><X size={18} /></button>
             </div>
             <div className="flex-1 overflow-y-auto custom-scrollbar">
               <div className="p-5 space-y-4">
@@ -1700,8 +1891,15 @@ const Dinero: React.FC<DineroProps> = ({
                   <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 block">Monto</label>
                   <div className="relative">
                     <span className="absolute left-4 top-1/2 -translate-y-1/2 text-xl font-black text-slate-300">$</span>
-                    <input type="number" step="1" min="0" value={editSaving.amount || ''}
-                      onChange={e => setEditSaving({ ...editSaving, amount: parseFloat(e.target.value) || 0 })}
+                    <input
+                      type="text"
+                      inputMode="numeric"
+                      value={editSavingAmountInput}
+                      onChange={e => {
+                        const formatted = formatCOPInput(e.target.value);
+                        setEditSavingAmountInput(formatted);
+                        setEditSaving({ ...editSaving, amount: parseCOPNumber(formatted) });
+                      }}
                       className="w-full bg-slate-50 border-2 border-transparent focus:border-indigo-200 rounded-2xl pl-10 pr-4 py-4 text-2xl font-black outline-none transition-all"
                       placeholder="0" autoFocus />
                   </div>

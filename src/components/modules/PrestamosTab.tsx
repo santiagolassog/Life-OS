@@ -2,7 +2,7 @@ import React, { useState, useMemo } from 'react';
 import { Plus, X, Check, ChevronDown, ChevronUp, DollarSign, User, Calendar, AlertCircle, CheckCircle2, Edit2, Trash2 } from 'lucide-react';
 import type { Loan, LoanPayment, Transaction, FinCategory } from '../../types';
 import { LOAN_OUT_CAT_ID, LOAN_IN_CAT_ID } from '../../types';
-import { generateId, fmtCurrency as fmt } from '../../lib/utils';
+import { generateId, fmtCurrency as fmt, formatCOPInput, parseCOPNumber, getLocalISODate } from '../../lib/utils';
 
 interface PrestamosTabProps {
   loans: Loan[];
@@ -21,12 +21,15 @@ const PrestamosTab: React.FC<PrestamosTabProps> = ({
   loans, setLoans, loanPayments, setLoanPayments,
   transactions, setTransactions, finCategories,
 }) => {
-  const today = new Date().toISOString().split('T')[0];
+  const today = getLocalISODate();
 
   const [loanModal, setLoanModal]     = useState<LoanForm | null>(null);
   const [editingLoanId, setEditingLoanId] = useState<string | null>(null);
   const [payModal, setPayModal]       = useState<{ loanId: string; form: PaymentForm } | null>(null);
   const [showCompleted, setShowCompleted] = useState(false);
+  // Formatted amount inputs
+  const [loanAmountInput, setLoanAmountInput] = useState('');
+  const [payAmountInput, setPayAmountInput] = useState('');
 
   const activeLoans    = useMemo(() => loans.filter(l => l.status === 'active'), [loans]);
   const completedLoans = useMemo(() => loans.filter(l => l.status === 'completed'), [loans]);
@@ -47,7 +50,7 @@ const PrestamosTab: React.FC<PrestamosTabProps> = ({
       handleSaveEditLoan();
       return;
     }
-    const amount = parseFloat(loanModal.amount.replace(/,/g, '')) || 0;
+    const amount = parseCOPNumber(loanAmountInput);
     if (!loanModal.personName.trim() || amount <= 0) return;
 
     const now   = new Date().toISOString();
@@ -82,7 +85,7 @@ const PrestamosTab: React.FC<PrestamosTabProps> = ({
 
   const handleSaveEditLoan = () => {
     if (!loanModal || !editingLoanId) return;
-    const amount = parseFloat(loanModal.amount.replace(/,/g, '')) || 0;
+    const amount = parseCOPNumber(loanAmountInput);
     if (!loanModal.personName.trim() || amount <= 0) return;
 
     setLoans(prev => prev.map(l => l.id === editingLoanId ? {
@@ -118,7 +121,7 @@ const PrestamosTab: React.FC<PrestamosTabProps> = ({
 
   const handleAddPayment = () => {
     if (!payModal) return;
-    const amount = parseFloat(payModal.form.amount.replace(/,/g, '')) || 0;
+    const amount = parseCOPNumber(payAmountInput);
     if (amount <= 0) return;
 
     const loan  = loans.find(l => l.id === payModal.loanId);
@@ -190,7 +193,7 @@ const PrestamosTab: React.FC<PrestamosTabProps> = ({
         <div className="flex items-center justify-between mb-3">
           <h3 className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Préstamos activos ({activeLoans.length})</h3>
           <button
-            onClick={() => setLoanModal({ personName: '', amount: '', date: today, description: '' })}
+            onClick={() => { setLoanAmountInput(''); setLoanModal({ personName: '', amount: '', date: today, description: '' }); }}
             className="flex items-center gap-1.5 px-3 py-1.5 bg-orange-500 text-white rounded-xl text-[10px] font-black uppercase tracking-wide hover:bg-orange-600 transition-all active:scale-95"
           >
             <Plus size={12} /> Nuevo préstamo
@@ -225,11 +228,11 @@ const PrestamosTab: React.FC<PrestamosTabProps> = ({
                     </div>
                     <div className="text-right flex flex-col items-end">
                       <div className="flex gap-1 mb-1">
-                        <button onClick={() => { setEditingLoanId(loan.id); setLoanModal({ personName: loan.personName, amount: loan.amount.toString(), date: loan.date, description: loan.description || '' }); }} className="p-1.5 text-slate-300 hover:text-indigo-500 transition-all"><Edit2 size={13} /></button>
+                        <button onClick={() => { setLoanAmountInput(loan.amount ? fmt(loan.amount) : ''); setEditingLoanId(loan.id); setLoanModal({ personName: loan.personName, amount: loan.amount.toString(), date: loan.date, description: loan.description || '' }); }} className="p-1.5 text-slate-300 hover:text-indigo-500 transition-all"><Edit2 size={13} /></button>
                         <button onClick={() => handleDeleteLoan(loan)} className="p-1.5 text-slate-300 hover:text-red-500 transition-all"><Trash2 size={13} /></button>
                       </div>
-                      <p className="text-base font-black text-slate-800">{fmt(loan.amount)}</p>
-                      <p className="text-[10px] text-orange-500 font-bold">{fmt(remaining)} pendiente</p>
+                      <p className="text-base font-black text-slate-800">${fmt(loan.amount)}</p>
+                      <p className="text-[10px] text-orange-500 font-bold">${fmt(remaining)} pendiente</p>
                     </div>
                   </div>
 
@@ -247,7 +250,7 @@ const PrestamosTab: React.FC<PrestamosTabProps> = ({
                   </div>
 
                   <button
-                    onClick={() => setPayModal({ loanId: loan.id, form: { amount: '', date: today, description: '' } })}
+                    onClick={() => { setPayAmountInput(''); setPayModal({ loanId: loan.id, form: { amount: '', date: today, description: '' } }); }}
                     className="w-full py-2 rounded-xl bg-emerald-50 text-emerald-600 text-[10px] font-black uppercase tracking-wide hover:bg-emerald-100 transition-all border border-emerald-100"
                   >
                     Registrar pago
@@ -288,7 +291,7 @@ const PrestamosTab: React.FC<PrestamosTabProps> = ({
                     </div>
                   </div>
                   <div className="text-right">
-                    <p className="text-sm font-black text-slate-300 line-through decoration-slate-200">{fmt(loan.amount)}</p>
+                    <p className="text-sm font-black text-slate-300 line-through decoration-slate-200">${fmt(loan.amount)}</p>
                     <p className="text-[9px] font-black text-emerald-500 uppercase tracking-widest flex items-center justify-end gap-1">
                       <Check size={8} strokeWidth={4} /> Pagado
                     </p>
@@ -309,7 +312,7 @@ const PrestamosTab: React.FC<PrestamosTabProps> = ({
             </div>
             <div className="px-5 py-4 border-b flex justify-between items-center">
               <h2 className="text-base font-black text-slate-800 uppercase italic">{editingLoanId ? 'Editar Préstamo' : 'Nuevo Préstamo'}</h2>
-              <button onClick={() => { setLoanModal(null); setEditingLoanId(null); }} className="p-2 hover:bg-slate-100 rounded-full"><X size={18}/></button>
+              <button onClick={() => { setLoanAmountInput(''); setLoanModal(null); setEditingLoanId(null); }} className="p-2 hover:bg-slate-100 rounded-full"><X size={18}/></button>
             </div>
             <div className="p-5 space-y-4 overflow-y-auto flex-1">
               <div className="space-y-1.5">
@@ -325,13 +328,17 @@ const PrestamosTab: React.FC<PrestamosTabProps> = ({
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1.5">
                   <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Monto</label>
-                  <input
-                    type="number"
-                    placeholder="0"
-                    value={loanModal.amount}
-                    onChange={e => setLoanModal({ ...loanModal, amount: e.target.value })}
-                    className="w-full bg-slate-50 border-2 border-transparent focus:border-indigo-200 rounded-2xl px-4 py-3 text-sm font-bold outline-none transition-all"
-                  />
+                  <div className="relative">
+                    <span className="absolute left-3 top-1/2 -translate-y-1/2 font-black text-slate-300">$</span>
+                    <input
+                      type="text"
+                      inputMode="numeric"
+                      placeholder="0"
+                      value={loanAmountInput}
+                      onChange={e => setLoanAmountInput(formatCOPInput(e.target.value))}
+                      className="w-full bg-slate-50 border-2 border-transparent focus:border-indigo-200 rounded-2xl pl-7 pr-3 py-3 text-sm font-bold outline-none transition-all"
+                    />
+                  </div>
                 </div>
                 <div className="space-y-1.5">
                   <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Fecha</label>
@@ -361,7 +368,7 @@ const PrestamosTab: React.FC<PrestamosTabProps> = ({
             <div className="px-5 py-4 border-t" style={{ paddingBottom: 'max(1rem, env(safe-area-inset-bottom, 1rem))' }}>
               <button
                 onClick={handleAddLoan}
-                disabled={!loanModal.personName.trim() || !loanModal.amount}
+                disabled={!loanModal.personName.trim() || !loanAmountInput || !parseCOPNumber(loanAmountInput)}
                 className={`w-full py-4 text-white rounded-2xl font-black text-xs uppercase tracking-widest disabled:opacity-40 disabled:cursor-not-allowed transition-all active:scale-[0.98] ${editingLoanId ? 'bg-indigo-600 hover:bg-indigo-700' : 'bg-orange-500 hover:bg-orange-600'}`}
               >
                 {editingLoanId ? 'Guardar Cambios' : 'Registrar Préstamo'}
@@ -385,21 +392,25 @@ const PrestamosTab: React.FC<PrestamosTabProps> = ({
               <div className="px-5 py-4 border-b flex justify-between items-center">
                 <div>
                   <h2 className="text-base font-black text-slate-800 uppercase italic">Registrar Pago</h2>
-                  <p className="text-[10px] text-slate-400">{loan?.personName} · {fmt(remaining)} pendiente</p>
+                  <p className="text-[10px] text-slate-400">{loan?.personName} · ${fmt(remaining)} pendiente</p>
                 </div>
-                <button onClick={() => setPayModal(null)} className="p-2 hover:bg-slate-100 rounded-full"><X size={18}/></button>
+                <button onClick={() => { setPayAmountInput(''); setPayModal(null); }} className="p-2 hover:bg-slate-100 rounded-full"><X size={18}/></button>
               </div>
               <div className="p-5 space-y-4 overflow-y-auto flex-1">
                 <div className="grid grid-cols-2 gap-3">
                   <div className="space-y-1.5">
                     <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Monto pagado</label>
-                    <input
-                      type="number"
-                      placeholder="0"
-                      value={payModal.form.amount}
-                      onChange={e => setPayModal({ ...payModal, form: { ...payModal.form, amount: e.target.value } })}
-                      className="w-full bg-slate-50 border-2 border-transparent focus:border-indigo-200 rounded-2xl px-4 py-3 text-sm font-bold outline-none transition-all"
-                    />
+                    <div className="relative">
+                      <span className="absolute left-3 top-1/2 -translate-y-1/2 font-black text-slate-300">$</span>
+                      <input
+                        type="text"
+                        inputMode="numeric"
+                        placeholder="0"
+                        value={payAmountInput}
+                        onChange={e => setPayAmountInput(formatCOPInput(e.target.value))}
+                        className="w-full bg-slate-50 border-2 border-transparent focus:border-indigo-200 rounded-2xl pl-7 pr-3 py-3 text-sm font-bold outline-none transition-all"
+                      />
+                    </div>
                   </div>
                   <div className="space-y-1.5">
                     <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Fecha</label>
@@ -422,10 +433,10 @@ const PrestamosTab: React.FC<PrestamosTabProps> = ({
                   />
                 </div>
                 <button
-                  onClick={() => setPayModal({ ...payModal, form: { ...payModal.form, amount: remaining.toString() } })}
+                  onClick={() => setPayAmountInput(fmt(remaining))}
                   className="w-full py-2 rounded-xl bg-emerald-50 text-emerald-600 text-[10px] font-black border border-emerald-100 hover:bg-emerald-100 transition-all"
                 >
-                  Pagar saldo completo ({fmt(remaining)})
+                  Pagar saldo completo (${fmt(remaining)})
                 </button>
                 <div className="bg-emerald-50 rounded-2xl p-3 flex gap-2 border border-emerald-100">
                   <Check size={14} className="text-emerald-500 shrink-0 mt-0.5" />
@@ -435,7 +446,7 @@ const PrestamosTab: React.FC<PrestamosTabProps> = ({
               <div className="px-5 py-4 border-t" style={{ paddingBottom: 'max(1rem, env(safe-area-inset-bottom, 1rem))' }}>
                 <button
                   onClick={handleAddPayment}
-                  disabled={!payModal.form.amount}
+                  disabled={!payAmountInput || !parseCOPNumber(payAmountInput)}
                   className="w-full py-4 bg-emerald-500 text-white rounded-2xl font-black text-xs uppercase tracking-widest hover:bg-emerald-600 disabled:opacity-40 disabled:cursor-not-allowed transition-all active:scale-[0.98]"
                 >
                   Confirmar Pago

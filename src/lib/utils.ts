@@ -50,8 +50,40 @@ export const GRID_HOURS: string[] = (() => {
   return hours;
 })();
 
+/**
+ * Returns the current date in "YYYY-MM-DD" format using the user's local timezone.
+ * Solves the UTC offset issue where evening hours would show tomorrow's date.
+ */
+export const getLocalISODate = (): string => {
+  const d = new Date();
+  const tzOffset = d.getTimezoneOffset() * 60000;
+  return new Date(d.getTime() - tzOffset).toISOString().split('T')[0];
+};
+
 export const fmtCurrency = (n: number): string =>
-  new Intl.NumberFormat("es-ES", { minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(n);
+  new Intl.NumberFormat("es-CO", { minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(n);
+
+/**
+ * Parses a Colombian-formatted number string (e.g. "1.500.000") into a plain number.
+ * Also handles plain numeric strings.
+ */
+export const parseCOPNumber = (str: string): number => {
+  // Remove all dots (thousands sep) then parse
+  const cleaned = str.replace(/\./g, '').replace(/,/g, '.').trim();
+  return parseFloat(cleaned) || 0;
+};
+
+/**
+ * Formats a raw number-string-in-progress into Colombian thousands format.
+ * Allows only digits while typing.
+ */
+export const formatCOPInput = (raw: string): string => {
+  // Keep only digits
+  const digits = raw.replace(/\D/g, '');
+  if (!digits) return '';
+  const num = parseInt(digits, 10);
+  return new Intl.NumberFormat('es-CO', { minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(num);
+};
 
 export const PRIORITY_CONFIG = {
   high:   { label: "Alta",  color: "text-red-600",   bg: "bg-red-50",   border: "border-red-200",   dot: "bg-red-500",   badge: "bg-red-500" },
