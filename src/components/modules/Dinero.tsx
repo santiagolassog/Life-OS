@@ -135,7 +135,7 @@ const Dinero: React.FC<DineroProps> = ({
   const yearMonth = `${y}-${String(m + 1).padStart(2, '0')}`;
 
   const currentBalanceRecord = monthBalances.find(b => b.yearMonth === yearMonth);
-  const openingBalance = currentBalanceRecord?.openingBalance ?? null;
+  const manualOpeningBalance = currentBalanceRecord?.openingBalance ?? null;
 
   const handleSaveBalance = () => {
     const amount = parseCOPNumber(balanceInput) || 0;
@@ -145,6 +145,52 @@ const Dinero: React.FC<DineroProps> = ({
     ]);
     setEditingBalance(false);
   };
+
+  const resetToAuto = () => {
+    setMonthBalances(prev => prev.filter(b => b.yearMonth !== yearMonth));
+  };
+
+  // Saldo inicial efectivo: manual > automático (cierre del mes anterior, recursivo) > null
+  const effectiveOpening = useMemo(() => {
+    if (manualOpeningBalance !== null) return { value: manualOpeningBalance, isAuto: false };
+
+    // Función recursiva para calcular el cierre de cualquier mes hacia atrás
+    const computeClosing = (tY: number, tM: number, depth: number): number | null => {
+      if (depth > 12) return null; // máximo 1 año hacia atrás
+      const tYM = `${tY}-${String(tM + 1).padStart(2, '0')}`;
+      const stored = monthBalances.find(b => b.yearMonth === tYM)?.openingBalance ?? null;
+
+      let opening: number | null;
+      if (stored !== null) {
+        opening = stored;
+      } else {
+        const pd = new Date(tY, tM - 1, 1);
+        opening = computeClosing(pd.getFullYear(), pd.getMonth(), depth + 1);
+      }
+      if (opening === null) return null;
+
+      let inc = 0, exp = 0, savDep = 0, loansIn = 0;
+      transactions.forEach(tx => {
+        const [ty2, tm2] = tx.date.split('-').map(Number);
+        if (ty2 === tY && tm2 - 1 === tM) {
+          if (tx.type === 'income' && tx.finCategoryId !== LOAN_IN_CAT_ID) inc += tx.amount;
+          else if (tx.type === 'expense') exp += tx.amount;
+          if (tx.finCategoryId === LOAN_IN_CAT_ID) loansIn += tx.amount;
+        }
+      });
+      (Array.isArray(savings) ? savings : []).forEach(s => {
+        const [sy, sm] = s.date.split('-').map(Number);
+        if (sy === tY && sm - 1 === tM) savDep += s.amount;
+      });
+      return opening + inc - exp - savDep + loansIn;
+    };
+
+    const prevDate = new Date(y, m - 1, 1);
+    const autoValue = computeClosing(prevDate.getFullYear(), prevDate.getMonth(), 0);
+    return autoValue !== null
+      ? { value: autoValue, isAuto: true }
+      : { value: null, isAuto: false };
+  }, [manualOpeningBalance, monthBalances, transactions, savings, y, m]);
 
   const monthTxs = useMemo(() =>
     transactions
@@ -210,56 +256,9 @@ const Dinero: React.FC<DineroProps> = ({
     return { stats: { income, expenses, monthSavingsDeposits, monthSavingsWithdrawn, monthLoansIn, monthLoansOut, balance, incomeChart, expenseChart }, grouped: g };
   }, [monthTxs, finCategories, savings, savingsWithdrawals, y, m]);
 
-  const closingBalance = openingBalance !== null
-    ? openingBalance + stats.income - stats.expenses - stats.monthSavingsDeposits + stats.monthLoansIn
+  const closingBalance = effectiveOpening.value !== null
+    ? effectiveOpening.value + stats.income - stats.expenses - stats.monthSavingsDeposits + stats.monthLoansIn
     : null;
-
-  const prevClosingBalance = useMemo(() => {
-    const prevDate = new Date(y, m - 1, 1);
-    const prevY = prevDate.getFullYear();
-    const prevM = prevDate.getMonth();
-    const prevYearMonth = `${prevY}-${String(prevM + 1).padStart(2, '0')}`;
-    const prevOpening = monthBalances.find(b => b.yearMonth === prevYearMonth)?.openingBalance ?? null;
-    if (prevOpening === null) return null;
-
-    let prevIncome = 0, prevExpenses = 0, prevLoansIn = 0, prevLoansOut = 0;
-    transactions.forEach(tx => {
-      const [ty, tm] = tx.date.split('-').map(Number);
-      if (ty === prevY && tm - 1 === prevM) {
-        if (tx.type === 'income' && tx.finCategoryId !== LOAN_IN_CAT_ID) prevIncome += tx.amount;
-        else if (tx.type === 'expense') prevExpenses += tx.amount;
-        
-        if (tx.finCategoryId === LOAN_IN_CAT_ID) prevLoansIn += tx.amount;
-        if (tx.finCategoryId === LOAN_OUT_CAT_ID) prevLoansOut += tx.amount;
-      }
-    });
-
-    const prevSavingsDeposits = savings
-      .filter(s => {
-        const [sy, sm] = s.date.split('-').map(Number);
-        return sy === prevY && sm - 1 === prevM;
-      })
-      .reduce((s, x) => s + x.amount, 0);
-
-    const prevSavingsWithdrawn = savingsWithdrawals
-      .filter(w => {
-        const [wy, wm] = w.date.split('-').map(Number);
-        return wy === prevY && wm - 1 === prevM;
-      })
-      .reduce((s, x) => s + x.amount, 0);
-
-    return prevOpening + prevIncome - prevExpenses - prevSavingsDeposits + prevLoansIn;
-  }, [y, m, monthBalances, transactions, savings, savingsWithdrawals]);
-
-  const prevMonthLabel = new Date(y, m - 1, 1).toLocaleDateString('es-ES', { month: 'long' });
-
-  const applyPrevBalance = () => {
-    if (prevClosingBalance === null) return;
-    setMonthBalances(prev => [
-      ...prev.filter(b => b.yearMonth !== yearMonth),
-      { id: currentBalanceRecord?.id || generateId(), yearMonth, openingBalance: prevClosingBalance },
-    ]);
-  };
 
   const yearlyCategoryStats = useMemo(() => {
     const year = viewDate.getFullYear();
@@ -755,29 +754,63 @@ const Dinero: React.FC<DineroProps> = ({
                 <Wallet size={16} className="text-slate-400 shrink-0" />
                 <span className="text-[10px] sm:text-xs font-black text-slate-400 uppercase tracking-widest">Saldo inicial del mes</span>
               </div>
+
               {editingBalance ? (
+                /* ── Modo edición ── */
                 <div className="flex items-center gap-2 flex-wrap">
                   <span className="text-slate-400 font-black">$</span>
-                  <input type="text" inputMode="numeric" value={balanceInput} onChange={e => setBalanceInput(formatCOPInput(e.target.value))}
+                  <input
+                    type="text" inputMode="numeric"
+                    value={balanceInput}
+                    onChange={e => setBalanceInput(formatCOPInput(e.target.value))}
                     onKeyDown={e => { if (e.key === 'Enter') handleSaveBalance(); if (e.key === 'Escape') setEditingBalance(false); }}
                     className="w-full max-w-[140px] bg-slate-50 rounded-xl px-3 py-1.5 text-sm font-black outline-none focus:ring-2 ring-emerald-300 border border-slate-200"
-                    placeholder="0" autoFocus />
+                    placeholder="0" autoFocus
+                  />
                   <button onClick={handleSaveBalance} className="p-1.5 bg-emerald-500 text-white rounded-lg hover:bg-emerald-600 transition-all"><Check size={14} /></button>
                   <button onClick={() => setEditingBalance(false)} className="p-1.5 text-slate-400 hover:text-slate-600"><X size={14} /></button>
                 </div>
-              ) : (
+
+              ) : effectiveOpening.value !== null ? (
+                /* ── Saldo definido (auto o manual) ── */
                 <div className="flex items-center gap-2 flex-wrap md:justify-end">
-                  {openingBalance !== null
-                    ? <span className="text-lg md:text-xl font-black text-slate-700">${fmt(openingBalance)}</span>
-                    : <span className="text-sm font-bold text-slate-300 italic">Sin definir</span>}
-                  <button onClick={() => { setBalanceInput(openingBalance !== null ? fmt(openingBalance) : ''); setEditingBalance(true); }}
-                    className="p-1.5 text-slate-300 hover:text-indigo-500 transition-all"><Pencil size={14} /></button>
-                  {prevClosingBalance !== null && (
-                    <button onClick={applyPrevBalance}
-                      className="flex items-center gap-1 px-2.5 py-1.5 bg-slate-50 hover:bg-emerald-50 border border-slate-200 hover:border-emerald-300 rounded-xl text-[9px] md:text-[10px] font-black text-slate-400 hover:text-emerald-600 transition-all capitalize whitespace-nowrap">
-                      <ChevronLeft size={10} />{prevMonthLabel}: ${fmt(prevClosingBalance)}
+                  <span className="text-lg md:text-xl font-black text-slate-700">${fmt(effectiveOpening.value)}</span>
+
+                  {/* Badge auto / manual */}
+                  {effectiveOpening.isAuto
+                    ? <span className="text-[8px] font-black uppercase tracking-widest px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-400 border border-indigo-100">Auto</span>
+                    : <span className="text-[8px] font-black uppercase tracking-widest px-2 py-0.5 rounded-full bg-amber-50 text-amber-500 border border-amber-100">Manual</span>
+                  }
+
+                  {/* Editar */}
+                  <button
+                    onClick={() => { setBalanceInput(fmt(effectiveOpening.value!)); setEditingBalance(true); }}
+                    className="p-1.5 text-slate-300 hover:text-indigo-500 transition-all"
+                    title="Editar saldo inicial"
+                  ><Pencil size={14} /></button>
+
+                  {/* Restablecer a automático (solo si está en modo manual) */}
+                  {!effectiveOpening.isAuto && (
+                    <button
+                      onClick={resetToAuto}
+                      className="flex items-center gap-1 px-2 py-1 rounded-lg text-[9px] font-black text-slate-400 hover:text-indigo-500 hover:bg-indigo-50 border border-slate-100 hover:border-indigo-200 transition-all"
+                      title="Volver al saldo automático"
+                    >
+                      ↺ Automático
                     </button>
                   )}
+                </div>
+
+              ) : (
+                /* ── Sin datos previos: CTA para primer mes ── */
+                <div className="flex items-center gap-2 flex-wrap md:justify-end">
+                  <span className="text-xs text-slate-400 italic">Sin saldo de referencia</span>
+                  <button
+                    onClick={() => { setBalanceInput(''); setEditingBalance(true); }}
+                    className="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-[10px] font-black uppercase tracking-wide transition-all shadow-sm"
+                  >
+                    <Plus size={11} /> Definir saldo inicial
+                  </button>
                 </div>
               )}
             </div>
