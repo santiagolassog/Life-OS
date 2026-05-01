@@ -6,14 +6,18 @@ import {
 import {
   Plus, X, TrendingUp, TrendingDown, DollarSign, Trash2,
   ChevronLeft, ChevronRight, Wallet, PiggyBank, Edit2, BarChart3, List, Tag,
-  Info, Pencil, Check, ArrowLeftRight, User, AlertCircle, CheckCircle2,
+  Info, Pencil, Check, ArrowLeftRight, User, AlertCircle, CheckCircle2, Target,
+  MoreHorizontal, Receipt, Settings,
 } from 'lucide-react';
-import type { Transaction, FinCategory, Savings, MonthBalance, SavingsWithdrawal, SavingsPocket, PocketFunding, SavingsYearBalance, Loan, LoanPayment } from '../../types';
+import type { Transaction, FinCategory, Savings, MonthBalance, SavingsWithdrawal, SavingsPocket, PocketFunding, SavingsYearBalance, Loan, LoanPayment, Budget } from '../../types';
 import { LOAN_OUT_CAT_ID, LOAN_IN_CAT_ID } from '../../types';
 import { generateId, fmtCurrency as fmt, formatCOPInput, parseCOPNumber, getLocalISODate } from '../../lib/utils';
 import PrestamosTab from './PrestamosTab';
+import PresupuestoTab from './PresupuestoTab';
 
-type DineroTab = 'movimientos' | 'categorias' | 'dashboard' | 'ahorros' | 'prestamos';
+type DineroTab = 'movimientos' | 'analisis' | 'ahorros' | 'mas';
+type MovSubTab = 'transacciones' | 'presupuesto';
+type MasSection = 'prestamos' | 'categorias';
 
 interface DineroProps {
   transactions: Transaction[];
@@ -36,6 +40,8 @@ interface DineroProps {
   setLoans: React.Dispatch<React.SetStateAction<Loan[]>>;
   loanPayments: LoanPayment[];
   setLoanPayments: React.Dispatch<React.SetStateAction<LoanPayment[]>>;
+  budgets: Budget[];
+  setBudgets: React.Dispatch<React.SetStateAction<Budget[]>>;
   currentDate: Date;
 }
 
@@ -70,11 +76,10 @@ const DEFAULT_FIN_CATEGORIES: FinCategory[] = [
 ];
 
 const TABS: Array<{ key: DineroTab; label: string; Icon: React.FC<{ size?: number }> }> = [
-  { key: 'movimientos', label: 'Movimientos', Icon: List },
-  { key: 'categorias', label: 'Categorías', Icon: Tag },
-  { key: 'dashboard', label: 'Dashboard', Icon: BarChart3 },
-  { key: 'ahorros', label: 'Ahorros', Icon: PiggyBank },
-  { key: 'prestamos', label: 'Préstamos', Icon: ArrowLeftRight },
+  { key: 'movimientos', label: 'Movimientos', Icon: Receipt },
+  { key: 'analisis',    label: 'Análisis',    Icon: BarChart3 },
+  { key: 'ahorros',     label: 'Ahorros',     Icon: PiggyBank },
+  { key: 'mas',         label: 'Más',         Icon: MoreHorizontal },
 ];
 
 type WithdrawalModal = { amount: number; description: string; date: string; fromPocketId: string };
@@ -89,11 +94,14 @@ const Dinero: React.FC<DineroProps> = ({
   pocketFundings, setPocketFundings,
   savingsYearBalances, setSavingsYearBalances,
   loans, setLoans, loanPayments, setLoanPayments,
+  budgets, setBudgets,
   currentDate,
 }) => {
   const today = getLocalISODate();
-  const [tab, setTab] = useState<DineroTab>('movimientos');
-  const [viewDate, setViewDate] = useState(new Date(currentDate));
+  const [tab, setTab]               = useState<DineroTab>('movimientos');
+  const [movSubTab, setMovSubTab]   = useState<MovSubTab>('transacciones');
+  const [masSection, setMasSection] = useState<MasSection>('prestamos');
+  const [viewDate, setViewDate]     = useState(new Date(currentDate));
 
   // Transaction form
   const [formOpen, setFormOpen] = useState(false);
@@ -690,7 +698,7 @@ const Dinero: React.FC<DineroProps> = ({
             </div>
           </div>
           <div className="flex items-center gap-2 flex-wrap justify-end">
-            {tab === 'movimientos' && (
+            {tab === 'movimientos' && movSubTab === 'transacciones' && (
               <>
                 <div className="flex items-center bg-slate-100 rounded-full p-1">
                   <button onClick={() => { const d = new Date(viewDate); d.setMonth(d.getMonth() - 1); setViewDate(d); }} className="p-1.5 hover:bg-white rounded-full transition-all"><ChevronLeft size={16} /></button>
@@ -704,12 +712,21 @@ const Dinero: React.FC<DineroProps> = ({
                 </button>
               </>
             )}
-            {tab === 'categorias' && (
+            {tab === 'movimientos' && movSubTab === 'presupuesto' && (
+              <div className="flex items-center bg-slate-100 rounded-full p-1">
+                <button onClick={() => { const d = new Date(viewDate); d.setMonth(d.getMonth() - 1); setViewDate(d); }} className="p-1.5 hover:bg-white rounded-full transition-all"><ChevronLeft size={16} /></button>
+                <span className="px-3 text-xs font-bold min-w-[110px] text-center capitalize text-slate-600">
+                  {viewDate.toLocaleDateString('es-ES', { month: 'long', year: 'numeric' })}
+                </span>
+                <button onClick={() => { const d = new Date(viewDate); d.setMonth(d.getMonth() + 1); setViewDate(d); }} className="p-1.5 hover:bg-white rounded-full transition-all"><ChevronRight size={16} /></button>
+              </div>
+            )}
+            {tab === 'mas' && masSection === 'categorias' && (
               <button onClick={() => setCatModal({ type: 'income', color: COLOR_PALETTE[0] })} className="bg-emerald-500 hover:bg-emerald-400 text-white px-4 py-2 rounded-xl font-bold text-xs flex items-center gap-2 shadow-lg transition-all">
                 <Plus size={14} /> Nueva categoría
               </button>
             )}
-            {tab === 'dashboard' && (
+            {tab === 'analisis' && (
               <div className="flex items-center bg-slate-100 rounded-full p-1">
                 <button onClick={() => { const d = new Date(viewDate); d.setFullYear(d.getFullYear() - 1); setViewDate(d); }} className="p-1.5 hover:bg-white rounded-full transition-all"><ChevronLeft size={16} /></button>
                 <span className="px-3 text-xs font-bold min-w-[60px] text-center text-slate-600">{viewDate.getFullYear()}</span>
@@ -737,18 +754,67 @@ const Dinero: React.FC<DineroProps> = ({
           </div>
         </div>
 
-        {/* Tabs */}
+        {/* ── Tab bar principal (4 tabs) ── */}
         <div className="flex bg-slate-100 p-1 rounded-2xl gap-1">
-          {TABS.map(({ key, label, Icon }) => (
-            <button key={key} onClick={() => setTab(key)} className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-[10px] md:text-xs font-black uppercase transition-all ${tab === key ? 'bg-white shadow-sm text-slate-800' : 'text-slate-400 hover:text-slate-600'}`}>
-              <Icon size={12} /><span className="hidden sm:inline">{label}</span>
-            </button>
-          ))}
+          {TABS.map(({ key, label, Icon }) => {
+            const active = tab === key;
+            return (
+              <button
+                key={key}
+                onClick={() => setTab(key)}
+                className={`flex-1 flex flex-col sm:flex-row items-center justify-center gap-1 sm:gap-1.5 py-2.5 rounded-xl transition-all ${
+                  active
+                    ? 'bg-white shadow-sm text-slate-800'
+                    : 'text-slate-400 hover:text-slate-600 active:bg-white/60'
+                }`}
+              >
+                <Icon size={14} strokeWidth={active ? 2.5 : 2} />
+                <span className={`text-[9px] sm:text-[10px] font-black uppercase tracking-wide leading-none ${active ? 'text-slate-800' : 'text-slate-400'}`}>
+                  {label}
+                </span>
+              </button>
+            );
+          })}
         </div>
 
         {/* ─── MOVIMIENTOS ─── */}
         {tab === 'movimientos' && (
           <>
+            {/* Sub-tab: Transacciones | Presupuesto */}
+            <div className="flex bg-slate-100 p-1 rounded-2xl gap-1">
+              {([
+                { key: 'transacciones' as MovSubTab, label: 'Transacciones', Icon: List },
+                { key: 'presupuesto'   as MovSubTab, label: 'Presupuesto',   Icon: Target },
+              ]).map(({ key, label, Icon }) => {
+                const active = movSubTab === key;
+                return (
+                  <button
+                    key={key}
+                    onClick={() => setMovSubTab(key)}
+                    className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-xs font-black uppercase tracking-wide transition-all ${
+                      active ? 'bg-white shadow-sm text-slate-800' : 'text-slate-400 hover:text-slate-600'
+                    }`}
+                  >
+                    <Icon size={13} strokeWidth={active ? 2.5 : 2} />
+                    <span>{label}</span>
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* Presupuesto sub-tab */}
+            {movSubTab === 'presupuesto' && (
+              <PresupuestoTab
+                budgets={budgets}
+                setBudgets={setBudgets}
+                transactions={transactions}
+                finCategories={finCategories}
+                viewDate={viewDate}
+              />
+            )}
+
+            {/* Transacciones sub-tab */}
+            {movSubTab === 'transacciones' && (<>
             <div className="bg-white rounded-2xl border border-slate-100 px-4 md:px-5 py-4 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-3 md:gap-4">
               <div className="flex items-center gap-2">
                 <Wallet size={16} className="text-slate-400 shrink-0" />
@@ -940,11 +1006,50 @@ const Dinero: React.FC<DineroProps> = ({
             >
               <Plus size={24} />
             </button>
+            </>)} {/* end movSubTab === 'transacciones' */}
           </>
         )}
 
-        {/* ─── CATEGORÍAS ─── */}
-        {tab === 'categorias' && (
+        {/* ─── MÁS: sub-nav + contenido ─── */}
+        {tab === 'mas' && (
+          <>
+            {/* Sub-nav: Préstamos | Categorías */}
+            <div className="flex bg-slate-100 p-1 rounded-2xl gap-1">
+              {([
+                { key: 'prestamos'  as MasSection, label: 'Préstamos',  Icon: ArrowLeftRight },
+                { key: 'categorias' as MasSection, label: 'Categorías', Icon: Settings },
+              ]).map(({ key, label, Icon }) => {
+                const active = masSection === key;
+                return (
+                  <button
+                    key={key}
+                    onClick={() => setMasSection(key)}
+                    className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-xs font-black uppercase tracking-wide transition-all ${
+                      active ? 'bg-white shadow-sm text-slate-800' : 'text-slate-400 hover:text-slate-600'
+                    }`}
+                  >
+                    <Icon size={13} strokeWidth={active ? 2.5 : 2} />
+                    <span>{label}</span>
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* Préstamos */}
+            {masSection === 'prestamos' && (
+              <PrestamosTab
+                loans={loans}
+                setLoans={setLoans}
+                loanPayments={loanPayments}
+                setLoanPayments={setLoanPayments}
+                transactions={transactions}
+                setTransactions={setTransactions}
+                finCategories={finCategories}
+              />
+            )}
+
+            {/* Categorías */}
+            {masSection === 'categorias' && (
           <div className="space-y-6">
             {(['income', 'expense'] as const).map(type => {
               const sectionLabel = type === 'income' ? 'Ingresos' : 'Gastos';
@@ -981,10 +1086,12 @@ const Dinero: React.FC<DineroProps> = ({
               Restablecer categorías por defecto
             </button>
           </div>
+            )} {/* end masSection === 'categorias' */}
+          </>
         )}
 
-        {/* ─── DASHBOARD ─── */}
-        {tab === 'dashboard' && (
+        {/* ─── ANÁLISIS ─── */}
+        {tab === 'analisis' && (
           <div className="space-y-6">
             {/* Annual tracker */}
             <div className="bg-indigo-950 rounded-2xl p-5 text-white">
@@ -1386,18 +1493,6 @@ const Dinero: React.FC<DineroProps> = ({
           </div>
         )}
 
-        {/* ─── PRÉSTAMOS ─── */}
-        {tab === 'prestamos' && (
-          <PrestamosTab
-            loans={loans}
-            setLoans={setLoans}
-            loanPayments={loanPayments}
-            setLoanPayments={setLoanPayments}
-            transactions={transactions}
-            setTransactions={setTransactions}
-            finCategories={finCategories}
-          />
-        )}
       </div>
 
       {/* ─── MODAL: Transaction form ─── */}

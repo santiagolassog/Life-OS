@@ -12,14 +12,14 @@ import {
 import Dinero from './modules/Dinero';
 import Objetivos from './modules/Objetivos';
 import Revision from './modules/Revision';
-import type { Transaction, FinCategory, Goal, Savings, MonthBalance, SavingsWithdrawal, SavingsPocket, PocketFunding, SavingsYearBalance, Loan, LoanPayment } from '../types';
+import type { Transaction, FinCategory, Goal, Savings, MonthBalance, SavingsWithdrawal, SavingsPocket, PocketFunding, SavingsYearBalance, Loan, LoanPayment, Budget } from '../types';
 import { LOAN_OUT_CAT_ID, LOAN_IN_CAT_ID } from '../types';
 import { generateId, formatDateId as fmtDateId, getWeekDays, GRID_HOURS, fmtCurrency, getWeekId } from '../lib/utils';
 import {
   loadAllData, migrateFromLocalStorage,
   syncEvents, syncCategories, syncTransactions, syncFinCategories, syncGoals,
   syncSavings, syncMonthBalances, syncSavingsWithdrawals, syncSavingsPockets,
-  syncPocketFundings, syncSavingsYearBalances, syncLoans, syncLoanPayments,
+  syncPocketFundings, syncSavingsYearBalances, syncLoans, syncLoanPayments, syncBudgets,
 } from '../lib/db';
 import { useAuth } from '../hooks/useAuth';
 
@@ -237,6 +237,7 @@ const App = () => {
   const [savingsYearBalances, setSavingsYearBalances] = useState<SavingsYearBalance[]>([]);
   const [loans, setLoans]                           = useState<Loan[]>([]);
   const [loanPayments, setLoanPayments]             = useState<LoanPayment[]>([]);
+  const [budgets, setBudgets]                       = useState<Budget[]>([]);
 
   // ── Carga inicial desde Supabase (con migración automática de localStorage) ─
   useEffect(() => {
@@ -293,6 +294,7 @@ const App = () => {
         setSavingsYearBalances(d.savingsYearBalances);
         setLoans(d.loans);
         setLoanPayments(d.loanPayments);
+        setBudgets(d.budgets);
 
         // Sincronizar refs con los datos cargados ANTES de setLoading(false).
         // Así los sync-effects ven prev === curr y no re-suben nada a Supabase.
@@ -309,6 +311,7 @@ const App = () => {
         prevSavingsYearBalances.current = d.savingsYearBalances;
         prevLoans.current              = d.loans;
         prevLoanPayments.current       = d.loanPayments;
+        prevBudgets.current            = d.budgets;
 
       } catch (err) {
         console.error('Error al cargar datos de Supabase:', err);
@@ -333,6 +336,7 @@ const App = () => {
   const prevSavingsYearBalances = useRef(savingsYearBalances);
   const prevLoans               = useRef(loans);
   const prevLoanPayments        = useRef(loanPayments);
+  const prevBudgets             = useRef(budgets);
 
   // ── Sincronización con Supabase (fire-and-forget, sin bloquear la UI) ───────
   useEffect(() => {
@@ -412,6 +416,12 @@ const App = () => {
     syncLoanPayments(prevLoanPayments.current, loanPayments, userId).catch(console.error);
     prevLoanPayments.current = loanPayments;
   }, [loanPayments, loading, userId]);
+
+  useEffect(() => {
+    if (loading || !userId) return;
+    syncBudgets(prevBudgets.current, budgets, userId).catch(console.error);
+    prevBudgets.current = budgets;
+  }, [budgets, loading, userId]);
 
   useEffect(() => {
     const handleResize = () => setWindowWidth(window.innerWidth);
@@ -1140,6 +1150,8 @@ const App = () => {
               setLoans={setLoans}
               loanPayments={loanPayments}
               setLoanPayments={setLoanPayments}
+              budgets={budgets}
+              setBudgets={setBudgets}
               currentDate={currentDate}
             />
           )}

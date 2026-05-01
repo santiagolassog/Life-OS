@@ -122,3 +122,11 @@ export interface LoanPayment {
   transactionId?: string  // referencia al ingreso registrado
   createdAt: string
 }
+
+export interface Budget {
+  id: string
+  yearMonth: string       // "2026-05"
+  finCategoryId: string
+  amount: number
+  createdAt: string
+}
