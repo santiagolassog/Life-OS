@@ -130,3 +130,28 @@ export interface Budget {
   amount: number
   createdAt: string
 }
+
+export type TaskStatus   = 'todo' | 'inprogress' | 'done'
+export type TaskPriority = 'high' | 'medium' | 'low'
+
+export interface Task {
+  id: string
+  title: string
+  description?: string
+  status: TaskStatus
+  categoryId?: string     // id de área (Category)
+  priority: TaskPriority
+  deadline?: string       // "YYYY-MM-DD"
+  createdAt: string       // "YYYY-MM-DD"
+  startedAt?: string      // "YYYY-MM-DD" — se registra al pasar a inprogress
+  completedAt?: string    // "YYYY-MM-DD" — se registra al pasar a done
+}
+
+export interface ChecklistItem {
+  id: string
+  taskId: string
+  text: string
+  done: boolean
+  order: number
+  createdAt: string
+}

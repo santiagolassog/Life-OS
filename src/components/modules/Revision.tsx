@@ -1,14 +1,13 @@
 import React, { useMemo, useState, useCallback } from 'react';
 import {
   PieChart as RechartsPieChart, Pie, Cell, Tooltip, ResponsiveContainer,
-  BarChart, Bar, XAxis, YAxis, CartesianGrid
 } from 'recharts';
 import {
   BarChart3, Clock, DollarSign, Lightbulb,
   CheckCircle2, AlertTriangle,
   ChevronLeft, ChevronRight, Zap, Star, Download
 } from 'lucide-react';
-import type { Events, Categories, Transaction, FinCategory, Goal } from '../../types';
+import type { Events, Categories, Transaction, FinCategory, Goal, Task } from '../../types';
 import { LOAN_IN_CAT_ID, LOAN_OUT_CAT_ID } from '../../types';
 import { getWeekId, getWeekDays, formatDateId, GRID_HOURS, fmtCurrency as fmt } from '../../lib/utils';
 
@@ -27,6 +26,7 @@ interface RevisionProps {
   transactions: Transaction[];
   finCategories: FinCategory[];
   goals: Goal[];
+  tasks: Task[];
   currentDate: Date;
   onDownloadReport: () => void;
   isExporting: boolean;
@@ -35,7 +35,7 @@ interface RevisionProps {
 type Range = 'week' | 'month' | 'year';
 
 const Revision: React.FC<RevisionProps> = ({
-  events, categories, transactions, finCategories, goals, currentDate,
+  events, categories, transactions, finCategories, goals, tasks, currentDate,
   onDownloadReport, isExporting
 }) => {
   const [range, setRange] = useState<Range>('week');
@@ -159,6 +159,26 @@ const Revision: React.FC<RevisionProps> = ({
     const highIncomplete = weekGoals.filter(g => g.priority === 'high' && !g.completed);
     return { total, completed, rate, highIncomplete, weekGoals };
   }, [goals, weekId]);
+
+  // Tasks completed in period grouped by área
+  const taskStats = useMemo(() => {
+    const doneTasks = tasks.filter(t => t.status === 'done' && isInRange(t.completedAt ?? ''));
+    const total = doneTasks.length;
+    const inProgress = tasks.filter(t => t.status === 'inprogress' && isInRange(t.startedAt ?? '')).length;
+
+    // By category
+    const byCat: Record<string, { label: string; color: string; count: number }> = {};
+    doneTasks.forEach(t => {
+      const catId = t.categoryId ?? '__none__';
+      const cat   = t.categoryId ? categories[t.categoryId] : null;
+      if (!byCat[catId]) byCat[catId] = { label: cat?.label ?? 'Sin área', color: cat?.color ?? '#94a3b8', count: 0 };
+      byCat[catId].count++;
+    });
+    const byCatArr = Object.values(byCat).sort((a, b) => b.count - a.count);
+    const maxCount = byCatArr[0]?.count ?? 1;
+
+    return { total, inProgress, byCatArr, maxCount };
+  }, [tasks, isInRange, categories]);
 
   const insights = useMemo(() => {
     const list: Array<{ type: 'success' | 'warning' | 'danger' | 'info'; text: string }> = [];
@@ -328,23 +348,34 @@ const Revision: React.FC<RevisionProps> = ({
                 </div>
               ))}
             </div>
-            {range === 'week' && timeStats.dayBar.some(d => d.total > 0) && (
-              <div className="h-24">
-                <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={timeStats.dayBar} barSize={12}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#d1fae5" />
-                    <XAxis dataKey="day" tick={{ fontSize: 9, fontWeight: 800, fill: '#64748b' }} axisLine={false} tickLine={false} />
-                    <YAxis hide />
-                    <Tooltip
-                      contentStyle={{ borderRadius: '12px', border: 'none', fontSize: '10px', fontWeight: 800 }}
-                      formatter={(v: number, name: string) => [v, name === 'completed' ? 'Completadas' : 'Total']}
-                    />
-                    <Bar dataKey="total" fill="#d1fae5" radius={[4, 4, 0, 0]} />
-                    <Bar dataKey="completed" fill="#10b981" radius={[4, 4, 0, 0]} />
-                  </BarChart>
-                </ResponsiveContainer>
+            {/* Tasks completadas por área en el período */}
+            <div className="space-y-2 mt-1">
+              <div className="flex items-center justify-between">
+                <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-1">
+                  <CheckCircle2 size={10} className="text-emerald-500" /> Tareas completadas (Lista)
+                </p>
+                <span className="text-sm font-black text-emerald-600">{taskStats.total}</span>
               </div>
-            )}
+              {taskStats.byCatArr.length > 0 ? (
+                <div className="space-y-1.5">
+                  {taskStats.byCatArr.map(({ label, color, count }) => (
+                    <div key={label} className="flex items-center gap-2 min-w-0">
+                      <div className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: color }} />
+                      <span className="text-[10px] font-bold text-slate-600 truncate w-24 shrink-0">{label}</span>
+                      <div className="flex-1 h-1.5 bg-white/60 rounded-full overflow-hidden">
+                        <div className="h-full rounded-full transition-all duration-500" style={{ width: `${(count / taskStats.maxCount) * 100}%`, backgroundColor: color }} />
+                      </div>
+                      <span className="text-[10px] font-black text-slate-600 tabular-nums w-4 text-right shrink-0">{count}</span>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-[10px] text-emerald-400 italic font-bold">Sin tareas completadas en este período</p>
+              )}
+              {taskStats.inProgress > 0 && (
+                <p className="text-[9px] text-blue-400 font-bold">{taskStats.inProgress} en progreso</p>
+              )}
+            </div>
           </div>
 
           {/* R — REVISAR */}

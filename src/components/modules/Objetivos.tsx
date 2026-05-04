@@ -78,20 +78,12 @@ const Objetivos: React.FC<ObjetivosProps> = ({ goals, setGoals, categories, curr
               <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">Planificación semanal</p>
             </div>
           </div>
-          <div className="flex items-center gap-3">
-            <div className="flex items-center bg-slate-100 rounded-full p-1">
-              <button onClick={prevWeek} className="p-1.5 hover:bg-white rounded-full transition-all"><ChevronLeft size={16} /></button>
-              <span className="px-3 text-xs font-bold min-w-[150px] text-center text-slate-600">
-                {weekDays[0]?.toLocaleDateString('es-ES', { day: '2-digit', month: 'short' })} — {weekDays[6]?.toLocaleDateString('es-ES', { day: '2-digit', month: 'short', year: 'numeric' })}
-              </span>
-              <button onClick={nextWeek} className="p-1.5 hover:bg-white rounded-full transition-all"><ChevronRight size={16} /></button>
-            </div>
-            <button
-              onClick={() => { setEditGoal({ priority: 'medium', scope: 'weekly' }); setModalOpen(true); }}
-              className="bg-violet-500 hover:bg-violet-400 text-white px-4 py-2 rounded-xl font-bold text-xs flex items-center gap-2 shadow-lg transition-all"
-            >
-              <Plus size={14} /> Objetivo
-            </button>
+          <div className="flex items-center bg-slate-100 rounded-full p-1">
+            <button onClick={prevWeek} className="p-1.5 hover:bg-white rounded-full transition-all"><ChevronLeft size={16} /></button>
+            <span className="px-3 text-xs font-bold min-w-[150px] text-center text-slate-600">
+              {weekDays[0]?.toLocaleDateString('es-ES', { day: '2-digit', month: 'short' })} — {weekDays[6]?.toLocaleDateString('es-ES', { day: '2-digit', month: 'short', year: 'numeric' })}
+            </span>
+            <button onClick={nextWeek} className="p-1.5 hover:bg-white rounded-full transition-all"><ChevronRight size={16} /></button>
           </div>
         </div>
 
@@ -202,10 +194,18 @@ const Objetivos: React.FC<ObjetivosProps> = ({ goals, setGoals, categories, curr
         </div>
       </div>
 
+      {/* ── FAB ── */}
+      <button
+        onClick={() => { setEditGoal({ priority: 'medium', scope: 'weekly' }); setModalOpen(true); }}
+        className="fixed bottom-24 right-6 md:bottom-10 md:right-10 w-14 h-14 bg-violet-500 text-white rounded-full flex items-center justify-center shadow-lg shadow-violet-500/30 hover:bg-violet-600 hover:scale-105 active:scale-95 transition-all z-[100]"
+      >
+        <Plus size={24} />
+      </button>
+
       {/* Modal */}
       {modalOpen && editGoal && (
-        <div className="fixed inset-0 z-[200] flex items-end md:items-center justify-center bg-slate-900/60 backdrop-blur-sm animate-in fade-in">
-          <div className="bg-white rounded-t-3xl md:rounded-[2.5rem] w-full max-w-md shadow-2xl flex flex-col md:mx-4" style={{ maxHeight: 'calc(95vh - env(safe-area-inset-top, 0px))' }}>
+        <div className="fixed inset-0 z-[200] flex items-end md:items-center justify-center bg-slate-900/60 backdrop-blur-sm animate-in fade-in md:p-8">
+          <div className="bg-white rounded-t-3xl md:rounded-[2.5rem] w-full max-w-md shadow-2xl flex flex-col" style={{ maxHeight: 'min(92svh, calc(100vh - env(safe-area-inset-top, 0px)))' }}>
             <div className="flex justify-center pt-3 pb-1 shrink-0 md:hidden">
               <div className="w-10 h-1 bg-slate-200 rounded-full" />
             </div>
@@ -270,7 +270,7 @@ const Objetivos: React.FC<ObjetivosProps> = ({ goals, setGoals, categories, curr
                 </div>
               </div>
             </div>
-            <div className="px-5 py-4 border-t shrink-0" style={{ paddingBottom: 'max(1rem, env(safe-area-inset-bottom, 1rem))' }}>
+            <div className="px-5 py-4 border-t shrink-0 md:rounded-b-[2.5rem]" style={{ paddingBottom: 'max(1rem, env(safe-area-inset-bottom, 1rem))' }}>
               <button onClick={saveGoal} className="w-full bg-violet-600 text-white font-black py-4 rounded-2xl uppercase text-xs tracking-widest shadow-md hover:bg-violet-700 transition-all active:scale-[0.98]">
                 Guardar objetivo
               </button>

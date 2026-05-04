@@ -7,12 +7,13 @@ import {
 import {
   Clock, Save, Zap, ChevronLeft, ChevronRight, X, Plus,
   PieChart as PieChartIcon, Trash2, CalendarDays, Menu, Copy, CheckCircle2, Circle, Edit2, Palette,
-  Download, ListPlus, Target, BarChart3, History, DollarSign, Star, ChevronDown, LogOut
+  Download, ListPlus, Target, BarChart3, History, DollarSign, Star, ChevronDown, LogOut, CheckSquare
 } from 'lucide-react';
 import Dinero from './modules/Dinero';
 import Objetivos from './modules/Objetivos';
 import Revision from './modules/Revision';
-import type { Transaction, FinCategory, Goal, Savings, MonthBalance, SavingsWithdrawal, SavingsPocket, PocketFunding, SavingsYearBalance, Loan, LoanPayment, Budget } from '../types';
+import Lista from './modules/Lista';
+import type { Transaction, FinCategory, Goal, Savings, MonthBalance, SavingsWithdrawal, SavingsPocket, PocketFunding, SavingsYearBalance, Loan, LoanPayment, Budget, Task, ChecklistItem } from '../types';
 import { LOAN_OUT_CAT_ID, LOAN_IN_CAT_ID } from '../types';
 import { generateId, formatDateId as fmtDateId, getWeekDays, GRID_HOURS, fmtCurrency, getWeekId } from '../lib/utils';
 import {
@@ -20,6 +21,7 @@ import {
   syncEvents, syncCategories, syncTransactions, syncFinCategories, syncGoals,
   syncSavings, syncMonthBalances, syncSavingsWithdrawals, syncSavingsPockets,
   syncPocketFundings, syncSavingsYearBalances, syncLoans, syncLoanPayments, syncBudgets,
+  syncTasks, syncChecklistItems,
 } from '../lib/db';
 import { useAuth } from '../hooks/useAuth';
 
@@ -192,13 +194,14 @@ const CustomTimePicker = ({ label, hour, minute, onTimeChange, minTime = "00:00"
 };
 
 
-type SectionKey = 'tiempo' | 'dinero' | 'objetivos' | 'revision';
+type SectionKey = 'tiempo' | 'dinero' | 'objetivos' | 'lista' | 'revision';
 
 const SECTIONS: Array<{ key: SectionKey; label: string; Icon: React.FC<{ size?: number }> }> = [
-  { key: 'dinero', label: 'Dinero', Icon: DollarSign },
-  { key: 'tiempo', label: 'Tiempo', Icon: CalendarDays },
+  { key: 'dinero',    label: 'Dinero',    Icon: DollarSign },
+  { key: 'tiempo',    label: 'Tiempo',    Icon: CalendarDays },
+  { key: 'lista',     label: 'Lista',     Icon: CheckSquare },
   { key: 'objetivos', label: 'Objetivos', Icon: Target },
-  { key: 'revision', label: 'Revisión', Icon: BarChart3 },
+  { key: 'revision',  label: 'Revisión',  Icon: BarChart3 },
 ];
 
 const App = () => {
@@ -238,6 +241,8 @@ const App = () => {
   const [loans, setLoans]                           = useState<Loan[]>([]);
   const [loanPayments, setLoanPayments]             = useState<LoanPayment[]>([]);
   const [budgets, setBudgets]                       = useState<Budget[]>([]);
+  const [tasks, setTasks]                           = useState<Task[]>([]);
+  const [checklistItems, setChecklistItems]         = useState<ChecklistItem[]>([]);
 
   // ── Carga inicial desde Supabase (con migración automática de localStorage) ─
   useEffect(() => {
@@ -295,6 +300,8 @@ const App = () => {
         setLoans(d.loans);
         setLoanPayments(d.loanPayments);
         setBudgets(d.budgets);
+        setTasks(d.tasks);
+        setChecklistItems(d.checklistItems);
 
         // Sincronizar refs con los datos cargados ANTES de setLoading(false).
         // Así los sync-effects ven prev === curr y no re-suben nada a Supabase.
@@ -312,6 +319,8 @@ const App = () => {
         prevLoans.current              = d.loans;
         prevLoanPayments.current       = d.loanPayments;
         prevBudgets.current            = d.budgets;
+        prevTasks.current              = d.tasks;
+        prevChecklistItems.current     = d.checklistItems;
 
       } catch (err) {
         console.error('Error al cargar datos de Supabase:', err);
@@ -337,6 +346,8 @@ const App = () => {
   const prevLoans               = useRef(loans);
   const prevLoanPayments        = useRef(loanPayments);
   const prevBudgets             = useRef(budgets);
+  const prevTasks               = useRef(tasks);
+  const prevChecklistItems      = useRef(checklistItems);
 
   // ── Sincronización con Supabase (fire-and-forget, sin bloquear la UI) ───────
   useEffect(() => {
@@ -422,6 +433,18 @@ const App = () => {
     syncBudgets(prevBudgets.current, budgets, userId).catch(console.error);
     prevBudgets.current = budgets;
   }, [budgets, loading, userId]);
+
+  useEffect(() => {
+    if (loading || !userId) return;
+    syncTasks(prevTasks.current, tasks, userId).catch(console.error);
+    prevTasks.current = tasks;
+  }, [tasks, loading, userId]);
+
+  useEffect(() => {
+    if (loading || !userId) return;
+    syncChecklistItems(prevChecklistItems.current, checklistItems, userId).catch(console.error);
+    prevChecklistItems.current = checklistItems;
+  }, [checklistItems, loading, userId]);
 
   useEffect(() => {
     const handleResize = () => setWindowWidth(window.innerWidth);
@@ -786,7 +809,7 @@ const App = () => {
         {/* Sidebar — only in tiempo section */}
         {section === 'tiempo' && (
           <aside className={`fixed inset-y-0 left-0 z-[120] w-80 bg-white border-r transform transition-transform lg:relative lg:translate-x-0 ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'} flex flex-col shrink-0 overflow-y-auto custom-scrollbar`}>
-            <div className="p-6 space-y-8">
+            <div className="p-6 space-y-8 pb-24 lg:pb-6">
               <section>
                 <div className="flex items-center justify-between mb-4 px-1">
                   <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] flex items-center gap-2"><Palette size={14} className="text-indigo-600" /> Mis Áreas</h3>
@@ -1152,6 +1175,7 @@ const App = () => {
               setLoanPayments={setLoanPayments}
               budgets={budgets}
               setBudgets={setBudgets}
+              initialFinCategories={INITIAL_FIN_CATEGORIES}
               currentDate={currentDate}
             />
           )}
@@ -1164,6 +1188,16 @@ const App = () => {
               events={events}
             />
           )}
+          {section === 'lista' && (
+            <Lista
+              tasks={tasks}
+              setTasks={setTasks}
+              checklistItems={checklistItems}
+              setChecklistItems={setChecklistItems}
+              categories={categories}
+              currentDate={currentDate}
+            />
+          )}
           {section === 'revision' && (
             <Revision
               events={events}
@@ -1171,6 +1205,7 @@ const App = () => {
               transactions={transactions}
               finCategories={finCategories}
               goals={goals}
+              tasks={tasks}
               currentDate={currentDate}
               onDownloadReport={downloadReport}
               isExporting={isExporting}
@@ -1197,8 +1232,8 @@ const App = () => {
 
       {/* MODAL ACTIVIDAD */}
       {modalData && (
-        <div className="fixed inset-0 z-[200] flex items-end md:items-center justify-center bg-slate-900/60 backdrop-blur-sm animate-in fade-in">
-          <div className="bg-white rounded-t-3xl md:rounded-[2.5rem] shadow-2xl w-full max-w-xl flex flex-col md:mx-4" style={{ maxHeight: 'calc(95vh - env(safe-area-inset-top, 0px))' }}>
+        <div className="fixed inset-0 z-[200] flex items-end md:items-center justify-center bg-slate-900/60 backdrop-blur-sm animate-in fade-in md:p-8">
+          <div className="bg-white rounded-t-3xl md:rounded-[2.5rem] shadow-2xl w-full max-w-xl flex flex-col" style={{ maxHeight: 'min(92svh, calc(100vh - env(safe-area-inset-top, 0px)))' }}>
 
             {/* Drag handle — mobile */}
             <div className="flex justify-center pt-3 pb-1 shrink-0 md:hidden">
@@ -1347,7 +1382,7 @@ const App = () => {
             </div>
 
             {/* Footer */}
-            <div className={`px-5 py-4 md:px-8 flex gap-3 shrink-0 border-t transition-colors duration-300 ${modalData.completed ? 'bg-emerald-600 border-emerald-500' : 'bg-indigo-950 border-indigo-900'}`}
+            <div className={`px-5 py-4 md:px-8 flex gap-3 shrink-0 border-t transition-colors duration-300 md:rounded-b-[2.5rem] ${modalData.completed ? 'bg-emerald-600 border-emerald-500' : 'bg-indigo-950 border-indigo-900'}`}
               style={{ paddingBottom: 'max(1rem, env(safe-area-inset-bottom, 1rem))' }}>
               {modalData.isEditing && (
                 <div className="flex gap-2">
@@ -1366,8 +1401,8 @@ const App = () => {
 
       {/* MODAL ÁREA */}
       {catModal && (
-        <div className="fixed inset-0 z-[300] flex items-end md:items-center justify-center bg-slate-900/60 backdrop-blur-sm p-0 md:p-4 animate-in fade-in">
-          <div className="bg-white rounded-t-3xl md:rounded-[2rem] shadow-2xl w-full max-w-md flex flex-col max-h-[90vh]">
+        <div className="fixed inset-0 z-[300] flex items-end md:items-center justify-center bg-slate-900/60 backdrop-blur-sm animate-in fade-in md:p-8">
+          <div className="bg-white rounded-t-3xl md:rounded-[2rem] shadow-2xl w-full max-w-md flex flex-col" style={{ maxHeight: 'min(92svh, calc(100vh - env(safe-area-inset-top, 0px)))' }}>
             <div className="flex justify-center pt-3 pb-1 shrink-0 md:hidden">
               <div className="w-10 h-1 bg-slate-200 rounded-full" />
             </div>
@@ -1406,7 +1441,7 @@ const App = () => {
                 </div>
               </div>
             </div>
-            <div className="px-5 py-4 border-t flex gap-3 shrink-0" style={{ paddingBottom: 'max(1rem, env(safe-area-inset-bottom, 1rem))' }}>
+            <div className="px-5 py-4 border-t flex gap-3 shrink-0 md:rounded-b-[2rem]" style={{ paddingBottom: 'max(1rem, env(safe-area-inset-bottom, 1rem))' }}>
               <button onClick={() => handleDeleteCategory(catModal.id)} className="p-3.5 rounded-xl text-red-400 hover:bg-red-50 border border-red-100 transition-all active:scale-90"><Trash2 size={18}/></button>
               <button onClick={handleSaveCategory} className="flex-1 bg-indigo-600 text-white font-black rounded-2xl py-4 hover:bg-indigo-700 shadow-md text-xs uppercase tracking-widest transition-all active:scale-[0.98]">Guardar Cambios</button>
             </div>

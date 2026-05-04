@@ -42,6 +42,7 @@ interface DineroProps {
   setLoanPayments: React.Dispatch<React.SetStateAction<LoanPayment[]>>;
   budgets: Budget[];
   setBudgets: React.Dispatch<React.SetStateAction<Budget[]>>;
+  initialFinCategories: FinCategory[];
   currentDate: Date;
 }
 
@@ -54,26 +55,6 @@ const COLOR_PALETTE = [
 const POCKET_EMOJIS = ['💰', '🏠', '✈️', '🎓', '🚗', '📱', '🎉', '🏋️', '💊', '🛍️', '🎸', '🌿', '🎯', '🔑', '🏖️', '🎁', '💡', '🍕', '🎵', '⚽'];
 const POCKET_COLORS = ['#10b981', '#3b82f6', '#8b5cf6', '#f59e0b', '#ec4899', '#6366f1', '#ef4444', '#0ea5e9', '#f97316', '#14b8a6'];
 
-const DEFAULT_FIN_CATEGORIES: FinCategory[] = [
-  { id: 'finc-i1', label: 'Marca Personal', color: '#ec4899', type: 'income' },
-  { id: 'finc-i2', label: 'Mentalidad Campeona', color: '#f59e0b', type: 'income' },
-  { id: 'finc-i3', label: 'Comisiones', color: '#10b981', type: 'income' },
-  { id: 'finc-i4', label: 'Otros ingresos', color: '#94a3b8', type: 'income' },
-  { id: 'finc-e1', label: 'Vivienda', color: '#6366f1', type: 'expense', description: 'Arriendo, agua, energía, gas, internet y servicios del hogar' },
-  { id: 'finc-e2', label: 'Alimentación', color: '#f59e0b', type: 'expense', description: 'Mercado, tienda y compras de comida para preparar en casa' },
-  { id: 'finc-e3', label: 'Transporte', color: '#3b82f6', type: 'expense', description: 'Uber, Didi, transporte público, taxis y movilidad en general' },
-  { id: 'finc-e4', label: 'Salud', color: '#ef4444', type: 'expense', description: 'Médicos, medicamentos, fisioterapia, nutrición y citas de bienestar' },
-  { id: 'finc-e5', label: 'Ocio y Entretenimiento', color: '#ec4899', type: 'expense', description: 'Comidas fuera de casa, cine, salidas, discotecas y entretenimiento en general' },
-  { id: 'finc-e6', label: 'Suscripciones', color: '#8b5cf6', type: 'expense', description: 'Netflix, Spotify, Prime, Disney, Google One, gimnasio y apps digitales' },
-  { id: 'finc-e7', label: 'Impuestos y Comisiones', color: '#0ea5e9', type: 'expense', description: 'Comisiones de pasarelas de pago, impuestos y costos financieros varios' },
-  { id: 'finc-e8', label: 'Compromisos Financieros', color: '#f97316', type: 'expense', description: 'Cuotas a bancos, personas o entidades y pago de dispositivos a crédito' },
-  { id: 'finc-e9', label: 'Inversión Personal', color: '#14b8a6', type: 'expense', description: 'Cursos, libros, herramientas de aprendizaje y desarrollo propio' },
-  { id: 'finc-e10', label: 'Imprevistos', color: '#64748b', type: 'expense', description: 'Gastos no presupuestados que no encajan en ninguna otra categoría' },
-  { id: 'finc-e11', label: 'Ropa y Estilo', color: '#f43f5e', type: 'expense', description: 'Ropa, zapatos, gafas, cinturones y accesorios personales' },
-  { id: 'finc-e12', label: 'Hogar', color: '#84cc16', type: 'expense', description: 'Utensilios de cocina, muebles, mejoras del hogar, ferretería y compras para la casa' },
-  { id: 'finc-e13', label: 'Familia y Aportes', color: '#fb923c', type: 'expense', description: 'Apoyo a padres, esposa y contribuciones familiares sin retorno esperado' },
-  { id: 'finc-e14', label: 'Detalles y Regalos', color: '#a78bfa', type: 'expense', description: 'Regalos y detalles para amigos, pareja y familiares' },
-];
 
 const TABS: Array<{ key: DineroTab; label: string; Icon: React.FC<{ size?: number }> }> = [
   { key: 'movimientos', label: 'Movimientos', Icon: Receipt },
@@ -95,6 +76,7 @@ const Dinero: React.FC<DineroProps> = ({
   savingsYearBalances, setSavingsYearBalances,
   loans, setLoans, loanPayments, setLoanPayments,
   budgets, setBudgets,
+  initialFinCategories,
   currentDate,
 }) => {
   const today = getLocalISODate();
@@ -699,18 +681,13 @@ const Dinero: React.FC<DineroProps> = ({
           </div>
           <div className="flex items-center gap-2 flex-wrap justify-end">
             {tab === 'movimientos' && movSubTab === 'transacciones' && (
-              <>
-                <div className="flex items-center bg-slate-100 rounded-full p-1">
-                  <button onClick={() => { const d = new Date(viewDate); d.setMonth(d.getMonth() - 1); setViewDate(d); }} className="p-1.5 hover:bg-white rounded-full transition-all"><ChevronLeft size={16} /></button>
-                  <span className="px-3 text-xs font-bold min-w-[110px] text-center capitalize text-slate-600">
-                    {viewDate.toLocaleDateString('es-ES', { month: 'long', year: 'numeric' })}
-                  </span>
-                  <button onClick={() => { const d = new Date(viewDate); d.setMonth(d.getMonth() + 1); setViewDate(d); }} className="p-1.5 hover:bg-white rounded-full transition-all"><ChevronRight size={16} /></button>
-                </div>
-                <button onClick={() => openNew('expense')} className="bg-emerald-500 hover:bg-emerald-400 text-white px-4 py-2 rounded-xl font-bold text-xs flex items-center gap-2 shadow-lg transition-all">
-                  <Plus size={14} /> Agregar
-                </button>
-              </>
+              <div className="flex items-center bg-slate-100 rounded-full p-1">
+                <button onClick={() => { const d = new Date(viewDate); d.setMonth(d.getMonth() - 1); setViewDate(d); }} className="p-1.5 hover:bg-white rounded-full transition-all"><ChevronLeft size={16} /></button>
+                <span className="px-3 text-xs font-bold min-w-[110px] text-center capitalize text-slate-600">
+                  {viewDate.toLocaleDateString('es-ES', { month: 'long', year: 'numeric' })}
+                </span>
+                <button onClick={() => { const d = new Date(viewDate); d.setMonth(d.getMonth() + 1); setViewDate(d); }} className="p-1.5 hover:bg-white rounded-full transition-all"><ChevronRight size={16} /></button>
+              </div>
             )}
             {tab === 'movimientos' && movSubTab === 'presupuesto' && (
               <div className="flex items-center bg-slate-100 rounded-full p-1">
@@ -1081,9 +1058,18 @@ const Dinero: React.FC<DineroProps> = ({
                 </div>
               );
             })}
-            <button onClick={() => setFinCategories(DEFAULT_FIN_CATEGORIES)}
+            <button
+              onClick={() => {
+                // Restauración SEGURA: actualiza labels/colores de las categorías del sistema
+                // sin borrar las categorías personalizadas del usuario ni afectar transacciones existentes.
+                const builtInIds = new Set(initialFinCategories.map(c => c.id));
+                setFinCategories(prev => {
+                  const customCats = prev.filter(c => !builtInIds.has(c.id));
+                  return [...initialFinCategories, ...customCats];
+                });
+              }}
               className="w-full py-3 rounded-2xl border border-dashed border-slate-200 text-[10px] font-black text-slate-400 uppercase tracking-widest hover:border-slate-300 hover:text-slate-500 transition-all">
-              Restablecer categorías por defecto
+              Restaurar categorías del sistema
             </button>
           </div>
             )} {/* end masSection === 'categorias' */}
@@ -1497,8 +1483,8 @@ const Dinero: React.FC<DineroProps> = ({
 
       {/* ─── MODAL: Transaction form ─── */}
       {formOpen && editTx && (
-        <div className="fixed inset-0 z-[200] flex items-end md:items-center justify-center bg-slate-900/60 backdrop-blur-sm animate-in fade-in">
-          <div className="bg-white rounded-t-3xl md:rounded-[2.5rem] w-full max-w-md shadow-2xl flex flex-col md:mx-4" style={{ maxHeight: 'calc(95vh - env(safe-area-inset-top, 0px))' }}>
+        <div className="fixed inset-0 z-[200] flex items-end md:items-center justify-center bg-slate-900/60 backdrop-blur-sm animate-in fade-in md:p-8">
+          <div className="bg-white rounded-t-3xl md:rounded-[2.5rem] w-full max-w-md shadow-2xl flex flex-col md:mx-4" style={{ maxHeight: 'min(92svh, calc(100vh - env(safe-area-inset-top, 0px)))' }}>
             <div className="flex justify-center pt-3 pb-1 shrink-0 md:hidden">
               <div className="w-10 h-1 bg-slate-200 rounded-full" />
             </div>
@@ -1620,7 +1606,7 @@ const Dinero: React.FC<DineroProps> = ({
                     </div>
                   </div>
                 </div>
-                <div className="px-5 py-4 border-t shrink-0" style={{ paddingBottom: 'max(1rem, env(safe-area-inset-bottom, 1rem))' }}>
+                <div className="px-5 py-4 border-t shrink-0 md:rounded-b-[2rem]" style={{ paddingBottom: 'max(1rem, env(safe-area-inset-bottom, 1rem))' }}>
                   <button 
                     onClick={handleSave} 
                     disabled={!editTx?.description?.trim() || !amountInput || !parseCOPNumber(amountInput) || !editTx?.finCategoryId}
@@ -1659,7 +1645,7 @@ const Dinero: React.FC<DineroProps> = ({
                     </div>
                   </div>
                 </div>
-                <div className="px-5 py-4 space-y-2 border-t shrink-0" style={{ paddingBottom: 'max(1rem, env(safe-area-inset-bottom, 1rem))' }}>
+                <div className="px-5 py-4 space-y-2 border-t shrink-0 md:rounded-b-[2rem]" style={{ paddingBottom: 'max(1rem, env(safe-area-inset-bottom, 1rem))' }}>
                   <button onClick={() => handleConfirmSavings(true)} disabled={savingsPercent === 0}
                     className="w-full bg-violet-600 text-white font-black py-4 rounded-2xl uppercase text-xs tracking-widest shadow-lg hover:bg-violet-700 transition-all active:scale-[0.98] disabled:opacity-40 flex items-center justify-center gap-2">
                     <PiggyBank size={13} /> Sí, ahorrar ${fmt(savingsAmount)}
@@ -1706,7 +1692,7 @@ const Dinero: React.FC<DineroProps> = ({
                     </div>
                   </div>
                 </div>
-                <div className="px-5 py-4 border-t shrink-0" style={{ paddingBottom: 'max(1rem, env(safe-area-inset-bottom, 1rem))' }}>
+                <div className="px-5 py-4 border-t shrink-0 md:rounded-b-[2rem]" style={{ paddingBottom: 'max(1rem, env(safe-area-inset-bottom, 1rem))' }}>
                   <button onClick={handleConfirmLoanLink} disabled={!linkingLoanId}
                     className="w-full bg-emerald-500 text-white font-black py-4 rounded-2xl uppercase text-xs tracking-widest shadow-lg hover:bg-emerald-600 transition-all active:scale-[0.98] disabled:opacity-40">
                     Confirmar Vínculo
@@ -1721,8 +1707,8 @@ const Dinero: React.FC<DineroProps> = ({
 
       {/* ─── MODAL: Category CRUD ─── */}
       {catModal !== null && (
-        <div className="fixed inset-0 z-[200] flex items-end md:items-center justify-center bg-slate-900/60 backdrop-blur-sm animate-in fade-in">
-          <div className="bg-white rounded-t-3xl md:rounded-[2rem] w-full max-w-sm shadow-2xl flex flex-col md:mx-4 max-h-[90vh]">
+        <div className="fixed inset-0 z-[200] flex items-end md:items-center justify-center bg-slate-900/60 backdrop-blur-sm animate-in fade-in md:p-8">
+          <div className="bg-white rounded-t-3xl md:rounded-[2rem] w-full max-w-sm shadow-2xl flex flex-col" style={{ maxHeight: 'min(92svh, calc(100vh - env(safe-area-inset-top, 0px)))' }}>
             <div className="flex justify-center pt-3 pb-1 shrink-0 md:hidden">
               <div className="w-10 h-1 bg-slate-200 rounded-full" />
             </div>
@@ -1765,7 +1751,7 @@ const Dinero: React.FC<DineroProps> = ({
                 </div>
               </div>
             </div>
-            <div className="px-5 py-4 space-y-2 border-t shrink-0" style={{ paddingBottom: 'max(1rem, env(safe-area-inset-bottom, 1rem))' }}>
+            <div className="px-5 py-4 space-y-2 border-t shrink-0 md:rounded-b-[2rem]" style={{ paddingBottom: 'max(1rem, env(safe-area-inset-bottom, 1rem))' }}>
               <button onClick={saveCat} className="w-full bg-indigo-600 text-white font-black py-4 rounded-2xl uppercase text-xs tracking-widest shadow-md hover:bg-indigo-700 transition-all active:scale-[0.98]">Guardar</button>
               {catModal.id && (
                 <button onClick={() => deleteCat(catModal.id!)} className="w-full bg-red-50 text-red-500 font-black py-3 rounded-2xl uppercase text-xs tracking-widest hover:bg-red-100 transition-all active:scale-[0.98]">Eliminar categoría</button>
@@ -1777,8 +1763,8 @@ const Dinero: React.FC<DineroProps> = ({
 
       {/* ─── MODAL: Withdrawal ─── */}
       {withdrawalModal && (
-        <div className="fixed inset-0 z-[200] flex items-end md:items-center justify-center bg-slate-900/60 backdrop-blur-sm animate-in fade-in">
-          <div className="bg-white rounded-t-3xl md:rounded-[2rem] w-full max-w-md shadow-2xl flex flex-col md:mx-4" style={{ maxHeight: 'calc(95vh - env(safe-area-inset-top, 0px))' }}>
+        <div className="fixed inset-0 z-[200] flex items-end md:items-center justify-center bg-slate-900/60 backdrop-blur-sm animate-in fade-in md:p-8">
+          <div className="bg-white rounded-t-3xl md:rounded-[2rem] w-full max-w-md shadow-2xl flex flex-col md:mx-4" style={{ maxHeight: 'min(92svh, calc(100vh - env(safe-area-inset-top, 0px)))' }}>
             <div className="flex justify-center pt-3 pb-1 shrink-0 md:hidden">
               <div className="w-10 h-1 bg-slate-200 rounded-full" />
             </div>
@@ -1848,7 +1834,7 @@ const Dinero: React.FC<DineroProps> = ({
                 </div>
               </div>
             </div>
-            <div className="px-5 py-4 border-t shrink-0" style={{ paddingBottom: 'max(1rem, env(safe-area-inset-bottom, 1rem))' }}>
+            <div className="px-5 py-4 border-t shrink-0 md:rounded-b-[2rem]" style={{ paddingBottom: 'max(1rem, env(safe-area-inset-bottom, 1rem))' }}>
               <button onClick={handleWithdrawal} disabled={!withdrawalModal.amount || !withdrawalModal.description}
                 className="w-full bg-red-500 text-white font-black py-4 rounded-2xl uppercase text-xs tracking-widest shadow-md hover:bg-red-600 transition-all active:scale-[0.98] disabled:opacity-40">
                 Registrar retiro
@@ -1861,7 +1847,7 @@ const Dinero: React.FC<DineroProps> = ({
       {/* ─── MODAL: Allocate to pocket ─── */}
       {allocateModal && (
         <div className="fixed inset-0 z-[200] flex items-end md:items-center justify-center bg-slate-900/60 backdrop-blur-sm animate-in fade-in" key={allocateModal.pocketId}>
-          <div className="bg-white rounded-t-3xl md:rounded-[2rem] w-full max-w-md shadow-2xl flex flex-col md:mx-4" style={{ maxHeight: 'calc(95vh - env(safe-area-inset-top, 0px))' }}>
+          <div className="bg-white rounded-t-3xl md:rounded-[2rem] w-full max-w-md shadow-2xl flex flex-col md:mx-4" style={{ maxHeight: 'min(92svh, calc(100vh - env(safe-area-inset-top, 0px)))' }}>
             <div className="flex justify-center pt-3 pb-1 shrink-0 md:hidden">
               <div className="w-10 h-1 bg-slate-200 rounded-full" />
             </div>
@@ -1928,7 +1914,7 @@ const Dinero: React.FC<DineroProps> = ({
                 </div>
               </div>
             </div>
-            <div className="px-5 py-4 border-t shrink-0" style={{ paddingBottom: 'max(1rem, env(safe-area-inset-bottom, 1rem))' }}>
+            <div className="px-5 py-4 border-t shrink-0 md:rounded-b-[2rem]" style={{ paddingBottom: 'max(1rem, env(safe-area-inset-bottom, 1rem))' }}>
               <button onClick={handleAllocate} disabled={!allocateModal.amount || !allocateModal.pocketId}
                 className="w-full bg-indigo-600 text-white font-black py-4 rounded-2xl uppercase text-xs tracking-widest shadow-md hover:bg-indigo-700 transition-all active:scale-[0.98] disabled:opacity-40">
                 Confirmar movimiento
@@ -1940,8 +1926,8 @@ const Dinero: React.FC<DineroProps> = ({
 
       {/* ─── MODAL: Pocket CRUD ─── */}
       {pocketModal && (
-        <div className="fixed inset-0 z-[200] flex items-end md:items-center justify-center bg-slate-900/60 backdrop-blur-sm animate-in fade-in">
-          <div className="bg-white rounded-t-3xl md:rounded-[2rem] w-full max-w-sm shadow-2xl flex flex-col md:mx-4 max-h-[90vh]">
+        <div className="fixed inset-0 z-[200] flex items-end md:items-center justify-center bg-slate-900/60 backdrop-blur-sm animate-in fade-in md:p-8">
+          <div className="bg-white rounded-t-3xl md:rounded-[2rem] w-full max-w-sm shadow-2xl flex flex-col" style={{ maxHeight: 'min(92svh, calc(100vh - env(safe-area-inset-top, 0px)))' }}>
             <div className="flex justify-center pt-3 pb-1 shrink-0 md:hidden">
               <div className="w-10 h-1 bg-slate-200 rounded-full" />
             </div>
@@ -1987,7 +1973,7 @@ const Dinero: React.FC<DineroProps> = ({
                 </div>
               </div>
             </div>
-            <div className="px-5 py-4 space-y-2 border-t shrink-0" style={{ paddingBottom: 'max(1rem, env(safe-area-inset-bottom, 1rem))' }}>
+            <div className="px-5 py-4 space-y-2 border-t shrink-0 md:rounded-b-[2rem]" style={{ paddingBottom: 'max(1rem, env(safe-area-inset-bottom, 1rem))' }}>
               <button onClick={handleSavePocket} disabled={!pocketModal.name.trim()}
                 className="w-full bg-indigo-600 text-white font-black py-4 rounded-2xl uppercase text-xs tracking-widest shadow-md hover:bg-indigo-700 transition-all active:scale-[0.98] disabled:opacity-40">
                 Guardar bolsillo
@@ -2004,8 +1990,8 @@ const Dinero: React.FC<DineroProps> = ({
       )}
       {/* ─── MODAL: Edit Saving Movement ─── */}
       {editSaving && (
-        <div className="fixed inset-0 z-[200] flex items-end md:items-center justify-center bg-slate-900/60 backdrop-blur-sm animate-in fade-in">
-          <div className="bg-white rounded-t-3xl md:rounded-[2rem] w-full max-w-md shadow-2xl flex flex-col md:mx-4" style={{ maxHeight: 'calc(95vh - env(safe-area-inset-top, 0px))' }}>
+        <div className="fixed inset-0 z-[200] flex items-end md:items-center justify-center bg-slate-900/60 backdrop-blur-sm animate-in fade-in md:p-8">
+          <div className="bg-white rounded-t-3xl md:rounded-[2rem] w-full max-w-md shadow-2xl flex flex-col md:mx-4" style={{ maxHeight: 'min(92svh, calc(100vh - env(safe-area-inset-top, 0px)))' }}>
             <div className="flex justify-center pt-3 pb-1 shrink-0 md:hidden">
               <div className="w-10 h-1 bg-slate-200 rounded-full" />
             </div>
@@ -2084,7 +2070,7 @@ const Dinero: React.FC<DineroProps> = ({
                 </div>
               </div>
             </div>
-            <div className="px-5 py-4 border-t shrink-0" style={{ paddingBottom: 'max(1rem, env(safe-area-inset-bottom, 1rem))' }}>
+            <div className="px-5 py-4 border-t shrink-0 md:rounded-b-[2rem]" style={{ paddingBottom: 'max(1rem, env(safe-area-inset-bottom, 1rem))' }}>
               <button onClick={handleSaveEditSaving}
                 className="w-full bg-indigo-600 text-white font-black py-4 rounded-2xl uppercase text-xs tracking-widest shadow-md hover:bg-indigo-700 transition-all active:scale-[0.98]">
                 Guardar cambios

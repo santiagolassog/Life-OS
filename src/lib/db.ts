@@ -16,7 +16,7 @@ import type {
   Transaction, FinCategory, Goal,
   Savings, MonthBalance, SavingsWithdrawal,
   SavingsPocket, PocketFunding, SavingsYearBalance,
-  Loan, LoanPayment, Budget,
+  Loan, LoanPayment, Budget, Task, ChecklistItem,
 } from '../types'
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -446,23 +446,114 @@ export async function syncBudgets(prev: Budget[], curr: Budget[], userId: string
   await Promise.all(ops)
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// TASKS
+// ─────────────────────────────────────────────────────────────────────────────
+
+const rowToTask = (row: Record<string, unknown>): Task => ({
+  id:          row.id as string,
+  title:       row.title as string,
+  description: row.description as string | undefined,
+  status:      row.status as Task['status'],
+  categoryId:  row.category_id as string | undefined,
+  priority:    row.priority as Task['priority'],
+  deadline:    row.deadline as string | undefined,
+  createdAt:   row.created_at as string,
+  startedAt:   row.started_at as string | undefined,
+  completedAt: row.completed_at as string | undefined,
+})
+
+const taskToDb = (t: Task) => ({
+  id:           t.id,
+  title:        t.title,
+  description:  t.description ?? null,
+  status:       t.status,
+  category_id:  t.categoryId ?? null,
+  priority:     t.priority,
+  deadline:     t.deadline ?? null,
+  created_at:   t.createdAt,
+  started_at:   t.startedAt ?? null,
+  completed_at: t.completedAt ?? null,
+})
+
+export async function loadTasks(): Promise<Task[]> {
+  const { data, error } = await supabase.from('tasks').select('*')
+  if (error) { console.error('loadTasks:', error); return [] }
+  return data?.map(rowToTask) ?? []
+}
+
+export async function syncTasks(prev: Task[], curr: Task[], userId: string) {
+  const { upserted, deletedIds } = diffArrays(prev, curr)
+  const ops: Promise<unknown>[] = []
+  if (deletedIds.length > 0)
+    ops.push(supabase.from('tasks').delete().in('id', deletedIds)
+      .then(({ error }) => { if (error) console.error('syncTasks delete:', error) }))
+  if (upserted.length > 0)
+    ops.push(supabase.from('tasks').upsert(upserted.map(t => withUser(taskToDb(t), userId)))
+      .then(({ error }) => { if (error) console.error('syncTasks upsert:', error) }))
+  await Promise.all(ops)
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// CHECKLIST ITEMS
+// ─────────────────────────────────────────────────────────────────────────────
+
+const rowToChecklistItem = (row: Record<string, unknown>): ChecklistItem => ({
+  id:        row.id as string,
+  taskId:    row.task_id as string,
+  text:      row.text as string,
+  done:      row.done as boolean,
+  order:     row.order as number,
+  createdAt: row.created_at as string,
+})
+
+const checklistItemToDb = (c: ChecklistItem) => ({
+  id:         c.id,
+  task_id:    c.taskId,
+  text:       c.text,
+  done:       c.done,
+  order:      c.order,
+  created_at: c.createdAt,
+})
+
+export async function loadChecklistItems(): Promise<ChecklistItem[]> {
+  const { data, error } = await supabase.from('checklist_items').select('*')
+  if (error) { console.error('loadChecklistItems:', error); return [] }
+  return data?.map(rowToChecklistItem) ?? []
+}
+
+export async function syncChecklistItems(prev: ChecklistItem[], curr: ChecklistItem[], userId: string) {
+  const { upserted, deletedIds } = diffArrays(prev, curr)
+  const ops: Promise<unknown>[] = []
+  if (deletedIds.length > 0)
+    ops.push(supabase.from('checklist_items').delete().in('id', deletedIds)
+      .then(({ error }) => { if (error) console.error('syncChecklistItems delete:', error) }))
+  if (upserted.length > 0)
+    ops.push(supabase.from('checklist_items').upsert(upserted.map(c => withUser(checklistItemToDb(c), userId)))
+      .then(({ error }) => { if (error) console.error('syncChecklistItems upsert:', error) }))
+  await Promise.all(ops)
+}
+
 /** Carga todos los datos en paralelo. */
 export async function loadAllData() {
   const [
     events, categories, transactions, finCategories, goals,
     savings, monthBalances, savingsWithdrawals, savingsPockets,
     pocketFundings, savingsYearBalances, loans, loanPayments, budgets,
+    tasks, checklistItems,
   ] = await Promise.all([
     loadEvents(), loadCategories(), loadTransactions(), loadFinCategories(),
     loadGoals(), loadSavings(), loadMonthBalances(), loadSavingsWithdrawals(),
     loadSavingsPockets(), loadPocketFundings(), loadSavingsYearBalances(),
     loadLoans(), loadLoanPayments(), loadBudgets(),
+    loadTasks(), loadChecklistItems(),
   ])
 
   return {
     events, categories, transactions, finCategories, goals,
     savings, monthBalances, savingsWithdrawals, savingsPockets,
     pocketFundings, savingsYearBalances, loans, loanPayments, budgets,
+    tasks, checklistItems,
   }
 }
 
@@ -500,6 +591,13 @@ export async function syncCategories(prev: Categories, curr: Categories, userId:
 
 export async function syncTransactions(prev: Transaction[], curr: Transaction[], userId: string) {
   const { upserted, deletedIds } = diffArrays(prev, curr)
+
+  // Guarda: nunca borrar todo el historial si curr quedó vacío accidentalmente
+  if (deletedIds.length > 0 && curr.length === 0 && prev.length > 0) {
+    console.warn('syncTransactions: curr está vacío con prev no vacío, abortando para evitar borrado masivo.')
+    return
+  }
+
   const ops: Promise<unknown>[] = []
   if (deletedIds.length > 0)
     ops.push(supabase.from('transactions').delete().in('id', deletedIds).then(({ error }) => { if (error) console.error('syncTransactions delete:', error) }))
@@ -510,6 +608,18 @@ export async function syncTransactions(prev: Transaction[], curr: Transaction[],
 
 export async function syncFinCategories(prev: FinCategory[], curr: FinCategory[], userId: string) {
   const { upserted, deletedIds } = diffArrays(prev, curr)
+
+  // Guarda de seguridad: nunca borrar más categorías de las que se están añadiendo en la misma operación.
+  // Esto previene borrados masivos accidentales por desfase del ref previo.
+  if (deletedIds.length > 0 && curr.length === 0) {
+    console.warn('syncFinCategories: curr está vacío, abortando para evitar borrado masivo.')
+    return
+  }
+  if (deletedIds.length > 0 && deletedIds.length >= prev.length && upserted.length === 0) {
+    console.warn('syncFinCategories: intento de borrar todas las categorías sin añadir ninguna, abortando.')
+    return
+  }
+
   const ops: Promise<unknown>[] = []
   if (deletedIds.length > 0)
     ops.push(supabase.from('fin_categories').delete().in('id', deletedIds).then(({ error }) => { if (error) console.error('syncFinCategories delete:', error) }))
