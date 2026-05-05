@@ -1,7 +1,7 @@
 import React, { useState, useMemo } from 'react';
-import { Plus, X, CheckCircle2, Circle, Trash2, Target, ChevronLeft, ChevronRight } from 'lucide-react';
-import type { Goal, Categories } from '../../types';
-import { generateId, getWeekId, getWeekDays, PRIORITY_CONFIG as PRIORITY } from '../../lib/utils';
+import { Plus, X, CheckCircle2, Circle, Trash2, Target, ChevronLeft, ChevronRight, Edit2 } from 'lucide-react';
+import type { Goal, Categories, Task, TaskPriority } from '../../types';
+import { generateId, getWeekId, getWeekDays, PRIORITY_CONFIG as PRIORITY, getLocalISODate } from '../../lib/utils';
 
 interface ObjetivosProps {
   goals: Goal[];
@@ -9,22 +9,25 @@ interface ObjetivosProps {
   categories: Categories;
   currentDate: Date;
   events: Record<string, any[]>;
+  tasks: Task[];
+  setTasks: React.Dispatch<React.SetStateAction<Task[]>>;
 }
 
-const Objetivos: React.FC<ObjetivosProps> = ({ goals, setGoals, categories, currentDate }) => {
+const Objetivos: React.FC<ObjetivosProps> = ({ goals, setGoals, categories, currentDate, tasks, setTasks }) => {
   const [viewDate, setViewDate] = useState(new Date(currentDate));
   const [modalOpen, setModalOpen] = useState(false);
   const [editGoal, setEditGoal] = useState<Partial<Goal> | null>(null);
+  const [pendingTasks, setPendingTasks] = useState<{ id: string; title: string; priority: TaskPriority }[]>([]);
 
-  const weekId = useMemo(() => getWeekId(viewDate), [viewDate]);
+  const weekId  = useMemo(() => getWeekId(viewDate), [viewDate]);
   const weekDays = useMemo(() => getWeekDays(viewDate), [viewDate]);
 
   const weekGoals = useMemo(() => goals.filter(g => g.weekId === weekId), [goals, weekId]);
 
   const stats = useMemo(() => {
-    const total = weekGoals.length;
+    const total     = weekGoals.length;
     const completed = weekGoals.filter(g => g.completed).length;
-    const rate = total > 0 ? Math.round((completed / total) * 100) : 0;
+    const rate      = total > 0 ? Math.round((completed / total) * 100) : 0;
     const byPriority = (['high', 'medium', 'low'] as const).reduce((acc, p) => {
       const pGoals = weekGoals.filter(g => g.priority === p);
       acc[p] = { total: pGoals.length, completed: pGoals.filter(g => g.completed).length };
@@ -32,6 +35,8 @@ const Objetivos: React.FC<ObjetivosProps> = ({ goals, setGoals, categories, curr
     }, {} as Record<string, { total: number; completed: number }>);
     return { total, completed, rate, byPriority };
   }, [weekGoals]);
+
+  // ── Acciones ──────────────────────────────────────────────────────────────
 
   const toggleGoal = (id: string) => {
     setGoals(prev => prev.map(g =>
@@ -41,27 +46,68 @@ const Objetivos: React.FC<ObjetivosProps> = ({ goals, setGoals, categories, curr
     ));
   };
 
+  const openCreate = () => {
+    setEditGoal({ priority: 'medium', scope: 'weekly' });
+    setPendingTasks([]);
+    setModalOpen(true);
+  };
+
+  const openEdit = (goal: Goal) => {
+    setEditGoal({ ...goal });
+    setPendingTasks([]);
+    setModalOpen(true);
+  };
+
+  const closeModal = () => {
+    setEditGoal(null);
+    setPendingTasks([]);
+    setModalOpen(false);
+  };
+
   const saveGoal = () => {
     if (!editGoal?.title?.trim()) return;
+    const goalId = editGoal.id || generateId();
     const goal: Goal = {
-      id: editGoal.id || generateId(),
-      title: editGoal.title.trim(),
+      id:          goalId,
+      title:       editGoal.title.trim(),
       description: editGoal.description,
-      priority: (editGoal.priority as 'high' | 'medium' | 'low') || 'medium',
-      scope: (editGoal.scope as 'weekly' | 'daily') || 'weekly',
+      priority:    (editGoal.priority as 'high' | 'medium' | 'low') || 'medium',
+      scope:       (editGoal.scope as 'weekly' | 'daily') || 'weekly',
       weekId,
-      dateId: editGoal.dateId,
-      category: editGoal.category,
-      completed: false,
-      createdAt: editGoal.createdAt || new Date().toISOString(),
+      dateId:      editGoal.dateId,
+      category:    editGoal.category,
+      completed:   editGoal.completed ?? false,
+      completedAt: editGoal.completedAt,
+      createdAt:   editGoal.createdAt || new Date().toISOString(),
     };
     setGoals(prev => [...prev.filter(g => g.id !== goal.id), goal]);
-    setEditGoal(null);
-    setModalOpen(false);
+
+    // Crear actividades pendientes enlazadas a este objetivo
+    const today       = getLocalISODate();
+    const validPending = pendingTasks.filter(pt => pt.title.trim());
+    if (validPending.length > 0) {
+      const newTasks: Task[] = validPending.map(pt => ({
+        id:        generateId(),
+        title:     pt.title.trim(),
+        priority:  pt.priority,
+        status:    'todo' as const,
+        goalId:    goalId,
+        createdAt: today,
+      }));
+      setTasks(prev => [...prev, ...newTasks]);
+    }
+
+    closeModal();
+  };
+
+  const addPendingTask = () => {
+    setPendingTasks(prev => [...prev, { id: generateId(), title: '', priority: 'medium' }]);
   };
 
   const prevWeek = () => { const d = new Date(viewDate); d.setDate(d.getDate() - 7); setViewDate(d); };
   const nextWeek = () => { const d = new Date(viewDate); d.setDate(d.getDate() + 7); setViewDate(d); };
+
+  const isEditing = !!editGoal?.id;
 
   return (
     <div className="flex-1 overflow-y-auto custom-scrollbar">
@@ -105,7 +151,7 @@ const Objetivos: React.FC<ObjetivosProps> = ({ goals, setGoals, categories, curr
           <div className="flex gap-5 mt-3">
             {(['high', 'medium', 'low'] as const).map(p => {
               const cfg = PRIORITY[p];
-              const s = stats.byPriority[p] || { total: 0, completed: 0 };
+              const s   = stats.byPriority[p] || { total: 0, completed: 0 };
               return (
                 <div key={p} className="flex items-center gap-1.5">
                   <div className={`w-2 h-2 rounded-full ${cfg.dot}`} />
@@ -119,7 +165,7 @@ const Objetivos: React.FC<ObjetivosProps> = ({ goals, setGoals, categories, curr
         {/* Goals list */}
         <div className="space-y-6">
           {(['high', 'medium', 'low'] as const).map(priority => {
-            const cfg = PRIORITY[priority];
+            const cfg    = PRIORITY[priority];
             const pGoals = weekGoals.filter(g => g.priority === priority);
             if (pGoals.length === 0) return null;
             return (
@@ -133,7 +179,9 @@ const Objetivos: React.FC<ObjetivosProps> = ({ goals, setGoals, categories, curr
                 </div>
                 <div className="space-y-2">
                   {pGoals.map(goal => {
-                    const cat = goal.category ? categories[goal.category] : null;
+                    const cat       = goal.category ? categories[goal.category] : null;
+                    const goalTasks = tasks.filter(t => t.goalId === goal.id);
+                    const doneTasks = goalTasks.filter(t => t.status === 'done').length;
                     return (
                       <div
                         key={goal.id}
@@ -154,7 +202,7 @@ const Objetivos: React.FC<ObjetivosProps> = ({ goals, setGoals, categories, curr
                           {goal.description && (
                             <p className="text-[10px] text-slate-400 mt-0.5 leading-snug">{goal.description}</p>
                           )}
-                          <div className="flex items-center gap-3 mt-1.5">
+                          <div className="flex items-center gap-3 mt-1.5 flex-wrap">
                             {cat && (
                               <div className="flex items-center gap-1">
                                 <div className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: cat.color }} />
@@ -165,11 +213,33 @@ const Objetivos: React.FC<ObjetivosProps> = ({ goals, setGoals, categories, curr
                               {goal.scope === 'weekly' ? 'Semanal' : 'Diario'}
                             </span>
                           </div>
+                          {/* Task progress mini-bar */}
+                          {goalTasks.length > 0 && (
+                            <div className="flex items-center gap-2 mt-2">
+                              <span className="text-[9px] font-bold text-violet-500 shrink-0">
+                                {doneTasks}/{goalTasks.length} actividades
+                              </span>
+                              <div className="flex-1 h-1 bg-slate-200 rounded-full overflow-hidden">
+                                <div
+                                  className="h-full bg-violet-400 rounded-full transition-all duration-500"
+                                  style={{ width: `${Math.round((doneTasks / goalTasks.length) * 100)}%` }}
+                                />
+                              </div>
+                            </div>
+                          )}
                         </div>
-                        <button
-                          onClick={() => setGoals(prev => prev.filter(g => g.id !== goal.id))}
-                          className="opacity-0 group-hover:opacity-100 p-1 text-slate-300 hover:text-red-500 transition-all shrink-0 mt-0.5"
-                        ><Trash2 size={14} /></button>
+                        <div className="flex items-center gap-0.5 shrink-0 mt-0.5">
+                          <button
+                            onClick={() => openEdit(goal)}
+                            className="opacity-0 group-hover:opacity-100 p-1 text-slate-300 hover:text-violet-500 transition-all"
+                            title="Editar objetivo"
+                          ><Edit2 size={13} /></button>
+                          <button
+                            onClick={() => setGoals(prev => prev.filter(g => g.id !== goal.id))}
+                            className="opacity-0 group-hover:opacity-100 p-1 text-slate-300 hover:text-red-500 transition-all"
+                            title="Eliminar objetivo"
+                          ><Trash2 size={14} /></button>
+                        </div>
                       </div>
                     );
                   })}
@@ -184,7 +254,7 @@ const Objetivos: React.FC<ObjetivosProps> = ({ goals, setGoals, categories, curr
               <p className="text-sm font-bold text-slate-400">Sin objetivos esta semana</p>
               <p className="text-xs text-slate-300 mt-1">Define qué quieres lograr esta semana</p>
               <button
-                onClick={() => { setEditGoal({ priority: 'medium', scope: 'weekly' }); setModalOpen(true); }}
+                onClick={openCreate}
                 className="mt-5 bg-violet-500 text-white px-6 py-2.5 rounded-xl font-bold text-xs hover:bg-violet-600 transition-all"
               >
                 <Plus size={12} className="inline mr-1" /> Crear primer objetivo
@@ -196,7 +266,7 @@ const Objetivos: React.FC<ObjetivosProps> = ({ goals, setGoals, categories, curr
 
       {/* ── FAB ── */}
       <button
-        onClick={() => { setEditGoal({ priority: 'medium', scope: 'weekly' }); setModalOpen(true); }}
+        onClick={openCreate}
         className="fixed bottom-24 right-6 md:bottom-10 md:right-10 w-14 h-14 bg-violet-500 text-white rounded-full flex items-center justify-center shadow-lg shadow-violet-500/30 hover:bg-violet-600 hover:scale-105 active:scale-95 transition-all z-[100]"
       >
         <Plus size={24} />
@@ -210,23 +280,31 @@ const Objetivos: React.FC<ObjetivosProps> = ({ goals, setGoals, categories, curr
               <div className="w-10 h-1 bg-slate-200 rounded-full" />
             </div>
             <div className="px-5 py-4 border-b flex justify-between items-center shrink-0">
-              <h3 className="text-base font-black text-slate-800 uppercase italic">Nuevo objetivo</h3>
-              <button onClick={() => setModalOpen(false)} className="p-2.5 hover:bg-slate-100 rounded-full transition-all"><X size={18} /></button>
+              <h3 className="text-base font-black text-slate-800 uppercase italic">
+                {isEditing ? 'Editar objetivo' : 'Nuevo objetivo'}
+              </h3>
+              <button onClick={closeModal} className="p-2.5 hover:bg-slate-100 rounded-full transition-all"><X size={18} /></button>
             </div>
             <div className="flex-1 overflow-y-auto custom-scrollbar">
               <div className="p-5 space-y-5">
+
+                {/* Título */}
                 <div>
                   <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 block">¿Qué quieres lograr?</label>
                   <input type="text" value={editGoal.title || ''} onChange={e => setEditGoal({ ...editGoal, title: e.target.value })}
                     className="w-full bg-slate-50 border-2 border-transparent focus:border-violet-200 rounded-2xl p-4 font-bold text-base outline-none transition-all"
                     placeholder="Escribe tu objetivo..." autoFocus />
                 </div>
+
+                {/* Descripción */}
                 <div>
                   <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 block">Descripción (opcional)</label>
                   <textarea value={editGoal.description || ''} onChange={e => setEditGoal({ ...editGoal, description: e.target.value })}
                     className="w-full bg-slate-50 border-2 border-transparent focus:border-violet-200 rounded-2xl p-4 font-bold text-sm outline-none resize-none h-20 transition-all"
                     placeholder="¿Cómo lo vas a lograr?" />
                 </div>
+
+                {/* Prioridad */}
                 <div>
                   <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 block">Prioridad</label>
                   <div className="grid grid-cols-3 gap-2">
@@ -241,6 +319,8 @@ const Objetivos: React.FC<ObjetivosProps> = ({ goals, setGoals, categories, curr
                     })}
                   </div>
                 </div>
+
+                {/* Alcance */}
                 <div>
                   <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 block">Alcance</label>
                   <div className="flex bg-slate-100 p-1 rounded-2xl gap-1">
@@ -252,6 +332,8 @@ const Objetivos: React.FC<ObjetivosProps> = ({ goals, setGoals, categories, curr
                     ))}
                   </div>
                 </div>
+
+                {/* Área */}
                 <div>
                   <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 block">Área (opcional)</label>
                   <div className="grid grid-cols-4 gap-2">
@@ -268,11 +350,90 @@ const Objetivos: React.FC<ObjetivosProps> = ({ goals, setGoals, categories, curr
                     ))}
                   </div>
                 </div>
+
+                {/* ── Actividades ── */}
+                <div>
+                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 block">
+                    Actividades <span className="normal-case font-bold text-slate-300">(opcional)</span>
+                  </label>
+
+                  {/* Actividades ya existentes (modo edición) */}
+                  {isEditing && (() => {
+                    const linkedTasks = tasks.filter(t => t.goalId === editGoal?.id);
+                    if (linkedTasks.length === 0) return null;
+                    return (
+                      <div className="mb-3 bg-slate-50 rounded-2xl p-3 space-y-2">
+                        <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1.5">Ya en lista</p>
+                        {linkedTasks.map(t => (
+                          <div key={t.id} className="flex items-center gap-2">
+                            <div className={`w-3 h-3 rounded-full shrink-0 border-2 ${
+                              t.status === 'done' ? 'bg-emerald-500 border-emerald-500' :
+                              t.status === 'inprogress' ? 'bg-blue-400 border-blue-400' :
+                              'border-slate-300 bg-white'
+                            }`} />
+                            <span className={`text-xs flex-1 truncate ${t.status === 'done' ? 'line-through text-slate-400' : 'text-slate-700 font-medium'}`}>
+                              {t.title}
+                            </span>
+                            <span className="text-[9px] text-slate-400 font-bold uppercase shrink-0">
+                              {t.status === 'done' ? 'Hecho' : t.status === 'inprogress' ? 'En curso' : 'Pendiente'}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    );
+                  })()}
+
+                  {/* Actividades nuevas a crear */}
+                  {pendingTasks.length > 0 && (
+                    <div className="space-y-2 mb-3">
+                      {pendingTasks.map((pt, i) => (
+                        <div key={pt.id} className="flex items-center gap-2">
+                          <input
+                            type="text"
+                            value={pt.title}
+                            onChange={e => setPendingTasks(prev => prev.map((t, idx) => idx === i ? { ...t, title: e.target.value } : t))}
+                            placeholder="Nombre de la actividad..."
+                            className="flex-1 bg-slate-50 border-2 border-transparent focus:border-violet-200 rounded-xl px-3 py-2.5 text-sm font-bold outline-none transition-all min-w-0"
+                          />
+                          {/* Selector de prioridad compacto */}
+                          <div className="flex gap-1 shrink-0">
+                            {(['high', 'medium', 'low'] as const).map(p => {
+                              const pc = PRIORITY[p];
+                              return (
+                                <button
+                                  key={p}
+                                  onClick={() => setPendingTasks(prev => prev.map((t, idx) => idx === i ? { ...t, priority: p } : t))}
+                                  className={`w-6 h-6 rounded-full transition-all border-2 ${pt.priority === p ? `${pc.dot} border-transparent` : 'bg-white border-slate-200'}`}
+                                  title={pc.label}
+                                />
+                              );
+                            })}
+                          </div>
+                          <button
+                            onClick={() => setPendingTasks(prev => prev.filter((_, idx) => idx !== i))}
+                            className="p-1 text-slate-300 hover:text-red-400 transition-all shrink-0"
+                          >
+                            <X size={13} />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  <button
+                    onClick={addPendingTask}
+                    className="flex items-center gap-1.5 text-[10px] font-black text-violet-400 hover:text-violet-600 uppercase tracking-widest transition-all py-1"
+                  >
+                    <Plus size={11} />
+                    Añadir actividad
+                  </button>
+                </div>
+
               </div>
             </div>
             <div className="px-5 py-4 border-t shrink-0 md:rounded-b-[2.5rem]" style={{ paddingBottom: 'max(1rem, env(safe-area-inset-bottom, 1rem))' }}>
               <button onClick={saveGoal} className="w-full bg-violet-600 text-white font-black py-4 rounded-2xl uppercase text-xs tracking-widest shadow-md hover:bg-violet-700 transition-all active:scale-[0.98]">
-                Guardar objetivo
+                {isEditing ? 'Guardar cambios' : 'Guardar objetivo'}
               </button>
             </div>
           </div>

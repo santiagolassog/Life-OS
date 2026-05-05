@@ -1186,6 +1186,8 @@ const App = () => {
               categories={categories}
               currentDate={currentDate}
               events={events}
+              tasks={tasks}
+              setTasks={setTasks}
             />
           )}
           {section === 'lista' && (
@@ -1195,6 +1197,7 @@ const App = () => {
               checklistItems={checklistItems}
               setChecklistItems={setChecklistItems}
               categories={categories}
+              goals={goals}
               currentDate={currentDate}
             />
           )}

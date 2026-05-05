@@ -564,7 +564,7 @@ const Dinero: React.FC<DineroProps> = ({
     if (!catModal?.label?.trim() || !catModal.color || !catModal.type) return;
     const cat: FinCategory = {
       id: catModal.id || generateId(), label: catModal.label.trim(),
-      color: catModal.color, type: catModal.type as 'income' | 'expense' | 'both',
+      color: catModal.color, type: catModal.type as 'income' | 'expense',
       description: catModal.description,
     };
     setFinCategories(prev => [...prev.filter(c => c.id !== cat.id), cat]);
@@ -1731,10 +1731,10 @@ const Dinero: React.FC<DineroProps> = ({
                 <div>
                   <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 block">Tipo</label>
                   <div className="flex bg-slate-100 p-1 rounded-2xl gap-1">
-                    {(['income', 'expense', 'both'] as const).map(t => (
+                    {(['income', 'expense'] as const).map(t => (
                       <button key={t} onClick={() => setCatModal({ ...catModal, type: t })}
-                        className={`flex-1 py-3 rounded-xl text-[10px] font-black uppercase transition-all active:scale-[0.98] ${catModal.type === t ? (t === 'income' ? 'bg-emerald-500 text-white shadow-md' : t === 'expense' ? 'bg-red-500 text-white shadow-md' : 'bg-indigo-500 text-white shadow-md') : 'text-slate-400'}`}>
-                        {t === 'income' ? 'Ingreso' : t === 'expense' ? 'Gasto' : 'Ambos'}
+                        className={`flex-1 py-3 rounded-xl text-[10px] font-black uppercase transition-all active:scale-[0.98] ${catModal.type === t ? (t === 'income' ? 'bg-emerald-500 text-white shadow-md' : 'bg-red-500 text-white shadow-md') : 'text-slate-400'}`}>
+                        {t === 'income' ? 'Ingreso' : 'Gasto'}
                       </button>
                     ))}
                   </div>

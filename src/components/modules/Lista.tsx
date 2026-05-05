@@ -4,7 +4,7 @@ import {
   CheckSquare, Square, Calendar, Clock, BarChart3, List,
   AlertCircle, Flag, Circle, Loader, CheckCircle2,
 } from 'lucide-react';
-import type { Task, ChecklistItem, Categories } from '../../types';
+import type { Task, ChecklistItem, Categories, Goal } from '../../types';
 import { generateId, getLocalISODate } from '../../lib/utils';
 
 // ─── Constants ───────────────────────────────────────────────────────────────
@@ -51,13 +51,14 @@ interface ListaProps {
   checklistItems: ChecklistItem[];
   setChecklistItems: React.Dispatch<React.SetStateAction<ChecklistItem[]>>;
   categories: Categories;
+  goals: Goal[];
   currentDate: Date;
 }
 
 // ─── Main Component ──────────────────────────────────────────────────────────
 
 const Lista: React.FC<ListaProps> = ({
-  tasks, setTasks, checklistItems, setChecklistItems, categories, currentDate,
+  tasks, setTasks, checklistItems, setChecklistItems, categories, goals, currentDate,
 }) => {
   const [subView, setSubView] = useState<ListaSubView>('tablero');
   const [filterCat, setFilterCat]     = useState('');
@@ -260,6 +261,7 @@ const Lista: React.FC<ListaProps> = ({
                         key={task.id}
                         task={task}
                         categories={categories}
+                        goals={goals}
                         items={itemsByTask[task.id] ?? []}
                         expanded={expandedTask === task.id}
                         onToggleExpand={() => setExpandedTask(expandedTask === task.id ? null : task.id)}
@@ -296,6 +298,7 @@ const Lista: React.FC<ListaProps> = ({
                           key={task.id}
                           task={task}
                           categories={categories}
+                          goals={goals}
                           items={itemsByTask[task.id] ?? []}
                           expanded={expandedTask === task.id}
                           onToggleExpand={() => setExpandedTask(expandedTask === task.id ? null : task.id)}
@@ -338,6 +341,7 @@ const Lista: React.FC<ListaProps> = ({
           task={modalTask}
           items={isCreating ? [] : (checklistItems.filter(ci => ci.taskId === modalTask.id))}
           categories={categories}
+          goals={goals}
           isCreating={isCreating}
           onSave={saveTask}
           onClose={closeModal}
@@ -352,6 +356,7 @@ const Lista: React.FC<ListaProps> = ({
 interface TaskCardProps {
   task: Task;
   categories: Categories;
+  goals: Goal[];
   items: ChecklistItem[];
   expanded: boolean;
   onToggleExpand: () => void;
@@ -362,10 +367,11 @@ interface TaskCardProps {
 }
 
 const TaskCard: React.FC<TaskCardProps> = ({
-  task, categories, items, expanded,
+  task, categories, goals, items, expanded,
   onToggleExpand, onEdit, onDelete, onStatusChange, onToggleItem,
 }) => {
   const cat      = task.categoryId ? categories[task.categoryId] : null;
+  const goal     = task.goalId ? goals.find(g => g.id === task.goalId) : null;
   const cfg      = STATUS_CONFIG[task.status];
   const pri      = PRIORITY_CONFIG[task.priority];
   const doneItems = items.filter(i => i.done).length;
@@ -405,6 +411,12 @@ const TaskCard: React.FC<TaskCardProps> = ({
             </p>
             {cat && (
               <p className="text-[10px] font-bold mt-0.5 truncate" style={{ color: cat.color }}>{cat.label}</p>
+            )}
+            {goal && (
+              <div className="flex items-center gap-1 mt-0.5">
+                <span className="text-[9px]">🎯</span>
+                <p className="text-[10px] font-bold text-violet-500 truncate">{goal.title}</p>
+              </div>
             )}
           </div>
           <div className="flex items-center gap-0.5 shrink-0">
@@ -746,13 +758,14 @@ interface TaskModalProps {
   task: Task;
   items: ChecklistItem[];
   categories: Categories;
+  goals: Goal[];
   isCreating: boolean;
   onSave: (task: Task, items: ChecklistItem[]) => void;
   onClose: () => void;
 }
 
 const TaskModal: React.FC<TaskModalProps> = ({
-  task: initialTask, items: initialItems, categories, isCreating, onSave, onClose,
+  task: initialTask, items: initialItems, categories, goals, isCreating, onSave, onClose,
 }) => {
   const [task, setTask]   = useState<Task>({ ...initialTask });
   const [items, setItems] = useState<ChecklistItem[]>([...initialItems]);
@@ -883,6 +896,43 @@ const TaskModal: React.FC<TaskModalProps> = ({
               onChange={e => setTask(t => ({ ...t, deadline: e.target.value || undefined }))}
               className="w-full px-4 py-3 border border-slate-200 rounded-xl text-slate-700 font-bold text-sm focus:outline-none focus:ring-2 focus:ring-violet-400 bg-slate-50"
             />
+          </div>
+
+          {/* Objetivo */}
+          <div>
+            <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1.5 block">Objetivo (opcional)</label>
+            <div className="flex flex-col gap-1.5 max-h-36 overflow-y-auto pr-0.5">
+              <button
+                onClick={() => setTask(t => ({ ...t, goalId: undefined }))}
+                className={`px-3 py-2 rounded-xl text-xs font-bold border text-left transition-all ${!task.goalId ? 'bg-slate-700 text-white border-slate-700' : 'bg-slate-50 text-slate-500 border-slate-100 hover:bg-slate-100'}`}
+              >
+                Sin objetivo
+              </button>
+              {goals.length === 0 ? (
+                <p className="text-[10px] text-slate-300 font-bold px-1 py-1">No hay objetivos creados</p>
+              ) : (
+                goals
+                  .slice()
+                  .sort((a, b) => b.weekId.localeCompare(a.weekId) || (a.completed ? 1 : -1))
+                  .map(goal => {
+                    const pc       = PRIORITY_CONFIG[goal.priority];
+                    const isSelected = task.goalId === goal.id;
+                    return (
+                      <button
+                        key={goal.id}
+                        onClick={() => setTask(t => ({ ...t, goalId: goal.id }))}
+                        className={`px-3 py-2 rounded-xl text-xs font-bold border text-left transition-all flex items-center gap-2 ${isSelected ? 'bg-violet-600 text-white border-violet-600' : 'bg-slate-50 text-slate-600 border-slate-100 hover:bg-slate-100'}`}
+                      >
+                        <span className={`w-2 h-2 rounded-full shrink-0 ${isSelected ? 'bg-white/70' : pc.dot}`} />
+                        <span className="flex-1 truncate">{goal.title}</span>
+                        {goal.completed && (
+                          <span className={`text-[9px] font-black uppercase shrink-0 ${isSelected ? 'text-white/70' : 'text-slate-400'}`}>✓</span>
+                        )}
+                      </button>
+                    );
+                  })
+              )}
+            </div>
           </div>
 
           {/* Description */}

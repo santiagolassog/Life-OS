@@ -142,6 +142,7 @@ export interface Task {
   categoryId?: string     // id de área (Category)
   priority: TaskPriority
   deadline?: string       // "YYYY-MM-DD"
+  goalId?: string         // id de objetivo asociado (Goal) — opcional
   createdAt: string       // "YYYY-MM-DD"
   startedAt?: string      // "YYYY-MM-DD" — se registra al pasar a inprogress
   completedAt?: string    // "YYYY-MM-DD" — se registra al pasar a done

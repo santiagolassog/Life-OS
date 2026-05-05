@@ -458,6 +458,7 @@ const rowToTask = (row: Record<string, unknown>): Task => ({
   categoryId:  row.category_id as string | undefined,
   priority:    row.priority as Task['priority'],
   deadline:    row.deadline as string | undefined,
+  goalId:      row.goal_id ? (row.goal_id as string) : undefined,
   createdAt:   row.created_at as string,
   startedAt:   row.started_at as string | undefined,
   completedAt: row.completed_at as string | undefined,
@@ -471,6 +472,7 @@ const taskToDb = (t: Task) => ({
   category_id:  t.categoryId ?? null,
   priority:     t.priority,
   deadline:     t.deadline ?? null,
+  goal_id:      t.goalId ?? null,
   created_at:   t.createdAt,
   started_at:   t.startedAt ?? null,
   completed_at: t.completedAt ?? null,
@@ -609,12 +611,26 @@ export async function syncTransactions(prev: Transaction[], curr: Transaction[],
 export async function syncFinCategories(prev: FinCategory[], curr: FinCategory[], userId: string) {
   const { upserted, deletedIds } = diffArrays(prev, curr)
 
-  // Guarda de seguridad: nunca borrar más categorías de las que se están añadiendo en la misma operación.
-  // Esto previene borrados masivos accidentales por desfase del ref previo.
-  if (deletedIds.length > 0 && curr.length === 0) {
+  // Guarda 1: nunca procesar si curr está vacío accidentalmente.
+  if (curr.length === 0 && prev.length > 0) {
     console.warn('syncFinCategories: curr está vacío, abortando para evitar borrado masivo.')
     return
   }
+
+  // Guarda 2: desde la UI, NUNCA se añaden y se borran categorías en la misma acción
+  // (solo se añade, o solo se edita, o solo se borra una). Si el diff muestra ambas
+  // operaciones a la vez es señal de que prevFinCategories.current está desactualizado.
+  // En ese caso solo aplicamos el upsert (nunca el delete) para ser conservadores.
+  if (deletedIds.length > 0 && upserted.length > 0) {
+    console.warn(`syncFinCategories: delete+upsert simultáneo detectado (${deletedIds.length} deletes, ${upserted.length} upserts) — solo aplicando upserts para evitar pérdida de datos.`)
+    await supabase
+      .from('fin_categories')
+      .upsert(upserted.map(c => withUser(finCategoryToDb(c), userId)))
+      .then(({ error }) => { if (error) console.error('syncFinCategories upsert:', error) })
+    return
+  }
+
+  // Guarda 3: nunca borrar TODAS las categorías sin añadir ninguna (borrado masivo accidental).
   if (deletedIds.length > 0 && deletedIds.length >= prev.length && upserted.length === 0) {
     console.warn('syncFinCategories: intento de borrar todas las categorías sin añadir ninguna, abortando.')
     return
