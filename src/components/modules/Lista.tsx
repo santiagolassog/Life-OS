@@ -28,19 +28,26 @@ function daysBetween(a: string, b: string): number {
   return Math.max(0, Math.round((new Date(b).getTime() - new Date(a).getTime()) / 86400000));
 }
 
-function isDeadlineSoon(deadline: string): boolean {
-  const d = new Date(deadline);
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  const diff = (d.getTime() - today.getTime()) / 86400000;
-  return diff >= 0 && diff <= 2;
+/**
+ * Parsea un deadline "YYYY-MM-DD" como mediodía local para evitar que
+ * la interpretación UTC-midnight produzca "ayer" en zonas UTC negativas.
+ */
+function parseDeadlineLocal(deadline: string): Date {
+  return new Date(deadline + 'T12:00:00');
 }
 
-function isDeadlineOverdue(deadline: string): boolean {
-  const d = new Date(deadline);
+type DeadlineStatus = 'overdue' | 'today' | 'tomorrow' | 'soon' | 'normal';
+
+function getDeadlineStatus(deadline: string): DeadlineStatus {
+  const d     = parseDeadlineLocal(deadline);
   const today = new Date();
   today.setHours(0, 0, 0, 0);
-  return d < today;
+  const days = (d.getTime() - today.getTime()) / 86400000; // días desde hoy-midnight hasta deadline-noon
+  if (days < 0) return 'overdue';
+  if (days < 1) return 'today';
+  if (days < 2) return 'tomorrow';
+  if (days < 4) return 'soon';
+  return 'normal';
 }
 
 // ─── Props ───────────────────────────────────────────────────────────────────
@@ -66,6 +73,8 @@ const Lista: React.FC<ListaProps> = ({
   const [modalTask, setModalTask]     = useState<Task | null>(null);
   const [isCreating, setIsCreating]   = useState(false);
   const [expandedTask, setExpandedTask] = useState<string | null>(null);
+  const [draggingTaskId, setDraggingTaskId]   = useState<string | null>(null);
+  const [dragOverStatus, setDragOverStatus]   = useState<Task['status'] | null>(null);
 
   // ── Derived ──────────────────────────────────────────────────────────────
 
@@ -161,6 +170,26 @@ const Lista: React.FC<ListaProps> = ({
       ...newItems,
     ]);
     closeModal();
+  }
+
+  // ── Drag & Drop (desktop Kanban only) ────────────────────────────────────
+  function handleDragStart(taskId: string) { setDraggingTaskId(taskId); }
+  function handleDragEnd() { setDraggingTaskId(null); setDragOverStatus(null); }
+  function handleColumnDragOver(e: React.DragEvent, status: Task['status']) {
+    e.preventDefault();
+    if (dragOverStatus !== status) setDragOverStatus(status);
+  }
+  function handleColumnDragLeave(e: React.DragEvent) {
+    if (!e.currentTarget.contains(e.relatedTarget as Node)) setDragOverStatus(null);
+  }
+  function handleColumnDrop(e: React.DragEvent, status: Task['status']) {
+    e.preventDefault();
+    if (draggingTaskId) {
+      const t = tasks.find(t => t.id === draggingTaskId);
+      if (t && t.status !== status) changeStatus(t, status);
+    }
+    setDraggingTaskId(null);
+    setDragOverStatus(null);
   }
 
   // ─── Render ───────────────────────────────────────────────────────────────
@@ -275,13 +304,20 @@ const Lista: React.FC<ListaProps> = ({
               </div>
             </div>
 
-            {/* ── Desktop: 3-column Kanban ── */}
+            {/* ── Desktop: 3-column Kanban with drag & drop ── */}
             <div className="hidden md:grid md:grid-cols-3 gap-4">
               {(['todo', 'inprogress', 'done'] as const).map(status => {
-                const cfg = STATUS_CONFIG[status];
-                const col = tasksByStatus[status];
+                const cfg        = STATUS_CONFIG[status];
+                const col        = tasksByStatus[status];
+                const isDropping = dragOverStatus === status && draggingTaskId !== null;
                 return (
-                  <div key={status} className="flex flex-col gap-3 min-h-[200px]">
+                  <div
+                    key={status}
+                    className={`flex flex-col gap-3 min-h-[200px] rounded-2xl transition-all duration-150 ${isDropping ? 'ring-2 ring-offset-2 ring-violet-300' : ''}`}
+                    onDragOver={e  => handleColumnDragOver(e, status)}
+                    onDragLeave={e => handleColumnDragLeave(e)}
+                    onDrop={e      => handleColumnDrop(e, status)}
+                  >
                     {/* Column header */}
                     <div className="flex items-center gap-2 px-1">
                       <cfg.Icon size={14} style={{ color: cfg.color }} strokeWidth={2.5} />
@@ -289,8 +325,10 @@ const Lista: React.FC<ListaProps> = ({
                       <span className="ml-auto text-[10px] font-black text-slate-400 bg-slate-100 rounded-full px-2 py-0.5">{col.length}</span>
                     </div>
                     {col.length === 0 ? (
-                      <div className="flex-1 rounded-2xl border-2 border-dashed border-slate-100 flex items-center justify-center py-10">
-                        <p className="text-[10px] text-slate-300 font-bold uppercase">Sin tareas</p>
+                      <div className={`flex-1 rounded-2xl border-2 border-dashed flex items-center justify-center py-10 transition-colors ${isDropping ? 'border-violet-300 bg-violet-50' : 'border-slate-100'}`}>
+                        <p className={`text-[10px] font-bold uppercase ${isDropping ? 'text-violet-400' : 'text-slate-300'}`}>
+                          {isDropping ? 'Soltar aquí' : 'Sin tareas'}
+                        </p>
                       </div>
                     ) : (
                       col.map(task => (
@@ -306,6 +344,10 @@ const Lista: React.FC<ListaProps> = ({
                           onDelete={() => deleteTask(task.id)}
                           onStatusChange={changeStatus}
                           onToggleItem={toggleChecklistItem}
+                          isDraggable
+                          isDragging={draggingTaskId === task.id}
+                          onDragStart={() => handleDragStart(task.id)}
+                          onDragEnd={handleDragEnd}
                         />
                       ))
                     )}
@@ -364,21 +406,31 @@ interface TaskCardProps {
   onDelete: () => void;
   onStatusChange: (task: Task, status: Task['status']) => void;
   onToggleItem: (item: ChecklistItem) => void;
+  isDraggable?: boolean;
+  isDragging?: boolean;
+  onDragStart?: () => void;
+  onDragEnd?: () => void;
 }
 
 const TaskCard: React.FC<TaskCardProps> = ({
   task, categories, goals, items, expanded,
   onToggleExpand, onEdit, onDelete, onStatusChange, onToggleItem,
+  isDraggable = false, isDragging = false, onDragStart, onDragEnd,
 }) => {
   const cat      = task.categoryId ? categories[task.categoryId] : null;
   const goal     = task.goalId ? goals.find(g => g.id === task.goalId) : null;
   const cfg      = STATUS_CONFIG[task.status];
   const pri      = PRIORITY_CONFIG[task.priority];
-  const doneItems = items.filter(i => i.done).length;
+  const doneItems  = items.filter(i => i.done).length;
   const totalItems = items.length;
   const pct = totalItems > 0 ? Math.round((doneItems / totalItems) * 100) : null;
-  const overdue = task.deadline && isDeadlineOverdue(task.deadline) && task.status !== 'done';
-  const soon    = task.deadline && isDeadlineSoon(task.deadline) && task.status !== 'done';
+
+  const deadlineStatus: DeadlineStatus | null =
+    task.deadline && task.status !== 'done' ? getDeadlineStatus(task.deadline) : null;
+  const overdue   = deadlineStatus === 'overdue';
+  const isToday   = deadlineStatus === 'today';
+  const isTomorrow = deadlineStatus === 'tomorrow';
+  const soon      = deadlineStatus === 'soon';
 
   const timeDays = task.startedAt && task.completedAt
     ? daysBetween(task.startedAt, task.completedAt)
@@ -393,12 +445,19 @@ const TaskCard: React.FC<TaskCardProps> = ({
     : ['todo'];
 
   return (
-    <div className={`bg-white rounded-2xl border shadow-sm transition-all ${
-      overdue ? 'border-red-200' : 'border-slate-100'
-    }`}>
+    <div
+      draggable={isDraggable}
+      onDragStart={isDraggable ? onDragStart : undefined}
+      onDragEnd={isDraggable ? onDragEnd : undefined}
+      className={`bg-white rounded-2xl border shadow-sm overflow-hidden transition-all duration-150 ${
+        isDraggable ? 'cursor-grab active:cursor-grabbing select-none' : ''
+      } ${isDragging ? 'opacity-40 scale-[0.98] shadow-none' : ''} ${
+        overdue ? 'border-red-200' : 'border-slate-100'
+      }`}
+    >
       {/* Top: área strip */}
       {cat && (
-        <div className="h-1 rounded-t-2xl" style={{ backgroundColor: cat.color }} />
+        <div className="h-1" style={{ backgroundColor: cat.color }} />
       )}
 
       <div className="p-4">
@@ -429,10 +488,18 @@ const TaskCard: React.FC<TaskCardProps> = ({
         <div className="flex items-center gap-2 mt-2 flex-wrap">
           {task.deadline && (
             <div className={`flex items-center gap-1 text-[10px] font-bold rounded-full px-2 py-0.5 ${
-              overdue ? 'bg-red-50 text-red-500' : soon ? 'bg-amber-50 text-amber-600' : 'bg-slate-50 text-slate-400'
+              overdue    ? 'bg-red-50 text-red-500'
+              : isToday  ? 'bg-orange-50 text-orange-500'
+              : isTomorrow ? 'bg-amber-50 text-amber-500'
+              : soon     ? 'bg-yellow-50 text-yellow-600'
+              : 'bg-slate-50 text-slate-400'
             }`}>
               <Calendar size={9} />
-              {overdue ? 'Vencida · ' : soon ? 'Pronto · ' : ''}
+              {overdue    ? 'Vencida · '
+               : isToday  ? 'Hoy · '
+               : isTomorrow ? 'Mañana · '
+               : soon     ? 'Pronto · '
+               : ''}
               {new Date(task.deadline + 'T12:00:00').toLocaleDateString('es-ES', { day: '2-digit', month: 'short' })}
             </div>
           )}
@@ -908,30 +975,26 @@ const TaskModal: React.FC<TaskModalProps> = ({
               >
                 Sin objetivo
               </button>
-              {goals.length === 0 ? (
-                <p className="text-[10px] text-slate-300 font-bold px-1 py-1">No hay objetivos creados</p>
-              ) : (
-                goals
-                  .slice()
-                  .sort((a, b) => b.weekId.localeCompare(a.weekId) || (a.completed ? 1 : -1))
-                  .map(goal => {
-                    const pc       = PRIORITY_CONFIG[goal.priority];
-                    const isSelected = task.goalId === goal.id;
-                    return (
-                      <button
-                        key={goal.id}
-                        onClick={() => setTask(t => ({ ...t, goalId: goal.id }))}
-                        className={`px-3 py-2 rounded-xl text-xs font-bold border text-left transition-all flex items-center gap-2 ${isSelected ? 'bg-violet-600 text-white border-violet-600' : 'bg-slate-50 text-slate-600 border-slate-100 hover:bg-slate-100'}`}
-                      >
-                        <span className={`w-2 h-2 rounded-full shrink-0 ${isSelected ? 'bg-white/70' : pc.dot}`} />
-                        <span className="flex-1 truncate">{goal.title}</span>
-                        {goal.completed && (
-                          <span className={`text-[9px] font-black uppercase shrink-0 ${isSelected ? 'text-white/70' : 'text-slate-400'}`}>✓</span>
-                        )}
-                      </button>
-                    );
-                  })
-              )}
+              {(() => {
+                const activeGoals = goals.filter(g => !g.completed).sort((a, b) => b.weekId.localeCompare(a.weekId));
+                if (activeGoals.length === 0) return (
+                  <p className="text-[10px] text-slate-300 font-bold px-1 py-1">No hay objetivos activos</p>
+                );
+                return activeGoals.map(goal => {
+                  const pc         = PRIORITY_CONFIG[goal.priority];
+                  const isSelected = task.goalId === goal.id;
+                  return (
+                    <button
+                      key={goal.id}
+                      onClick={() => setTask(t => ({ ...t, goalId: goal.id }))}
+                      className={`px-3 py-2 rounded-xl text-xs font-bold border text-left transition-all flex items-center gap-2 ${isSelected ? 'bg-violet-600 text-white border-violet-600' : 'bg-slate-50 text-slate-600 border-slate-100 hover:bg-slate-100'}`}
+                    >
+                      <span className={`w-2 h-2 rounded-full shrink-0 ${isSelected ? 'bg-white/70' : pc.dot}`} />
+                      <span className="flex-1 truncate">{goal.title}</span>
+                    </button>
+                  );
+                });
+              })()}
             </div>
           </div>
 
