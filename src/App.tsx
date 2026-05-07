@@ -7,6 +7,7 @@ import { Zap } from "lucide-react";
 import Index from "./pages/Index.tsx";
 import NotFound from "./pages/NotFound.tsx";
 import AuthPage from "./components/AuthPage.tsx";
+import { ErrorBoundary } from "./components/ErrorBoundary.tsx";
 import { useAuth } from "./hooks/useAuth.ts";
 
 const queryClient = new QueryClient();
@@ -38,13 +39,17 @@ const AuthGate = () => {
 };
 
 const App = () => (
-  <QueryClientProvider client={queryClient}>
-    <TooltipProvider>
-      <Toaster />
-      <Sonner />
-      <AuthGate />
-    </TooltipProvider>
-  </QueryClientProvider>
+  <ErrorBoundary>
+    <QueryClientProvider client={queryClient}>
+      <TooltipProvider>
+        <Toaster />
+        <Sonner />
+        <ErrorBoundary>
+          <AuthGate />
+        </ErrorBoundary>
+      </TooltipProvider>
+    </QueryClientProvider>
+  </ErrorBoundary>
 );
 
 export default App;

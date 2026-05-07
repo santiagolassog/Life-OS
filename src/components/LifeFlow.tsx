@@ -212,6 +212,8 @@ const App = () => {
 
   // ── Estado principal ────────────────────────────────────────────────────────
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
+  const [retryKey, setRetryKey] = useState(0);
   const [currentDate, setCurrentDate] = useState(new Date());
   const [events, setEvents] = useState({});
   const [categories, setCategories] = useState(INITIAL_CATEGORIES);
@@ -245,6 +247,8 @@ const App = () => {
   // ── Carga inicial desde Supabase (con migración automática de localStorage) ─
   useEffect(() => {
     if (!userId) return;
+    setLoading(true);
+    setLoadError(false);
     const init = async () => {
       try {
         const remote = await loadAllData();
@@ -322,12 +326,13 @@ const App = () => {
 
       } catch (err) {
         console.error('Error al cargar datos de Supabase:', err);
+        setLoadError(true);
       } finally {
         setLoading(false);
       }
     };
     init();
-  }, [userId]);
+  }, [userId, retryKey]); // retryKey fuerza re-init al pulsar "Reintentar"
 
   // ── Refs para calcular diffs en los sync effects ────────────────────────────
   const prevEvents = useRef(events);
@@ -819,8 +824,30 @@ const App = () => {
     );
   }
 
+  if (loadError) {
+    return (
+      <div className="flex flex-col h-screen bg-indigo-950 items-center justify-center gap-5 p-6 text-center">
+        <div className="bg-indigo-500 p-3 rounded-2xl shadow-inner">
+          <Zap size={32} className="text-white" fill="white" />
+        </div>
+        <div className="bg-white/5 border border-white/10 rounded-3xl p-6 max-w-xs w-full space-y-4">
+          <p className="text-white font-black text-base">No se pudo conectar</p>
+          <p className="text-indigo-400 text-xs leading-relaxed">
+            LifeOS no pudo cargar tus datos. Verifica tu conexión a internet e intenta de nuevo.
+          </p>
+          <button
+            onClick={() => setRetryKey(k => k + 1)}
+            className="w-full bg-indigo-500 hover:bg-indigo-400 text-white font-black text-xs uppercase tracking-widest py-3.5 rounded-2xl transition-all active:scale-[0.98]"
+          >
+            Reintentar
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <div className="flex flex-col h-screen bg-slate-50 text-slate-900 overflow-hidden font-sans select-none">
+    <div className="flex flex-col h-screen [height:100dvh] bg-slate-50 text-slate-900 overflow-hidden font-sans">
 
       {/* ---- HEADER LIFEOS ---- */}
       <header className="bg-indigo-950 border-b border-indigo-900/50 px-4 md:px-6 py-3 flex justify-between items-center z-[100] shrink-0 shadow-lg">
@@ -1340,7 +1367,10 @@ const App = () => {
 
       {/* Mobile bottom nav */}
       {isMobile && (
-        <div className="fixed bottom-0 left-0 right-0 bg-indigo-950 border-t border-indigo-900/50 flex z-[150]">
+        <div
+          className="fixed bottom-0 left-0 right-0 bg-indigo-950 border-t border-indigo-900/50 flex z-[150]"
+          style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}
+        >
           {SECTIONS.map(({ key, label, Icon }) => (
             <button
               key={key}
