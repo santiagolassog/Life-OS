@@ -1,8 +1,10 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import {
   DndContext, DragOverlay, PointerSensor, TouchSensor,
-  useSensor, useSensors, closestCenter, useDroppable,
+  useSensor, useSensors, pointerWithin, rectIntersection,
+  useDroppable,
   type DragStartEvent, type DragEndEvent, type DragOverEvent,
+  type CollisionDetection,
 } from '@dnd-kit/core';
 import {
   SortableContext, useSortable, verticalListSortingStrategy, arrayMove,
@@ -91,6 +93,13 @@ const Lista: React.FC<ListaProps> = ({
     useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
     useSensor(TouchSensor,   { activationConstraint: { delay: 0, tolerance: 10 } }),
   );
+
+  // Detección de colisión: el puntero manda (donde está el cursor/dedo, ahí cae).
+  // Si el puntero no está dentro de ningún droppable, cae al que más se intersecte.
+  const collisionDetection: CollisionDetection = (args) => {
+    const pw = pointerWithin(args);
+    return pw.length > 0 ? pw : rectIntersection(args);
+  };
 
   // ── Derived ──────────────────────────────────────────────────────────────
 
@@ -318,7 +327,7 @@ const Lista: React.FC<ListaProps> = ({
 
             <DndContext
               sensors={sensors}
-              collisionDetection={closestCenter}
+              collisionDetection={collisionDetection}
               onDragStart={handleDragStart}
               onDragOver={handleDragOver}
               onDragEnd={handleDragEnd}
@@ -386,6 +395,7 @@ const Lista: React.FC<ListaProps> = ({
                             onStatusChange={changeStatus}
                             onToggleItem={toggleChecklistItem}
                             reorderMode={isReorderMode}
+                            isMobile
                           />
                         ))}
                       </div>
@@ -678,7 +688,7 @@ const TaskCard: React.FC<TaskCardProps> = ({
 
 // ─── SortableTaskCard ─────────────────────────────────────────────────────────
 
-const SortableTaskCard: React.FC<TaskCardProps & { reorderMode?: boolean }> = ({ reorderMode, ...props }) => {
+const SortableTaskCard: React.FC<TaskCardProps & { reorderMode?: boolean; isMobile?: boolean }> = ({ reorderMode, isMobile, ...props }) => {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: props.task.id });
   return (
     <div
@@ -687,7 +697,7 @@ const SortableTaskCard: React.FC<TaskCardProps & { reorderMode?: boolean }> = ({
       className={`select-none ${isDragging ? 'opacity-30' : ''}`}
     >
       {reorderMode ? (
-        /* Mobile reorder mode: large visible handle on the left */
+        /* Mobile — modo Reordenar: handle grande explícito */
         <div className="flex items-stretch gap-0">
           <div
             {...attributes}
@@ -701,8 +711,11 @@ const SortableTaskCard: React.FC<TaskCardProps & { reorderMode?: boolean }> = ({
             <TaskCard {...props} />
           </div>
         </div>
+      ) : isMobile ? (
+        /* Mobile — modo normal: sin listeners para no bloquear botones */
+        <TaskCard {...props} />
       ) : (
-        /* Desktop: subtle grip on hover */
+        /* Desktop: grip sutil al hover */
         <div className="relative group/card">
           <div
             {...attributes}
