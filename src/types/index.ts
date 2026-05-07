@@ -54,6 +54,7 @@ export interface Goal {
   weekId: string
   dateId?: string
   category?: string
+  deadline?: string   // "YYYY-MM-DD" — fecha límite para lograr el objetivo
   completed: boolean
   completedAt?: string
   createdAt: string
@@ -131,7 +132,7 @@ export interface Budget {
   createdAt: string
 }
 
-export type TaskStatus   = 'todo' | 'inprogress' | 'done'
+export type TaskStatus   = 'backlog' | 'todo' | 'inprogress' | 'done'
 export type TaskPriority = 'high' | 'medium' | 'low'
 
 export interface Task {
@@ -143,6 +144,7 @@ export interface Task {
   priority: TaskPriority
   deadline?: string       // "YYYY-MM-DD"
   goalId?: string         // id de objetivo asociado (Goal) — opcional
+  sortOrder: number       // para orden manual en el kanban (Date.now() al crear)
   createdAt: string       // "YYYY-MM-DD"
   startedAt?: string      // "YYYY-MM-DD" — se registra al pasar a inprogress
   completedAt?: string    // "YYYY-MM-DD" — se registra al pasar a done

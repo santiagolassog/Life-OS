@@ -1,8 +1,17 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import {
-  Plus, X, Trash2, Edit2, Check, ChevronDown, ChevronUp,
+  DndContext, DragOverlay, PointerSensor, TouchSensor,
+  useSensor, useSensors, closestCenter, useDroppable,
+  type DragStartEvent, type DragEndEvent, type DragOverEvent,
+} from '@dnd-kit/core';
+import {
+  SortableContext, useSortable, verticalListSortingStrategy, arrayMove,
+} from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
+import {
+  Plus, X, Trash2, Edit2, ChevronDown, ChevronUp,
   CheckSquare, Square, Calendar, Clock, BarChart3, List,
-  AlertCircle, Flag, Circle, Loader, CheckCircle2,
+  Circle, Loader, CheckCircle2, Inbox, GripVertical,
 } from 'lucide-react';
 import type { Task, ChecklistItem, Categories, Goal } from '../../types';
 import { generateId, getLocalISODate } from '../../lib/utils';
@@ -10,8 +19,9 @@ import { generateId, getLocalISODate } from '../../lib/utils';
 // ─── Constants ───────────────────────────────────────────────────────────────
 
 const STATUS_CONFIG = {
-  todo:       { label: 'Por Hacer',   color: '#94a3b8', bg: 'bg-slate-100',   text: 'text-slate-600',  Icon: Circle },
-  inprogress: { label: 'En Progreso', color: '#3b82f6', bg: 'bg-blue-100',    text: 'text-blue-600',   Icon: Loader },
+  backlog:    { label: 'Backlog',     color: '#8b5cf6', bg: 'bg-violet-50',   text: 'text-violet-600',  Icon: Inbox },
+  todo:       { label: 'Por Hacer',   color: '#94a3b8', bg: 'bg-slate-100',   text: 'text-slate-600',   Icon: Circle },
+  inprogress: { label: 'En Progreso', color: '#3b82f6', bg: 'bg-blue-100',    text: 'text-blue-600',    Icon: Loader },
   done:       { label: 'Hechas',      color: '#10b981', bg: 'bg-emerald-100', text: 'text-emerald-700', Icon: CheckCircle2 },
 } as const;
 
@@ -73,8 +83,14 @@ const Lista: React.FC<ListaProps> = ({
   const [modalTask, setModalTask]     = useState<Task | null>(null);
   const [isCreating, setIsCreating]   = useState(false);
   const [expandedTask, setExpandedTask] = useState<string | null>(null);
-  const [draggingTaskId, setDraggingTaskId]   = useState<string | null>(null);
-  const [dragOverStatus, setDragOverStatus]   = useState<Task['status'] | null>(null);
+  const [activeDragId, setActiveDragId] = useState<string | null>(null);
+  const [overColumnId, setOverColumnId] = useState<Task['status'] | null>(null);
+  const [isReorderMode, setIsReorderMode] = useState(false);
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
+    useSensor(TouchSensor,   { activationConstraint: { delay: 0, tolerance: 10 } }),
+  );
 
   // ── Derived ──────────────────────────────────────────────────────────────
 
@@ -88,15 +104,14 @@ const Lista: React.FC<ListaProps> = ({
     });
   }, [tasks, filterCat, filterStatus]);
 
+  const orderSort = (a: Task, b: Task) =>
+    (a.sortOrder - b.sortOrder) || a.createdAt.localeCompare(b.createdAt);
+
   const tasksByStatus = useMemo(() => ({
-    todo:       filteredTasks.filter(t => t.status === 'todo').sort((a, b) => {
-      const pa = a.priority === 'high' ? 0 : a.priority === 'medium' ? 1 : 2;
-      const pb = b.priority === 'high' ? 0 : b.priority === 'medium' ? 1 : 2;
-      return pa - pb;
-    }),
-    inprogress: filteredTasks.filter(t => t.status === 'inprogress'),
-    done:       filteredTasks.filter(t => t.status === 'done')
-                  .sort((a, b) => (b.completedAt ?? '').localeCompare(a.completedAt ?? '')),
+    backlog:    filteredTasks.filter(t => t.status === 'backlog').sort(orderSort),
+    todo:       filteredTasks.filter(t => t.status === 'todo').sort(orderSort),
+    inprogress: filteredTasks.filter(t => t.status === 'inprogress').sort(orderSort),
+    done:       filteredTasks.filter(t => t.status === 'done').sort(orderSort),
   }), [filteredTasks]);
 
   const itemsByTask = useMemo(() => {
@@ -140,10 +155,11 @@ const Lista: React.FC<ListaProps> = ({
 
   function openCreate() {
     setModalTask({
-      id: generateId(),
-      title: '',
-      status: 'todo',
-      priority: 'medium',
+      id:        generateId(),
+      title:     '',
+      status:    'backlog',
+      priority:  'medium',
+      sortOrder: Date.now(),
       createdAt: getLocalISODate(),
     });
     setIsCreating(true);
@@ -172,24 +188,66 @@ const Lista: React.FC<ListaProps> = ({
     closeModal();
   }
 
-  // ── Drag & Drop (desktop Kanban only) ────────────────────────────────────
-  function handleDragStart(taskId: string) { setDraggingTaskId(taskId); }
-  function handleDragEnd() { setDraggingTaskId(null); setDragOverStatus(null); }
-  function handleColumnDragOver(e: React.DragEvent, status: Task['status']) {
-    e.preventDefault();
-    if (dragOverStatus !== status) setDragOverStatus(status);
+  // ── Drag & Drop (dnd-kit — mobile + tablet + desktop) ────────────────────
+  const STATUSES: Task['status'][] = ['backlog', 'todo', 'inprogress', 'done'];
+
+  function handleDragStart({ active }: DragStartEvent) {
+    setActiveDragId(active.id as string);
   }
-  function handleColumnDragLeave(e: React.DragEvent) {
-    if (!e.currentTarget.contains(e.relatedTarget as Node)) setDragOverStatus(null);
-  }
-  function handleColumnDrop(e: React.DragEvent, status: Task['status']) {
-    e.preventDefault();
-    if (draggingTaskId) {
-      const t = tasks.find(t => t.id === draggingTaskId);
-      if (t && t.status !== status) changeStatus(t, status);
+
+  function handleDragOver({ over }: DragOverEvent) {
+    if (!over) { setOverColumnId(null); return; }
+    if (STATUSES.includes(over.id as Task['status'])) {
+      setOverColumnId(over.id as Task['status']);
+    } else {
+      const t = tasks.find(t => t.id === over.id);
+      setOverColumnId(t?.status ?? null);
     }
-    setDraggingTaskId(null);
-    setDragOverStatus(null);
+  }
+
+  function handleDragEnd({ active, over }: DragEndEvent) {
+    setActiveDragId(null);
+    setOverColumnId(null);
+    // No salir de reorderMode automáticamente — el usuario elige cuándo terminar
+    if (!over || active.id === over.id) return;
+
+    const activeTask = tasks.find(t => t.id === (active.id as string));
+    if (!activeTask) return;
+
+    const overIsColumn = STATUSES.includes(over.id as Task['status']);
+    const overTask     = overIsColumn ? null : tasks.find(t => t.id === (over.id as string));
+    const targetStatus: Task['status'] = overIsColumn
+      ? (over.id as Task['status'])
+      : (overTask?.status ?? activeTask.status);
+
+    setTasks(prev => {
+      let updated = prev.map(t =>
+        t.id === activeTask.id ? { ...t, status: targetStatus } : t
+      );
+
+      if (overTask) {
+        const col     = updated.filter(t => t.status === targetStatus).sort(orderSort);
+        const fromIdx = col.findIndex(t => t.id === activeTask.id);
+        const toIdx   = col.findIndex(t => t.id === overTask.id);
+        if (fromIdx !== -1 && toIdx !== -1) {
+          const reordered = arrayMove(col, fromIdx, toIdx);
+          const rest = updated.filter(t => t.status !== targetStatus);
+          updated = [...rest, ...reordered];
+        }
+      }
+
+      // Reasignar sortOrder en columnas afectadas
+      const affected = new Set<Task['status']>([activeTask.status, targetStatus]);
+      affected.forEach(s => {
+        const col = updated.filter(t => t.status === s);
+        col.forEach((t, i) => {
+          const idx = updated.findIndex(u => u.id === t.id);
+          if (idx !== -1) updated[idx] = { ...updated[idx], sortOrder: (i + 1) * 1000 };
+        });
+      });
+
+      return [...updated];
+    });
   }
 
   // ─── Render ───────────────────────────────────────────────────────────────
@@ -258,103 +316,151 @@ const Lista: React.FC<ListaProps> = ({
               </div>
             </div>
 
-            {/* ── Mobile: Status pill tabs + flat list ── */}
-            <div className="md:hidden">
-              <div className="flex gap-1.5 overflow-x-auto pb-1 scrollbar-hide">
-                {([['', 'Todas'], ['todo', 'Por Hacer'], ['inprogress', 'En Progreso'], ['done', 'Hechas']] as const).map(([status, label]) => (
+            <DndContext
+              sensors={sensors}
+              collisionDetection={closestCenter}
+              onDragStart={handleDragStart}
+              onDragOver={handleDragOver}
+              onDragEnd={handleDragEnd}
+            >
+              {/* ── Mobile: Status pill tabs + flat sortable list ── */}
+              <div className="md:hidden">
+                <div className="flex items-center gap-2">
+                  <div className="flex gap-1.5 overflow-x-auto pb-1 scrollbar-hide flex-1">
+                    {([['', 'Todas'], ['backlog', 'Backlog'], ['todo', 'Por Hacer'], ['inprogress', 'En Progreso'], ['done', 'Hechas']] as const).map(([status, label]) => (
+                      <button
+                        key={status}
+                        onClick={() => { setFilterStatus(status as Task['status'] | ''); setIsReorderMode(false); }}
+                        className={`px-3 py-1.5 rounded-full text-[10px] font-black uppercase whitespace-nowrap transition-all shrink-0 ${
+                          filterStatus === status
+                            ? status === ''          ? 'bg-slate-700 text-white'
+                              : status === 'backlog'    ? 'bg-violet-500 text-white'
+                              : status === 'todo'       ? 'bg-slate-500 text-white'
+                              : status === 'inprogress' ? 'bg-blue-500 text-white'
+                              : 'bg-emerald-500 text-white'
+                            : 'bg-slate-100 text-slate-500'
+                        }`}
+                      >
+                        {label} {status && `(${(tasksByStatus as Record<string, Task[]>)[status]?.length ?? 0})`}
+                      </button>
+                    ))}
+                  </div>
+
+                  {/* Botón reordenar */}
                   <button
-                    key={status}
-                    onClick={() => setFilterStatus(status as Task['status'] | '')}
-                    className={`px-3 py-1.5 rounded-full text-[10px] font-black uppercase whitespace-nowrap transition-all shrink-0 ${
-                      filterStatus === status
-                        ? status === '' ? 'bg-slate-700 text-white'
-                          : status === 'todo' ? 'bg-slate-500 text-white'
-                          : status === 'inprogress' ? 'bg-blue-500 text-white'
-                          : 'bg-emerald-500 text-white'
+                    onClick={() => setIsReorderMode(v => !v)}
+                    className={`shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[10px] font-black uppercase transition-all ${
+                      isReorderMode
+                        ? 'bg-violet-600 text-white shadow-md'
                         : 'bg-slate-100 text-slate-500'
                     }`}
                   >
-                    {label} {status && `(${tasksByStatus[status as Task['status']].length})`}
+                    <GripVertical size={11} />
+                    {isReorderMode ? 'Listo' : 'Orden'}
                   </button>
-                ))}
+                </div>
+
+                {isReorderMode && (
+                  <p className="text-[10px] text-violet-500 font-bold mt-2 px-1">
+                    Arrastra el ícono ≡ para reordenar las tarjetas
+                  </p>
+                )}
+
+                {(() => {
+                  const mobileTasks = filteredTasks.filter(t => !filterStatus || t.status === filterStatus);
+                  if (mobileTasks.length === 0) return <EmptyState onAdd={openCreate} />;
+                  return (
+                    <SortableContext items={mobileTasks.map(t => t.id)} strategy={verticalListSortingStrategy}>
+                      <div className="mt-3 flex flex-col gap-3">
+                        {mobileTasks.map(task => (
+                          <SortableTaskCard
+                            key={task.id}
+                            task={task}
+                            categories={categories}
+                            goals={goals}
+                            items={itemsByTask[task.id] ?? []}
+                            expanded={expandedTask === task.id}
+                            onToggleExpand={() => !isReorderMode && setExpandedTask(expandedTask === task.id ? null : task.id)}
+                            onEdit={() => !isReorderMode && openEdit(task)}
+                            onDelete={() => !isReorderMode && deleteTask(task.id)}
+                            onStatusChange={changeStatus}
+                            onToggleItem={toggleChecklistItem}
+                            reorderMode={isReorderMode}
+                          />
+                        ))}
+                      </div>
+                    </SortableContext>
+                  );
+                })()}
               </div>
 
-              <div className="mt-3 flex flex-col gap-3">
-                {filteredTasks.filter(t => !filterStatus || t.status === filterStatus).length === 0 ? (
-                  <EmptyState onAdd={openCreate} />
-                ) : (
-                  filteredTasks
-                    .filter(t => !filterStatus || t.status === filterStatus)
-                    .map(task => (
+              {/* ── Desktop: 4-column Kanban ── */}
+              <div className="hidden md:grid md:grid-cols-4 gap-4">
+                {(['backlog', 'todo', 'inprogress', 'done'] as const).map(status => {
+                  const cfg        = STATUS_CONFIG[status];
+                  const col        = tasksByStatus[status];
+                  const isDropping = activeDragId !== null && overColumnId === status;
+                  return (
+                    <KanbanColumn key={status} status={status} isDropping={isDropping}>
+                      <div className="flex items-center gap-2 px-1">
+                        <cfg.Icon size={14} style={{ color: cfg.color }} strokeWidth={2.5} />
+                        <span className="text-xs font-black text-slate-600 uppercase tracking-wide">{cfg.label}</span>
+                        <span className="ml-auto text-[10px] font-black text-slate-400 bg-slate-100 rounded-full px-2 py-0.5">{col.length}</span>
+                      </div>
+                      <SortableContext items={col.map(t => t.id)} strategy={verticalListSortingStrategy}>
+                        {col.length === 0 ? (
+                          <div className={`flex-1 rounded-2xl border-2 border-dashed flex items-center justify-center py-10 transition-colors ${isDropping ? 'border-violet-300 bg-violet-50' : 'border-slate-100'}`}>
+                            <p className={`text-[10px] font-bold uppercase ${isDropping ? 'text-violet-400' : 'text-slate-300'}`}>
+                              {isDropping ? 'Soltar aquí' : 'Sin tareas'}
+                            </p>
+                          </div>
+                        ) : (
+                          col.map(task => (
+                            <SortableTaskCard
+                              key={task.id}
+                              task={task}
+                              categories={categories}
+                              goals={goals}
+                              items={itemsByTask[task.id] ?? []}
+                              expanded={expandedTask === task.id}
+                              onToggleExpand={() => setExpandedTask(expandedTask === task.id ? null : task.id)}
+                              onEdit={() => openEdit(task)}
+                              onDelete={() => deleteTask(task.id)}
+                              onStatusChange={changeStatus}
+                              onToggleItem={toggleChecklistItem}
+                            />
+                          ))
+                        )}
+                      </SortableContext>
+                    </KanbanColumn>
+                  );
+                })}
+              </div>
+
+              {/* Overlay flotante mientras se arrastra */}
+              <DragOverlay dropAnimation={null}>
+                {activeDragId ? (() => {
+                  const t = tasks.find(t => t.id === activeDragId);
+                  if (!t) return null;
+                  return (
+                    <div className="rotate-1 scale-[1.03] shadow-2xl opacity-95 pointer-events-none">
                       <TaskCard
-                        key={task.id}
-                        task={task}
+                        task={t}
                         categories={categories}
                         goals={goals}
-                        items={itemsByTask[task.id] ?? []}
-                        expanded={expandedTask === task.id}
-                        onToggleExpand={() => setExpandedTask(expandedTask === task.id ? null : task.id)}
-                        onEdit={() => openEdit(task)}
-                        onDelete={() => deleteTask(task.id)}
-                        onStatusChange={changeStatus}
-                        onToggleItem={toggleChecklistItem}
+                        items={itemsByTask[t.id] ?? []}
+                        expanded={false}
+                        onToggleExpand={() => {}}
+                        onEdit={() => {}}
+                        onDelete={() => {}}
+                        onStatusChange={() => {}}
+                        onToggleItem={() => {}}
                       />
-                    ))
-                )}
-              </div>
-            </div>
-
-            {/* ── Desktop: 3-column Kanban with drag & drop ── */}
-            <div className="hidden md:grid md:grid-cols-3 gap-4">
-              {(['todo', 'inprogress', 'done'] as const).map(status => {
-                const cfg        = STATUS_CONFIG[status];
-                const col        = tasksByStatus[status];
-                const isDropping = dragOverStatus === status && draggingTaskId !== null;
-                return (
-                  <div
-                    key={status}
-                    className={`flex flex-col gap-3 min-h-[200px] rounded-2xl transition-all duration-150 ${isDropping ? 'ring-2 ring-offset-2 ring-violet-300' : ''}`}
-                    onDragOver={e  => handleColumnDragOver(e, status)}
-                    onDragLeave={e => handleColumnDragLeave(e)}
-                    onDrop={e      => handleColumnDrop(e, status)}
-                  >
-                    {/* Column header */}
-                    <div className="flex items-center gap-2 px-1">
-                      <cfg.Icon size={14} style={{ color: cfg.color }} strokeWidth={2.5} />
-                      <span className="text-xs font-black text-slate-600 uppercase tracking-wide">{cfg.label}</span>
-                      <span className="ml-auto text-[10px] font-black text-slate-400 bg-slate-100 rounded-full px-2 py-0.5">{col.length}</span>
                     </div>
-                    {col.length === 0 ? (
-                      <div className={`flex-1 rounded-2xl border-2 border-dashed flex items-center justify-center py-10 transition-colors ${isDropping ? 'border-violet-300 bg-violet-50' : 'border-slate-100'}`}>
-                        <p className={`text-[10px] font-bold uppercase ${isDropping ? 'text-violet-400' : 'text-slate-300'}`}>
-                          {isDropping ? 'Soltar aquí' : 'Sin tareas'}
-                        </p>
-                      </div>
-                    ) : (
-                      col.map(task => (
-                        <TaskCard
-                          key={task.id}
-                          task={task}
-                          categories={categories}
-                          goals={goals}
-                          items={itemsByTask[task.id] ?? []}
-                          expanded={expandedTask === task.id}
-                          onToggleExpand={() => setExpandedTask(expandedTask === task.id ? null : task.id)}
-                          onEdit={() => openEdit(task)}
-                          onDelete={() => deleteTask(task.id)}
-                          onStatusChange={changeStatus}
-                          onToggleItem={toggleChecklistItem}
-                          isDraggable
-                          isDragging={draggingTaskId === task.id}
-                          onDragStart={() => handleDragStart(task.id)}
-                          onDragEnd={handleDragEnd}
-                        />
-                      ))
-                    )}
-                  </div>
-                );
-              })}
-            </div>
+                  );
+                })() : null}
+              </DragOverlay>
+            </DndContext>
           </>
         )}
 
@@ -406,16 +512,11 @@ interface TaskCardProps {
   onDelete: () => void;
   onStatusChange: (task: Task, status: Task['status']) => void;
   onToggleItem: (item: ChecklistItem) => void;
-  isDraggable?: boolean;
-  isDragging?: boolean;
-  onDragStart?: () => void;
-  onDragEnd?: () => void;
 }
 
 const TaskCard: React.FC<TaskCardProps> = ({
   task, categories, goals, items, expanded,
   onToggleExpand, onEdit, onDelete, onStatusChange, onToggleItem,
-  isDraggable = false, isDragging = false, onDragStart, onDragEnd,
 }) => {
   const cat      = task.categoryId ? categories[task.categoryId] : null;
   const goal     = task.goalId ? goals.find(g => g.id === task.goalId) : null;
@@ -438,23 +539,14 @@ const TaskCard: React.FC<TaskCardProps> = ({
     ? daysBetween(task.startedAt, getLocalISODate())
     : null;
 
-  const nextStatuses: Task['status'][] = task.status === 'todo'
-    ? ['inprogress']
-    : task.status === 'inprogress'
-    ? ['todo', 'done']
-    : ['todo'];
+  const nextStatuses: Task['status'][] =
+    task.status === 'backlog'    ? ['todo'] :
+    task.status === 'todo'       ? ['inprogress'] :
+    task.status === 'inprogress' ? ['todo', 'done'] :
+    ['backlog'];
 
   return (
-    <div
-      draggable={isDraggable}
-      onDragStart={isDraggable ? onDragStart : undefined}
-      onDragEnd={isDraggable ? onDragEnd : undefined}
-      className={`bg-white rounded-2xl border shadow-sm overflow-hidden transition-all duration-150 ${
-        isDraggable ? 'cursor-grab active:cursor-grabbing select-none' : ''
-      } ${isDragging ? 'opacity-40 scale-[0.98] shadow-none' : ''} ${
-        overdue ? 'border-red-200' : 'border-slate-100'
-      }`}
-    >
+    <div className={`bg-white rounded-2xl border shadow-sm overflow-hidden transition-all duration-150 ${overdue ? 'border-red-200' : 'border-slate-100'}`}>
       {/* Top: área strip */}
       {cat && (
         <div className="h-1" style={{ backgroundColor: cat.color }} />
@@ -580,6 +672,71 @@ const TaskCard: React.FC<TaskCardProps> = ({
           })}
         </div>
       </div>
+    </div>
+  );
+};
+
+// ─── SortableTaskCard ─────────────────────────────────────────────────────────
+
+const SortableTaskCard: React.FC<TaskCardProps & { reorderMode?: boolean }> = ({ reorderMode, ...props }) => {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: props.task.id });
+  return (
+    <div
+      ref={setNodeRef}
+      style={{ transform: CSS.Transform.toString(transform), transition: transition ?? undefined }}
+      className={`select-none ${isDragging ? 'opacity-30' : ''}`}
+    >
+      {reorderMode ? (
+        /* Mobile reorder mode: large visible handle on the left */
+        <div className="flex items-stretch gap-0">
+          <div
+            {...attributes}
+            {...listeners}
+            className="flex items-center justify-center w-12 bg-slate-100 rounded-l-2xl border border-r-0 border-slate-200 cursor-grab active:cursor-grabbing shrink-0"
+            style={{ touchAction: 'none' }}
+          >
+            <GripVertical size={22} className="text-slate-400" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <TaskCard {...props} />
+          </div>
+        </div>
+      ) : (
+        /* Desktop: subtle grip on hover */
+        <div className="relative group/card">
+          <div
+            {...attributes}
+            {...listeners}
+            className="absolute left-1.5 top-0 bottom-0 flex items-center z-20 cursor-grab active:cursor-grabbing touch-none opacity-0 group-hover/card:opacity-100 transition-opacity"
+            style={{ touchAction: 'none' }}
+          >
+            <GripVertical size={14} className="text-slate-300" />
+          </div>
+          <div className="pl-5">
+            <TaskCard {...props} />
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+// ─── KanbanColumn ─────────────────────────────────────────────────────────────
+
+const KanbanColumn: React.FC<{
+  status: Task['status'];
+  isDropping: boolean;
+  children: React.ReactNode;
+}> = ({ status, isDropping, children }) => {
+  const { setNodeRef } = useDroppable({ id: status });
+  return (
+    <div
+      ref={setNodeRef}
+      className={`flex flex-col gap-3 min-h-[200px] rounded-2xl transition-all duration-150 ${
+        isDropping ? 'ring-2 ring-offset-2 ring-violet-300 bg-violet-50/30' : ''
+      }`}
+    >
+      {children}
     </div>
   );
 };
@@ -769,8 +926,8 @@ const ResumenView: React.FC<ResumenViewProps> = ({ tasks, categories, currentDat
       {/* All-time stats */}
       <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-5">
         <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-4">Estado general de todas las tareas</p>
-        <div className="grid grid-cols-3 gap-3">
-          {(['todo', 'inprogress', 'done'] as const).map(status => {
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          {(['backlog', 'todo', 'inprogress', 'done'] as const).map(status => {
             const cfg = STATUS_CONFIG[status];
             const count = tasks.filter(t => t.status === status).length;
             const pct = tasks.length > 0 ? Math.round((count / tasks.length) * 100) : 0;
@@ -837,7 +994,10 @@ const TaskModal: React.FC<TaskModalProps> = ({
   const [task, setTask]   = useState<Task>({ ...initialTask });
   const [items, setItems] = useState<ChecklistItem[]>([...initialItems]);
   const [newItemText, setNewItemText] = useState('');
-  const newItemRef = useRef<HTMLInputElement>(null);
+  const [editingItemId, setEditingItemId] = useState<string | null>(null);
+  const [editingText, setEditingText]     = useState('');
+  const newItemRef  = useRef<HTMLInputElement>(null);
+  const editInputRef = useRef<HTMLInputElement>(null);
   const catList = Object.values(categories);
 
   function addItem() {
@@ -862,6 +1022,26 @@ const TaskModal: React.FC<TaskModalProps> = ({
 
   function toggleItem(id: string) {
     setItems(prev => prev.map(i => i.id === id ? { ...i, done: !i.done } : i));
+  }
+
+  function startEdit(item: ChecklistItem) {
+    setEditingItemId(item.id);
+    setEditingText(item.text);
+    setTimeout(() => editInputRef.current?.select(), 0);
+  }
+
+  function commitEdit() {
+    const text = editingText.trim();
+    if (text && editingItemId) {
+      setItems(prev => prev.map(i => i.id === editingItemId ? { ...i, text } : i));
+    }
+    setEditingItemId(null);
+    setEditingText('');
+  }
+
+  function cancelEdit() {
+    setEditingItemId(null);
+    setEditingText('');
   }
 
   function handleSave() {
@@ -1015,7 +1195,7 @@ const TaskModal: React.FC<TaskModalProps> = ({
             <div>
               <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1.5 block">Estado</label>
               <div className="flex gap-2">
-                {(['todo', 'inprogress', 'done'] as const).map(s => {
+                {(['backlog', 'todo', 'inprogress', 'done'] as const).map(s => {
                   const cfg = STATUS_CONFIG[s];
                   const active = task.status === s;
                   return (
@@ -1051,18 +1231,46 @@ const TaskModal: React.FC<TaskModalProps> = ({
               <div className="space-y-1.5 mb-2">
                 {items.map(item => (
                   <div key={item.id} className="flex items-center gap-2 group">
-                    <button onClick={() => toggleItem(item.id)}>
+                    <button onClick={() => toggleItem(item.id)} className="shrink-0">
                       {item.done
                         ? <CheckSquare size={15} className="text-emerald-500" />
                         : <Square size={15} className="text-slate-300 group-hover:text-slate-400 transition-all" />
                       }
                     </button>
-                    <span className={`flex-1 text-sm ${item.done ? 'line-through text-slate-300' : 'text-slate-600 font-medium'}`}>
-                      {item.text}
-                    </span>
-                    <button onClick={() => removeItem(item.id)} className="opacity-0 group-hover:opacity-100 p-1 hover:text-red-400 transition-all">
-                      <X size={11} className="text-slate-300" />
-                    </button>
+
+                    {editingItemId === item.id ? (
+                      <input
+                        ref={editInputRef}
+                        type="text"
+                        value={editingText}
+                        onChange={e => setEditingText(e.target.value)}
+                        onBlur={commitEdit}
+                        onKeyDown={e => {
+                          if (e.key === 'Enter') { e.preventDefault(); commitEdit(); }
+                          if (e.key === 'Escape') { e.preventDefault(); cancelEdit(); }
+                        }}
+                        className="flex-1 text-sm text-slate-700 font-medium bg-violet-50 border border-violet-300 rounded-lg px-2 py-0.5 focus:outline-none focus:ring-2 focus:ring-violet-400"
+                      />
+                    ) : (
+                      <span
+                        onClick={() => !item.done && startEdit(item)}
+                        className={`flex-1 text-sm ${item.done ? 'line-through text-slate-300 cursor-default' : 'text-slate-600 font-medium cursor-text hover:text-slate-800'}`}
+                        title={item.done ? undefined : 'Clic para editar'}
+                      >
+                        {item.text}
+                      </span>
+                    )}
+
+                    <div className="flex items-center gap-0.5 md:opacity-0 md:group-hover:opacity-100 transition-all shrink-0">
+                      {!item.done && editingItemId !== item.id && (
+                        <button onClick={() => startEdit(item)} className="p-1 hover:bg-slate-100 rounded-lg transition-all">
+                          <Edit2 size={11} className="text-slate-400" />
+                        </button>
+                      )}
+                      <button onClick={() => removeItem(item.id)} className="p-1 hover:bg-red-50 rounded-lg transition-all">
+                        <X size={11} className="text-red-400" />
+                      </button>
+                    </div>
                   </div>
                 ))}
               </div>

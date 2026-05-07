@@ -157,7 +157,25 @@ const Revision: React.FC<RevisionProps> = ({
     const total = weekGoals.length;
     const rate = total > 0 ? Math.round((completed / total) * 100) : 0;
     const highIncomplete = weekGoals.filter(g => g.priority === 'high' && !g.completed);
-    return { total, completed, rate, highIncomplete, weekGoals };
+
+    // Métricas de deadline
+    const withDeadline = weekGoals.filter(g => !!g.deadline);
+    const today = new Date().toISOString().split('T')[0];
+    const metOnTime  = withDeadline.filter(g => g.completed && g.completedAt && g.deadline && g.completedAt.split('T')[0] <= g.deadline).length;
+    const late       = withDeadline.filter(g => g.completed && g.completedAt && g.deadline && g.completedAt.split('T')[0] > g.deadline).length;
+    const overdue    = withDeadline.filter(g => !g.completed && g.deadline && g.deadline < today).length;
+
+    // Promedio de días para completar (con deadline y completados)
+    const completedWithDates = weekGoals.filter(g => g.completed && g.completedAt && g.createdAt);
+    const avgDays = completedWithDates.length > 0
+      ? Math.round(completedWithDates.reduce((sum, g) => {
+          const a = new Date(g.createdAt); a.setHours(0,0,0,0);
+          const b = new Date(g.completedAt!); b.setHours(0,0,0,0);
+          return sum + Math.max(0, Math.round((b.getTime() - a.getTime()) / 86400000));
+        }, 0) / completedWithDates.length)
+      : null;
+
+    return { total, completed, rate, highIncomplete, weekGoals, withDeadline: withDeadline.length, metOnTime, late, overdue, avgDays };
   }, [goals, weekId]);
 
   // Tasks completed in period grouped by área
@@ -249,7 +267,7 @@ const Revision: React.FC<RevisionProps> = ({
 
   return (
     <div className="flex-1 overflow-y-auto custom-scrollbar">
-      <div className="max-w-5xl mx-auto p-4 md:p-8 space-y-6 pb-12">
+      <div className="max-w-5xl mx-auto p-4 md:p-8 space-y-6 pb-28 md:pb-12">
 
         {/* Header */}
         <div className="flex items-center justify-between flex-wrap gap-3">
@@ -319,6 +337,35 @@ const Revision: React.FC<RevisionProps> = ({
                       );
                     })}
                   </div>
+
+                  {/* Métricas de deadline */}
+                  {goalStats.withDeadline > 0 && (
+                    <div className="bg-white/60 rounded-2xl p-3 space-y-2">
+                      <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Cumplimiento de fechas</p>
+                      <div className="flex items-center gap-2 flex-wrap">
+                        {goalStats.metOnTime > 0 && (
+                          <span className="flex items-center gap-1 text-[10px] font-black text-emerald-600 bg-emerald-100 rounded-full px-2.5 py-1">
+                            ✓ {goalStats.metOnTime} a tiempo
+                          </span>
+                        )}
+                        {goalStats.late > 0 && (
+                          <span className="flex items-center gap-1 text-[10px] font-black text-amber-700 bg-amber-100 rounded-full px-2.5 py-1">
+                            ⚠ {goalStats.late} fuera de fecha
+                          </span>
+                        )}
+                        {goalStats.overdue > 0 && (
+                          <span className="flex items-center gap-1 text-[10px] font-black text-red-600 bg-red-100 rounded-full px-2.5 py-1">
+                            ✗ {goalStats.overdue} vencida{goalStats.overdue > 1 ? 's' : ''}
+                          </span>
+                        )}
+                      </div>
+                      {goalStats.avgDays !== null && (
+                        <p className="text-[10px] font-bold text-slate-500">
+                          Promedio de conquista: <span className="font-black text-blue-600">{goalStats.avgDays} días</span>
+                        </p>
+                      )}
+                    </div>
+                  )}
                 </>
               )}
               {goalStats.total === 0 && (

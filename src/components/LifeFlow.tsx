@@ -18,11 +18,16 @@ import { LOAN_OUT_CAT_ID, LOAN_IN_CAT_ID } from '../types';
 import { generateId, formatDateId as fmtDateId, getWeekDays, GRID_HOURS, fmtCurrency, getWeekId } from '../lib/utils';
 import {
   loadAllData, migrateFromLocalStorage,
+  loadEvents, loadCategories, loadTransactions, loadFinCategories, loadGoals,
+  loadSavings, loadMonthBalances, loadSavingsWithdrawals, loadSavingsPockets,
+  loadPocketFundings, loadSavingsYearBalances, loadLoans, loadLoanPayments,
+  loadBudgets, loadTasks, loadChecklistItems,
   syncEvents, syncCategories, syncTransactions, syncFinCategories, syncGoals,
   syncSavings, syncMonthBalances, syncSavingsWithdrawals, syncSavingsPockets,
   syncPocketFundings, syncSavingsYearBalances, syncLoans, syncLoanPayments, syncBudgets,
   syncTasks, syncChecklistItems,
 } from '../lib/db';
+import { supabase } from '../lib/supabase';
 import { useAuth } from '../hooks/useAuth';
 
 const INITIAL_CATEGORIES = {
@@ -31,36 +36,29 @@ const INITIAL_CATEGORIES = {
     label: 'Personal',
     color: '#6366f1',
     short: 'PER',
-    presets: ['Hacer ejercicio', 'Leer 20 minutos', 'Organización personal', 'Desayuno', 'Almuerzo', 'Cena', 'Descanso']
+    presets: ['Ejercicio', 'Desayuno', 'Almuerzo', 'Cena', 'Descanso', 'Lectura']
   },
   'cat-2': {
     id: 'cat-2',
-    label: 'Mentalidad Campeona',
-    color: '#f59e0b',
-    short: 'MC',
-    presets: ['Labor Comercial', 'Gestión CRM', 'Gestión Financiera', 'INSPIRA', 'Champs Platform']
+    label: 'Trabajo',
+    color: '#10b981',
+    short: 'TRB',
+    presets: ['Reunión', 'Tareas', 'Planificación', 'Revisión']
   },
   'cat-3': {
     id: 'cat-3',
-    label: 'Marca Personal',
-    color: '#ec4899',
-    short: 'BRND',
-    presets: ['Labor comercial', 'Reunión', 'Clase Sistemas', 'Clase Tech']
+    label: 'Estudio',
+    color: '#3b82f6',
+    short: 'EST',
+    presets: ['Clases', 'Lectura', 'Práctica', 'Investigación']
   },
   'cat-4': {
     id: 'cat-4',
-    label: 'NPL',
-    color: '#3b82f6',
-    short: 'NPL',
-    presets: ['Tiempo de calidad', 'Ver pelis', 'Saliditas']
+    label: 'Otra',
+    color: '#94a3b8',
+    short: 'OTR',
+    presets: []
   },
-  'cat-5': {
-    id: 'cat-5',
-    label: 'Inventech',
-    color: '#10b981',
-    short: 'INV',
-    presets: ['Planificación', 'Reunión Equipo']
-  }
 };
 
 const INITIAL_FIN_CATEGORIES: FinCategory[] = [
@@ -299,9 +297,9 @@ const App = () => {
         setSavingsYearBalances(d.savingsYearBalances);
         setLoans(d.loans);
         setLoanPayments(d.loanPayments);
-        setBudgets(d.budgets);
-        setTasks(d.tasks);
-        setChecklistItems(d.checklistItems);
+        setBudgets(d.budgets ?? []);
+        setTasks(d.tasks ?? []);
+        setChecklistItems(d.checklistItems ?? []);
 
         // Sincronizar refs con los datos cargados ANTES de setLoading(false).
         // Así los sync-effects ven prev === curr y no re-suben nada a Supabase.
@@ -318,9 +316,9 @@ const App = () => {
         prevSavingsYearBalances.current = d.savingsYearBalances;
         prevLoans.current              = d.loans;
         prevLoanPayments.current       = d.loanPayments;
-        prevBudgets.current            = d.budgets;
-        prevTasks.current              = d.tasks;
-        prevChecklistItems.current     = d.checklistItems;
+        prevBudgets.current            = d.budgets ?? [];
+        prevTasks.current              = d.tasks ?? [];
+        prevChecklistItems.current     = d.checklistItems ?? [];
 
       } catch (err) {
         console.error('Error al cargar datos de Supabase:', err);
@@ -350,6 +348,10 @@ const App = () => {
   const prevChecklistItems      = useRef(checklistItems);
 
   // ── Sincronización con Supabase (fire-and-forget, sin bloquear la UI) ───────
+  // Patrón anti-loop: los handlers de real-time setean prevXxx.current = fresh
+  // ANTES de llamar setXxx(fresh). Cuando el sync-effect se dispara, el diff
+  // prev === curr → no hay nada que subir → el loop se corta.
+
   useEffect(() => {
     if (loading || !userId) return;
     syncEvents(prevEvents.current, events, userId).catch(console.error);
@@ -445,6 +447,101 @@ const App = () => {
     syncChecklistItems(prevChecklistItems.current, checklistItems, userId).catch(console.error);
     prevChecklistItems.current = checklistItems;
   }, [checklistItems, loading, userId]);
+
+  // ── Real-time: recibe cambios de otros dispositivos/tabs ─────────────────────
+  useEffect(() => {
+    if (!userId || loading) return;
+
+    const f = `user_id=eq.${userId}`;
+
+    const channel = supabase
+      .channel(`lifeos-rt-${userId}`)
+
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'events', filter: f }, async () => {
+        const fresh = await loadEvents();
+        prevEvents.current = fresh;
+        setEvents(fresh);
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'categories', filter: f }, async () => {
+        const fresh = await loadCategories();
+        prevCategories.current = fresh;
+        setCategories(fresh);
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'transactions', filter: f }, async () => {
+        const fresh = await loadTransactions();
+        prevTransactions.current = fresh;
+        setTransactions(fresh);
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'fin_categories', filter: f }, async () => {
+        const fresh = await loadFinCategories();
+        prevFinCategories.current = fresh;
+        setFinCategories(fresh);
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'goals', filter: f }, async () => {
+        const fresh = await loadGoals();
+        prevGoals.current = fresh;
+        setGoals(fresh);
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'savings', filter: f }, async () => {
+        const fresh = await loadSavings();
+        prevSavings.current = fresh;
+        setSavings(fresh);
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'month_balances', filter: f }, async () => {
+        const fresh = await loadMonthBalances();
+        prevMonthBalances.current = fresh;
+        setMonthBalances(fresh);
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'savings_withdrawals', filter: f }, async () => {
+        const fresh = await loadSavingsWithdrawals();
+        prevSavingsWithdrawals.current = fresh;
+        setSavingsWithdrawals(fresh);
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'savings_pockets', filter: f }, async () => {
+        const fresh = await loadSavingsPockets();
+        prevSavingsPockets.current = fresh;
+        setSavingsPockets(fresh);
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'pocket_fundings', filter: f }, async () => {
+        const fresh = await loadPocketFundings();
+        prevPocketFundings.current = fresh;
+        setPocketFundings(fresh);
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'savings_year_balances', filter: f }, async () => {
+        const fresh = await loadSavingsYearBalances();
+        prevSavingsYearBalances.current = fresh;
+        setSavingsYearBalances(fresh);
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'loans', filter: f }, async () => {
+        const fresh = await loadLoans();
+        prevLoans.current = fresh;
+        setLoans(fresh);
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'loan_payments', filter: f }, async () => {
+        const fresh = await loadLoanPayments();
+        prevLoanPayments.current = fresh;
+        setLoanPayments(fresh);
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'budgets', filter: f }, async () => {
+        const fresh = await loadBudgets();
+        prevBudgets.current = fresh;
+        setBudgets(fresh);
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'tasks', filter: f }, async () => {
+        const fresh = await loadTasks();
+        prevTasks.current = fresh;
+        setTasks(fresh);
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'checklist_items', filter: f }, async () => {
+        const fresh = await loadChecklistItems();
+        prevChecklistItems.current = fresh;
+        setChecklistItems(fresh);
+      })
+
+      .subscribe();
+
+    return () => { supabase.removeChannel(channel); };
+  }, [userId, loading]);
 
   useEffect(() => {
     const handleResize = () => setWindowWidth(window.innerWidth);
