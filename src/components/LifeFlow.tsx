@@ -347,103 +347,127 @@ const App = () => {
   const prevTasks               = useRef(tasks);
   const prevChecklistItems      = useRef(checklistItems);
 
+  // Timestamps hasta los que el RT está silenciado por tabla (ms).
+  // Cada sync local extiende el cooldown 5 s para evitar que el RT
+  // refleje nuestros propios cambios con datos potencialmente stale.
+  const rtCooldown = useRef<Record<string, number>>({});
+  const RT_COOLDOWN_MS = 5000;
+  const pause = (table: string) => {
+    rtCooldown.current[table] = Date.now() + RT_COOLDOWN_MS;
+  };
+  const inCooldown = (table: string) =>
+    Date.now() < (rtCooldown.current[table] ?? 0);
+
   // ── Sincronización con Supabase (fire-and-forget, sin bloquear la UI) ───────
-  // Patrón anti-loop: los handlers de real-time setean prevXxx.current = fresh
-  // ANTES de llamar setXxx(fresh). Cuando el sync-effect se dispara, el diff
-  // prev === curr → no hay nada que subir → el loop se corta.
 
   useEffect(() => {
     if (loading || !userId) return;
+    pause('events');
     syncEvents(prevEvents.current, events, userId).catch(console.error);
     prevEvents.current = events;
   }, [events, loading, userId]);
 
   useEffect(() => {
     if (loading || !userId) return;
+    pause('categories');
     syncCategories(prevCategories.current, categories, userId).catch(console.error);
     prevCategories.current = categories;
   }, [categories, loading, userId]);
 
   useEffect(() => {
     if (loading || !userId) return;
+    pause('transactions');
     syncTransactions(prevTransactions.current, transactions, userId).catch(console.error);
     prevTransactions.current = transactions;
   }, [transactions, loading, userId]);
 
   useEffect(() => {
     if (loading || !userId) return;
+    pause('fin_categories');
     syncFinCategories(prevFinCategories.current, finCategories, userId).catch(console.error);
     prevFinCategories.current = finCategories;
   }, [finCategories, loading, userId]);
 
   useEffect(() => {
     if (loading || !userId) return;
+    pause('goals');
     syncGoals(prevGoals.current, goals, userId).catch(console.error);
     prevGoals.current = goals;
   }, [goals, loading, userId]);
 
   useEffect(() => {
     if (loading || !userId) return;
+    pause('savings');
     syncSavings(prevSavings.current, savings, userId).catch(console.error);
     prevSavings.current = savings;
   }, [savings, loading, userId]);
 
   useEffect(() => {
     if (loading || !userId) return;
+    pause('month_balances');
     syncMonthBalances(prevMonthBalances.current, monthBalances, userId).catch(console.error);
     prevMonthBalances.current = monthBalances;
   }, [monthBalances, loading, userId]);
 
   useEffect(() => {
     if (loading || !userId) return;
+    pause('savings_withdrawals');
     syncSavingsWithdrawals(prevSavingsWithdrawals.current, savingsWithdrawals, userId).catch(console.error);
     prevSavingsWithdrawals.current = savingsWithdrawals;
   }, [savingsWithdrawals, loading, userId]);
 
   useEffect(() => {
     if (loading || !userId) return;
+    pause('savings_pockets');
     syncSavingsPockets(prevSavingsPockets.current, savingsPockets, userId).catch(console.error);
     prevSavingsPockets.current = savingsPockets;
   }, [savingsPockets, loading, userId]);
 
   useEffect(() => {
     if (loading || !userId) return;
+    pause('pocket_fundings');
     syncPocketFundings(prevPocketFundings.current, pocketFundings, userId).catch(console.error);
     prevPocketFundings.current = pocketFundings;
   }, [pocketFundings, loading, userId]);
 
   useEffect(() => {
     if (loading || !userId) return;
+    pause('savings_year_balances');
     syncSavingsYearBalances(prevSavingsYearBalances.current, savingsYearBalances, userId).catch(console.error);
     prevSavingsYearBalances.current = savingsYearBalances;
   }, [savingsYearBalances, loading, userId]);
 
   useEffect(() => {
     if (loading || !userId) return;
+    pause('loans');
     syncLoans(prevLoans.current, loans, userId).catch(console.error);
     prevLoans.current = loans;
   }, [loans, loading, userId]);
 
   useEffect(() => {
     if (loading || !userId) return;
+    pause('loan_payments');
     syncLoanPayments(prevLoanPayments.current, loanPayments, userId).catch(console.error);
     prevLoanPayments.current = loanPayments;
   }, [loanPayments, loading, userId]);
 
   useEffect(() => {
     if (loading || !userId) return;
+    pause('budgets');
     syncBudgets(prevBudgets.current, budgets, userId).catch(console.error);
     prevBudgets.current = budgets;
   }, [budgets, loading, userId]);
 
   useEffect(() => {
     if (loading || !userId) return;
+    pause('tasks');
     syncTasks(prevTasks.current, tasks, userId).catch(console.error);
     prevTasks.current = tasks;
   }, [tasks, loading, userId]);
 
   useEffect(() => {
     if (loading || !userId) return;
+    pause('checklist_items');
     syncChecklistItems(prevChecklistItems.current, checklistItems, userId).catch(console.error);
     prevChecklistItems.current = checklistItems;
   }, [checklistItems, loading, userId]);
@@ -458,84 +482,84 @@ const App = () => {
       .channel(`lifeos-rt-${userId}`)
 
       .on('postgres_changes', { event: '*', schema: 'public', table: 'events', filter: f }, async () => {
+        if (inCooldown('events')) return;
         const fresh = await loadEvents();
-        prevEvents.current = fresh;
-        setEvents(fresh);
+        prevEvents.current = fresh; setEvents(fresh);
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'categories', filter: f }, async () => {
+        if (inCooldown('categories')) return;
         const fresh = await loadCategories();
-        prevCategories.current = fresh;
-        setCategories(fresh);
+        prevCategories.current = fresh; setCategories(fresh);
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'transactions', filter: f }, async () => {
+        if (inCooldown('transactions')) return;
         const fresh = await loadTransactions();
-        prevTransactions.current = fresh;
-        setTransactions(fresh);
+        prevTransactions.current = fresh; setTransactions(fresh);
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'fin_categories', filter: f }, async () => {
+        if (inCooldown('fin_categories')) return;
         const fresh = await loadFinCategories();
-        prevFinCategories.current = fresh;
-        setFinCategories(fresh);
+        prevFinCategories.current = fresh; setFinCategories(fresh);
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'goals', filter: f }, async () => {
+        if (inCooldown('goals')) return;
         const fresh = await loadGoals();
-        prevGoals.current = fresh;
-        setGoals(fresh);
+        prevGoals.current = fresh; setGoals(fresh);
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'savings', filter: f }, async () => {
+        if (inCooldown('savings')) return;
         const fresh = await loadSavings();
-        prevSavings.current = fresh;
-        setSavings(fresh);
+        prevSavings.current = fresh; setSavings(fresh);
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'month_balances', filter: f }, async () => {
+        if (inCooldown('month_balances')) return;
         const fresh = await loadMonthBalances();
-        prevMonthBalances.current = fresh;
-        setMonthBalances(fresh);
+        prevMonthBalances.current = fresh; setMonthBalances(fresh);
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'savings_withdrawals', filter: f }, async () => {
+        if (inCooldown('savings_withdrawals')) return;
         const fresh = await loadSavingsWithdrawals();
-        prevSavingsWithdrawals.current = fresh;
-        setSavingsWithdrawals(fresh);
+        prevSavingsWithdrawals.current = fresh; setSavingsWithdrawals(fresh);
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'savings_pockets', filter: f }, async () => {
+        if (inCooldown('savings_pockets')) return;
         const fresh = await loadSavingsPockets();
-        prevSavingsPockets.current = fresh;
-        setSavingsPockets(fresh);
+        prevSavingsPockets.current = fresh; setSavingsPockets(fresh);
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'pocket_fundings', filter: f }, async () => {
+        if (inCooldown('pocket_fundings')) return;
         const fresh = await loadPocketFundings();
-        prevPocketFundings.current = fresh;
-        setPocketFundings(fresh);
+        prevPocketFundings.current = fresh; setPocketFundings(fresh);
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'savings_year_balances', filter: f }, async () => {
+        if (inCooldown('savings_year_balances')) return;
         const fresh = await loadSavingsYearBalances();
-        prevSavingsYearBalances.current = fresh;
-        setSavingsYearBalances(fresh);
+        prevSavingsYearBalances.current = fresh; setSavingsYearBalances(fresh);
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'loans', filter: f }, async () => {
+        if (inCooldown('loans')) return;
         const fresh = await loadLoans();
-        prevLoans.current = fresh;
-        setLoans(fresh);
+        prevLoans.current = fresh; setLoans(fresh);
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'loan_payments', filter: f }, async () => {
+        if (inCooldown('loan_payments')) return;
         const fresh = await loadLoanPayments();
-        prevLoanPayments.current = fresh;
-        setLoanPayments(fresh);
+        prevLoanPayments.current = fresh; setLoanPayments(fresh);
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'budgets', filter: f }, async () => {
+        if (inCooldown('budgets')) return;
         const fresh = await loadBudgets();
-        prevBudgets.current = fresh;
-        setBudgets(fresh);
+        prevBudgets.current = fresh; setBudgets(fresh);
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'tasks', filter: f }, async () => {
+        if (inCooldown('tasks')) return;
         const fresh = await loadTasks();
-        prevTasks.current = fresh;
-        setTasks(fresh);
+        prevTasks.current = fresh; setTasks(fresh);
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'checklist_items', filter: f }, async () => {
+        if (inCooldown('checklist_items')) return;
         const fresh = await loadChecklistItems();
-        prevChecklistItems.current = fresh;
-        setChecklistItems(fresh);
+        prevChecklistItems.current = fresh; setChecklistItems(fresh);
       })
 
       .subscribe();
