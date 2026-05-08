@@ -139,7 +139,8 @@ const Lista: React.FC<ListaProps> = ({
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
-    useSensor(TouchSensor,   { activationConstraint: { delay: 250, tolerance: 10 } }),
+    // delay:0 porque el drag solo se activa desde el grip handle explícito
+    useSensor(TouchSensor,   { activationConstraint: { delay: 0, tolerance: 5 } }),
   );
 
   // Detección de colisión: el puntero manda (donde está el cursor/dedo, ahí cae).
@@ -255,6 +256,11 @@ const Lista: React.FC<ListaProps> = ({
 
   function handleDragStart({ active }: DragStartEvent) {
     setActiveDragId(active.id as string);
+  }
+
+  function handleDragCancel() {
+    setActiveDragId(null);
+    setOverColumnId(null);
   }
 
   function handleDragOver({ over }: DragOverEvent) {
@@ -396,6 +402,7 @@ const Lista: React.FC<ListaProps> = ({
               onDragStart={handleDragStart}
               onDragOver={handleDragOver}
               onDragEnd={handleDragEnd}
+              onDragCancel={handleDragCancel}
             >
               {/* ── Kanban universal: scroll horizontal en mobile, grid en desktop ── */}
               <div className="overflow-x-auto -mx-4 md:mx-0 pb-2">
@@ -818,7 +825,9 @@ const TaskCard: React.FC<TaskCardProps> = ({
 };
 
 // ─── SortableTaskCard ─────────────────────────────────────────────────────────
-// Listeners en toda la card: touch=250ms long-press activa drag, click rápido funciona normal.
+// Grip handle explícito: listeners SOLO en el ícono de agarre.
+// Mobile: siempre visible → drag desde ahí, scroll del tablero libre.
+// Desktop: aparece al hover.
 
 const SortableTaskCard: React.FC<TaskCardProps> = (props) => {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: props.task.id });
@@ -827,15 +836,19 @@ const SortableTaskCard: React.FC<TaskCardProps> = (props) => {
       ref={setNodeRef}
       style={{ transform: CSS.Transform.toString(transform), transition: transition ?? undefined }}
       className={`select-none ${isDragging ? 'opacity-30' : ''}`}
-      {...attributes}
-      {...listeners}
     >
-      <div className="relative group/card cursor-grab active:cursor-grabbing">
-        {/* Grip visual en desktop (hover) */}
-        <div className="hidden md:flex absolute left-1.5 top-0 bottom-0 items-center z-20 pointer-events-none opacity-0 group-hover/card:opacity-100 transition-opacity">
-          <GripVertical size={14} className="text-slate-300" />
+      <div className="relative group/card">
+        {/* Grip handle — mobile: siempre visible / desktop: hover only */}
+        <div
+          {...attributes}
+          {...listeners}
+          className="absolute left-0 top-0 bottom-0 w-7 flex items-center justify-center z-20 cursor-grab active:cursor-grabbing md:opacity-0 md:group-hover/card:opacity-100 transition-opacity"
+          style={{ touchAction: 'none' }}
+        >
+          <GripVertical size={15} className="text-slate-300" />
         </div>
-        <div className="md:pl-5">
+        {/* Contenido — padding izq para no solapar con el grip */}
+        <div className="pl-7 md:pl-5">
           <TaskCard {...props} />
         </div>
       </div>
