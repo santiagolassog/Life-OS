@@ -13,7 +13,7 @@ import { CSS } from '@dnd-kit/utilities';
 import {
   Plus, X, Trash2, Edit2, ChevronDown, ChevronUp,
   CheckSquare, Square, Calendar, Clock, BarChart3, List,
-  Circle, Loader, CheckCircle2, Inbox, GripVertical,
+  Circle, Loader, CheckCircle2, Inbox, GripVertical, Settings2, Palette,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import type { Task, ChecklistItem, Categories, Goal } from '../../types';
@@ -74,20 +74,31 @@ function getDeadlineStatus(deadline: string): DeadlineStatus {
 
 // ─── Props ───────────────────────────────────────────────────────────────────
 
+// Paleta de colores disponibles para áreas
+const CAT_COLORS = [
+  '#6366f1','#f59e0b','#ec4899','#3b82f6','#10b981',
+  '#ef4444','#8b5cf6','#f97316','#14b8a6','#94a3b8',
+  '#06b6d4','#84cc16',
+];
+
 interface ListaProps {
   tasks: Task[];
   setTasks: React.Dispatch<React.SetStateAction<Task[]>>;
   checklistItems: ChecklistItem[];
   setChecklistItems: React.Dispatch<React.SetStateAction<ChecklistItem[]>>;
   categories: Categories;
+  setCategories: React.Dispatch<React.SetStateAction<Categories>>;
   goals: Goal[];
   currentDate: Date;
 }
 
 // ─── Main Component ──────────────────────────────────────────────────────────
 
+// Tipo para el modal de edición de categoría
+type CatEdit = { id: string; label: string; short: string; color: string; isNew: boolean } | null;
+
 const Lista: React.FC<ListaProps> = ({
-  tasks, setTasks, checklistItems, setChecklistItems, categories, goals, currentDate,
+  tasks, setTasks, checklistItems, setChecklistItems, categories, setCategories, goals, currentDate,
 }) => {
   const [subView, setSubView] = useState<ListaSubView>('tablero');
   const [filterCat, setFilterCat]     = useState('');
@@ -97,11 +108,39 @@ const Lista: React.FC<ListaProps> = ({
   const [expandedTask, setExpandedTask] = useState<string | null>(null);
   const [activeDragId, setActiveDragId] = useState<string | null>(null);
   const [overColumnId, setOverColumnId] = useState<Task['status'] | null>(null);
-  const [isReorderMode, setIsReorderMode] = useState(false);
+
+  // ── Gestión de áreas (categorías) ────────────────────────────────────────────
+  const [showCatManager, setShowCatManager] = useState(false);
+  const [catEdit, setCatEdit] = useState<CatEdit>(null);
+
+  const openCreateCat = () => setCatEdit({ id: generateId(), label: '', short: '', color: CAT_COLORS[0], isNew: true });
+  const openEditCat   = (cat: import('../../types').Category) => setCatEdit({ id: cat.id, label: cat.label, short: cat.short, color: cat.color, isNew: false });
+  const closeCatEdit  = () => setCatEdit(null);
+
+  const saveCat = () => {
+    if (!catEdit || !catEdit.label.trim() || !catEdit.short.trim()) return;
+    setCategories(prev => ({
+      ...prev,
+      [catEdit.id]: {
+        id:      catEdit.id,
+        label:   catEdit.label.trim(),
+        short:   catEdit.short.toUpperCase().slice(0, 5).trim(),
+        color:   catEdit.color,
+        presets: prev[catEdit.id]?.presets ?? [],
+      },
+    }));
+    setCatEdit(null);
+  };
+
+  const deleteCat = (id: string) => {
+    setCategories(prev => { const n = { ...prev }; delete n[id]; return n; });
+    if (filterCat === id) setFilterCat('');
+    setCatEdit(null);
+  };
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
-    useSensor(TouchSensor,   { activationConstraint: { delay: 0, tolerance: 10 } }),
+    useSensor(TouchSensor,   { activationConstraint: { delay: 250, tolerance: 10 } }),
   );
 
   // Detección de colisión: el puntero manda (donde está el cursor/dedo, ahí cae).
@@ -320,8 +359,7 @@ const Lista: React.FC<ListaProps> = ({
         {subView === 'tablero' && (
           <>
             {/* Filters */}
-            <div className="flex gap-2 flex-wrap">
-              {/* Category filter */}
+            <div className="flex items-center gap-2">
               <div className="flex gap-1.5 flex-wrap flex-1 min-w-0">
                 <button
                   onClick={() => setFilterCat('')}
@@ -339,7 +377,20 @@ const Lista: React.FC<ListaProps> = ({
                   </button>
                 ))}
               </div>
+              {/* Gestionar áreas */}
+              <button
+                onClick={() => setShowCatManager(true)}
+                title="Gestionar áreas"
+                className="shrink-0 p-2 bg-slate-100 hover:bg-violet-100 hover:text-violet-600 text-slate-400 rounded-full transition-all"
+              >
+                <Settings2 size={15} />
+              </button>
             </div>
+
+            {/* Hint mobile: long-press para arrastrar */}
+            <p className="md:hidden text-[10px] text-slate-400 font-bold text-center py-1">
+              Mantén presionada una card para arrastrarla entre columnas
+            </p>
 
             <DndContext
               sensors={sensors}
@@ -348,119 +399,56 @@ const Lista: React.FC<ListaProps> = ({
               onDragOver={handleDragOver}
               onDragEnd={handleDragEnd}
             >
-              {/* ── Mobile: Status pill tabs + flat sortable list ── */}
-              <div className="md:hidden">
-                <div className="flex items-center gap-2">
-                  <div className="flex gap-1.5 overflow-x-auto pb-1 scrollbar-hide flex-1">
-                    {([['', 'Todas'], ['backlog', 'Por definir'], ['todo', 'Por Hacer'], ['inprogress', 'En Progreso'], ['done', 'Hechas']] as const).map(([status, label]) => (
-                      <button
+              {/* ── Kanban universal: scroll horizontal en mobile, grid en desktop ── */}
+              <div className="overflow-x-auto -mx-4 md:mx-0 pb-2">
+                <div className="flex md:grid md:grid-cols-4 gap-3 md:gap-4 px-4 md:px-0">
+                  {(['backlog', 'todo', 'inprogress', 'done'] as const).map(status => {
+                    const cfg        = STATUS_CONFIG[status];
+                    const col        = tasksByStatus[status];
+                    const isDropping = activeDragId !== null && overColumnId === status;
+                    return (
+                      <KanbanColumn
                         key={status}
-                        onClick={() => { setFilterStatus(status as Task['status'] | ''); setIsReorderMode(false); }}
-                        className={`px-3 py-1.5 rounded-full text-[10px] font-black uppercase whitespace-nowrap transition-all shrink-0 ${
-                          filterStatus === status
-                            ? status === ''          ? 'bg-slate-700 text-white'
-                              : status === 'backlog'    ? 'bg-violet-500 text-white'
-                              : status === 'todo'       ? 'bg-slate-500 text-white'
-                              : status === 'inprogress' ? 'bg-blue-500 text-white'
-                              : 'bg-emerald-500 text-white'
-                            : 'bg-slate-100 text-slate-500'
-                        }`}
+                        status={status}
+                        isDropping={isDropping}
+                        className="w-[78vw] min-w-[240px] max-w-[320px] shrink-0 md:w-auto md:min-w-0 md:max-w-none md:shrink"
                       >
-                        {label} {status && `(${(tasksByStatus as Record<string, Task[]>)[status]?.length ?? 0})`}
-                      </button>
-                    ))}
-                  </div>
+                        {/* Column header — sticky en mobile */}
+                        <div className={`flex items-center gap-2 px-1 py-1.5 rounded-xl sticky top-0 z-10 ${isDropping ? 'bg-violet-50' : 'bg-slate-50/90'} backdrop-blur-sm`}>
+                          <cfg.Icon size={14} style={{ color: cfg.color }} strokeWidth={2.5} />
+                          <span className="text-xs font-black text-slate-600 uppercase tracking-wide">{cfg.label}</span>
+                          <span className="ml-auto text-[10px] font-black text-slate-400 bg-white rounded-full px-2 py-0.5 shadow-sm">{col.length}</span>
+                        </div>
 
-                  {/* Botón reordenar */}
-                  <button
-                    onClick={() => setIsReorderMode(v => !v)}
-                    className={`shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[10px] font-black uppercase transition-all ${
-                      isReorderMode
-                        ? 'bg-violet-600 text-white shadow-md'
-                        : 'bg-slate-100 text-slate-500'
-                    }`}
-                  >
-                    <GripVertical size={11} />
-                    {isReorderMode ? 'Listo' : 'Orden'}
-                  </button>
+                        <SortableContext items={col.map(t => t.id)} strategy={verticalListSortingStrategy}>
+                          {col.length === 0 ? (
+                            <div className={`flex-1 rounded-2xl border-2 border-dashed flex flex-col items-center justify-center py-10 gap-2 transition-colors ${isDropping ? 'border-violet-300 bg-violet-50' : 'border-slate-100'}`}>
+                              <p className={`text-xs font-bold ${isDropping ? 'text-violet-400' : 'text-slate-300'}`}>
+                                {isDropping ? 'Soltar aquí' : 'Sin tareas'}
+                              </p>
+                            </div>
+                          ) : (
+                            col.map(task => (
+                              <SortableTaskCard
+                                key={task.id}
+                                task={task}
+                                categories={categories}
+                                goals={goals}
+                                items={itemsByTask[task.id] ?? []}
+                                expanded={expandedTask === task.id}
+                                onToggleExpand={() => setExpandedTask(expandedTask === task.id ? null : task.id)}
+                                onEdit={() => openEdit(task)}
+                                onDelete={() => deleteTask(task.id)}
+                                onStatusChange={changeStatus}
+                                onToggleItem={toggleChecklistItem}
+                              />
+                            ))
+                          )}
+                        </SortableContext>
+                      </KanbanColumn>
+                    );
+                  })}
                 </div>
-
-                {isReorderMode && (
-                  <p className="text-[10px] text-violet-500 font-bold mt-2 px-1">
-                    Arrastra el ícono ≡ para reordenar las tarjetas
-                  </p>
-                )}
-
-                {(() => {
-                  const mobileTasks = filteredTasks.filter(t => !filterStatus || t.status === filterStatus);
-                  if (mobileTasks.length === 0) return <EmptyState onAdd={openCreate} />;
-                  return (
-                    <SortableContext items={mobileTasks.map(t => t.id)} strategy={verticalListSortingStrategy}>
-                      <div className="mt-3 flex flex-col gap-3">
-                        {mobileTasks.map(task => (
-                          <SortableTaskCard
-                            key={task.id}
-                            task={task}
-                            categories={categories}
-                            goals={goals}
-                            items={itemsByTask[task.id] ?? []}
-                            expanded={expandedTask === task.id}
-                            onToggleExpand={() => !isReorderMode && setExpandedTask(expandedTask === task.id ? null : task.id)}
-                            onEdit={() => !isReorderMode && openEdit(task)}
-                            onDelete={() => !isReorderMode && deleteTask(task.id)}
-                            onStatusChange={changeStatus}
-                            onToggleItem={toggleChecklistItem}
-                            reorderMode={isReorderMode}
-                            isMobile
-                          />
-                        ))}
-                      </div>
-                    </SortableContext>
-                  );
-                })()}
-              </div>
-
-              {/* ── Desktop: 4-column Kanban ── */}
-              <div className="hidden md:grid md:grid-cols-4 gap-4">
-                {(['backlog', 'todo', 'inprogress', 'done'] as const).map(status => {
-                  const cfg        = STATUS_CONFIG[status];
-                  const col        = tasksByStatus[status];
-                  const isDropping = activeDragId !== null && overColumnId === status;
-                  return (
-                    <KanbanColumn key={status} status={status} isDropping={isDropping}>
-                      <div className="flex items-center gap-2 px-1">
-                        <cfg.Icon size={14} style={{ color: cfg.color }} strokeWidth={2.5} />
-                        <span className="text-xs font-black text-slate-600 uppercase tracking-wide">{cfg.label}</span>
-                        <span className="ml-auto text-[10px] font-black text-slate-400 bg-slate-100 rounded-full px-2 py-0.5">{col.length}</span>
-                      </div>
-                      <SortableContext items={col.map(t => t.id)} strategy={verticalListSortingStrategy}>
-                        {col.length === 0 ? (
-                          <div className={`flex-1 rounded-2xl border-2 border-dashed flex items-center justify-center py-10 transition-colors ${isDropping ? 'border-violet-300 bg-violet-50' : 'border-slate-100'}`}>
-                            <p className={`text-[10px] font-bold uppercase ${isDropping ? 'text-violet-400' : 'text-slate-300'}`}>
-                              {isDropping ? 'Soltar aquí' : 'Sin tareas'}
-                            </p>
-                          </div>
-                        ) : (
-                          col.map(task => (
-                            <SortableTaskCard
-                              key={task.id}
-                              task={task}
-                              categories={categories}
-                              goals={goals}
-                              items={itemsByTask[task.id] ?? []}
-                              expanded={expandedTask === task.id}
-                              onToggleExpand={() => setExpandedTask(expandedTask === task.id ? null : task.id)}
-                              onEdit={() => openEdit(task)}
-                              onDelete={() => deleteTask(task.id)}
-                              onStatusChange={changeStatus}
-                              onToggleItem={toggleChecklistItem}
-                            />
-                          ))
-                        )}
-                      </SortableContext>
-                    </KanbanColumn>
-                  );
-                })}
               </div>
 
               {/* Overlay flotante mientras se arrastra */}
@@ -509,6 +497,134 @@ const Lista: React.FC<ListaProps> = ({
         <Plus size={24} />
       </button>
 
+      {/* ── Modal Gestión de Áreas ── */}
+      {showCatManager && (
+        <div
+          className="fixed inset-0 z-[300] flex items-end md:items-center justify-center bg-slate-900/60 backdrop-blur-sm animate-in fade-in md:p-8"
+          onClick={() => { setShowCatManager(false); setCatEdit(null); }}
+        >
+          <div
+            className="bg-white rounded-t-3xl md:rounded-[2.5rem] w-full max-w-md shadow-2xl flex flex-col"
+            style={{ maxHeight: 'min(85svh, calc(100vh - env(safe-area-inset-top,0px)))' }}
+            onClick={e => e.stopPropagation()}
+          >
+            {/* Drag handle mobile */}
+            <div className="flex justify-center pt-3 pb-1 md:hidden shrink-0">
+              <div className="w-10 h-1 bg-slate-200 rounded-full" />
+            </div>
+
+            {/* Header */}
+            <div className="px-5 py-4 border-b border-slate-100 flex justify-between items-center shrink-0">
+              <div className="flex items-center gap-2">
+                {catEdit && (
+                  <button onClick={closeCatEdit} className="p-1.5 hover:bg-slate-100 rounded-full mr-1">
+                    <ChevronDown size={16} className="text-slate-400 rotate-90" />
+                  </button>
+                )}
+                <Palette size={16} className="text-violet-500" />
+                <h3 className="font-black text-slate-800 text-sm uppercase tracking-wide">
+                  {catEdit ? (catEdit.isNew ? 'Nueva área' : 'Editar área') : 'Mis áreas'}
+                </h3>
+              </div>
+              <button onClick={() => { setShowCatManager(false); setCatEdit(null); }} className="p-2 hover:bg-slate-100 rounded-full">
+                <X size={16} className="text-slate-400" />
+              </button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto custom-scrollbar">
+              {!catEdit ? (
+                /* ── Vista: lista de áreas ── */
+                <div className="p-5 space-y-2">
+                  {Object.values(categories).map(cat => (
+                    <div key={cat.id} className="flex items-center gap-3 p-3 rounded-2xl bg-slate-50 border border-slate-100">
+                      <div className="w-3 h-3 rounded-full shrink-0" style={{ backgroundColor: cat.color }} />
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-bold text-slate-700 truncate">{cat.label}</p>
+                        <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{cat.short}</p>
+                      </div>
+                      <div className="flex items-center gap-1 shrink-0">
+                        <button onClick={() => openEditCat(cat)} className="p-1.5 hover:bg-white rounded-xl transition-all text-slate-400 hover:text-violet-500">
+                          <Edit2 size={13} />
+                        </button>
+                        <button onClick={() => deleteCat(cat.id)} className="p-1.5 hover:bg-red-50 rounded-xl transition-all text-slate-400 hover:text-red-500">
+                          <Trash2 size={13} />
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                  <button
+                    onClick={openCreateCat}
+                    className="w-full flex items-center justify-center gap-2 py-3 rounded-2xl border-2 border-dashed border-violet-200 text-violet-500 font-black text-xs uppercase tracking-widest hover:bg-violet-50 transition-all mt-2"
+                  >
+                    <Plus size={14} /> Nueva área
+                  </button>
+                </div>
+              ) : (
+                /* ── Vista: formulario crear/editar ── */
+                <div className="p-5 space-y-4">
+                  <div>
+                    <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1.5 block">Nombre del área *</label>
+                    <input
+                      type="text"
+                      value={catEdit.label}
+                      onChange={e => setCatEdit(c => c && ({ ...c, label: e.target.value }))}
+                      placeholder="Ej: Trabajo, Personal, Estudio..."
+                      autoFocus
+                      className="w-full px-4 py-3 border-2 border-slate-200 focus:border-violet-400 rounded-xl text-slate-800 font-bold text-sm outline-none transition-all"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1.5 block">Sigla (máx. 5 caracteres) *</label>
+                    <input
+                      type="text"
+                      value={catEdit.short}
+                      onChange={e => setCatEdit(c => c && ({ ...c, short: e.target.value.toUpperCase().slice(0, 5) }))}
+                      placeholder="Ej: TRB, PER, EST"
+                      maxLength={5}
+                      className="w-full px-4 py-3 border-2 border-slate-200 focus:border-violet-400 rounded-xl text-slate-800 font-black text-sm outline-none transition-all uppercase tracking-widest"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2 block">Color</label>
+                    <div className="flex flex-wrap gap-2">
+                      {CAT_COLORS.map(color => (
+                        <button
+                          key={color}
+                          onClick={() => setCatEdit(c => c && ({ ...c, color }))}
+                          className={`w-8 h-8 rounded-full transition-all ${catEdit.color === color ? 'ring-4 ring-offset-1 scale-110' : 'hover:scale-105'}`}
+                          style={{ backgroundColor: color, ringColor: color }}
+                        />
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Footer */}
+            {catEdit && (
+              <div className="px-5 py-4 border-t border-slate-100 shrink-0 space-y-2" style={{ paddingBottom: 'max(1rem, env(safe-area-inset-bottom,1rem))' }}>
+                <button
+                  onClick={saveCat}
+                  disabled={!catEdit.label.trim() || !catEdit.short.trim()}
+                  className="w-full bg-violet-600 hover:bg-violet-700 disabled:opacity-40 disabled:cursor-not-allowed text-white font-black text-xs uppercase tracking-widest py-3.5 rounded-2xl transition-all"
+                >
+                  {catEdit.isNew ? 'Crear área' : 'Guardar cambios'}
+                </button>
+                {!catEdit.isNew && (
+                  <button
+                    onClick={() => deleteCat(catEdit.id)}
+                    className="w-full text-red-500 hover:bg-red-50 font-black text-xs uppercase tracking-widest py-2.5 rounded-2xl transition-all"
+                  >
+                    Eliminar área
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* ── Task Modal ── */}
       {modalTask && (
         <TaskModal
@@ -519,6 +635,7 @@ const Lista: React.FC<ListaProps> = ({
           isCreating={isCreating}
           onSave={saveTask}
           onClose={closeModal}
+          onManageCategories={() => setShowCatManager(true)}
         />
       )}
     </div>
@@ -703,49 +820,27 @@ const TaskCard: React.FC<TaskCardProps> = ({
 };
 
 // ─── SortableTaskCard ─────────────────────────────────────────────────────────
+// Listeners en toda la card: touch=250ms long-press activa drag, click rápido funciona normal.
 
-const SortableTaskCard: React.FC<TaskCardProps & { reorderMode?: boolean; isMobile?: boolean }> = ({ reorderMode, isMobile, ...props }) => {
+const SortableTaskCard: React.FC<TaskCardProps> = (props) => {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: props.task.id });
   return (
     <div
       ref={setNodeRef}
       style={{ transform: CSS.Transform.toString(transform), transition: transition ?? undefined }}
       className={`select-none ${isDragging ? 'opacity-30' : ''}`}
+      {...attributes}
+      {...listeners}
     >
-      {reorderMode ? (
-        /* Mobile — modo Reordenar: handle grande explícito */
-        <div className="flex items-stretch gap-0">
-          <div
-            {...attributes}
-            {...listeners}
-            className="flex items-center justify-center w-12 bg-slate-100 rounded-l-2xl border border-r-0 border-slate-200 cursor-grab active:cursor-grabbing shrink-0"
-            style={{ touchAction: 'none' }}
-          >
-            <GripVertical size={22} className="text-slate-400" />
-          </div>
-          <div className="flex-1 min-w-0">
-            <TaskCard {...props} />
-          </div>
+      <div className="relative group/card cursor-grab active:cursor-grabbing">
+        {/* Grip visual en desktop (hover) */}
+        <div className="hidden md:flex absolute left-1.5 top-0 bottom-0 items-center z-20 pointer-events-none opacity-0 group-hover/card:opacity-100 transition-opacity">
+          <GripVertical size={14} className="text-slate-300" />
         </div>
-      ) : isMobile ? (
-        /* Mobile — modo normal: sin listeners para no bloquear botones */
-        <TaskCard {...props} />
-      ) : (
-        /* Desktop: grip sutil al hover */
-        <div className="relative group/card">
-          <div
-            {...attributes}
-            {...listeners}
-            className="absolute left-1.5 top-0 bottom-0 flex items-center z-20 cursor-grab active:cursor-grabbing touch-none opacity-0 group-hover/card:opacity-100 transition-opacity"
-            style={{ touchAction: 'none' }}
-          >
-            <GripVertical size={14} className="text-slate-300" />
-          </div>
-          <div className="pl-5">
-            <TaskCard {...props} />
-          </div>
+        <div className="md:pl-5">
+          <TaskCard {...props} />
         </div>
-      )}
+      </div>
     </div>
   );
 };
@@ -756,14 +851,15 @@ const KanbanColumn: React.FC<{
   status: Task['status'];
   isDropping: boolean;
   children: React.ReactNode;
-}> = ({ status, isDropping, children }) => {
+  className?: string;
+}> = ({ status, isDropping, children, className = '' }) => {
   const { setNodeRef } = useDroppable({ id: status });
   return (
     <div
       ref={setNodeRef}
-      className={`flex flex-col gap-3 min-h-[200px] rounded-2xl transition-all duration-150 ${
+      className={`flex flex-col gap-3 min-h-[50vh] md:min-h-[200px] rounded-2xl transition-all duration-150 ${
         isDropping ? 'ring-2 ring-offset-2 ring-violet-300 bg-violet-50/30' : ''
-      }`}
+      } ${className}`}
     >
       {children}
     </div>
@@ -1015,10 +1111,11 @@ interface TaskModalProps {
   isCreating: boolean;
   onSave: (task: Task, items: ChecklistItem[]) => void;
   onClose: () => void;
+  onManageCategories?: () => void;
 }
 
 const TaskModal: React.FC<TaskModalProps> = ({
-  task: initialTask, items: initialItems, categories, goals, isCreating, onSave, onClose,
+  task: initialTask, items: initialItems, categories, goals, isCreating, onSave, onClose, onManageCategories,
 }) => {
   const [task, setTask]   = useState<Task>({ ...initialTask });
   const [items, setItems] = useState<ChecklistItem[]>([...initialItems]);
@@ -1121,7 +1218,17 @@ const TaskModal: React.FC<TaskModalProps> = ({
 
           {/* Área */}
           <div>
-            <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1.5 block">Área</label>
+            <div className="flex items-center justify-between mb-1.5">
+              <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 block">Área</label>
+              {onManageCategories && (
+                <button
+                  onClick={onManageCategories}
+                  className="flex items-center gap-1 text-[10px] font-black text-violet-400 hover:text-violet-600 uppercase tracking-widest transition-all"
+                >
+                  <Plus size={10} /> Nueva área
+                </button>
+              )}
+            </div>
             <div className="flex flex-wrap gap-1.5">
               <button
                 onClick={() => setTask(t => ({ ...t, categoryId: undefined }))}

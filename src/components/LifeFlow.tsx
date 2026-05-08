@@ -1443,6 +1443,7 @@ const App = () => {
               goals={goals}
               setGoals={setGoals}
               categories={categories}
+              setCategories={setCategories}
               currentDate={currentDate}
               events={events}
               tasks={tasks}
@@ -1456,6 +1457,7 @@ const App = () => {
               checklistItems={checklistItems}
               setChecklistItems={setChecklistItems}
               categories={categories}
+              setCategories={setCategories}
               goals={goals}
               currentDate={currentDate}
             />

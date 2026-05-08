@@ -1,8 +1,15 @@
 import React, { useState, useMemo } from 'react';
-import { Plus, X, CheckCircle2, Circle, Trash2, Target, ChevronLeft, ChevronRight, Edit2, Calendar, Clock } from 'lucide-react';
+import { Plus, X, CheckCircle2, Circle, Trash2, Target, ChevronLeft, ChevronRight, Edit2, Calendar, Clock, Settings2, Palette } from 'lucide-react';
 import { toast } from 'sonner';
 import type { Goal, Categories, Task, TaskPriority } from '../../types';
 import { generateId, getWeekId, getWeekDays, PRIORITY_CONFIG as PRIORITY, getLocalISODate } from '../../lib/utils';
+
+const CAT_COLORS = [
+  '#6366f1','#f59e0b','#ec4899','#3b82f6','#10b981',
+  '#ef4444','#8b5cf6','#f97316','#14b8a6','#94a3b8',
+  '#06b6d4','#84cc16',
+];
+type CatEdit = { id: string; label: string; short: string; color: string; isNew: boolean } | null;
 
 const GOAL_DONE_MSGS = [
   'Estás construyendo hábitos ganadores. 🔥',
@@ -21,6 +28,7 @@ interface ObjetivosProps {
   goals: Goal[];
   setGoals: React.Dispatch<React.SetStateAction<Goal[]>>;
   categories: Categories;
+  setCategories: React.Dispatch<React.SetStateAction<Categories>>;
   currentDate: Date;
   events: Record<string, any[]>;
   tasks: Task[];
@@ -52,11 +60,34 @@ function formatDeadlineLabel(deadline: string): string {
 
 // ── Component ─────────────────────────────────────────────────────────────────
 
-const Objetivos: React.FC<ObjetivosProps> = ({ goals, setGoals, categories, currentDate, tasks, setTasks }) => {
+const Objetivos: React.FC<ObjetivosProps> = ({ goals, setGoals, categories, setCategories, currentDate, tasks, setTasks }) => {
   const [viewDate, setViewDate] = useState(new Date(currentDate));
   const [modalOpen, setModalOpen] = useState(false);
   const [editGoal, setEditGoal] = useState<Partial<Goal> | null>(null);
   const [pendingTasks, setPendingTasks] = useState<{ id: string; title: string; priority: TaskPriority }[]>([]);
+
+  // ── Gestión de áreas ─────────────────────────────────────────────────────────
+  const [showCatManager, setShowCatManager] = useState(false);
+  const [catEdit, setCatEdit] = useState<CatEdit>(null);
+
+  const openCreateCat = () => setCatEdit({ id: generateId(), label: '', short: '', color: CAT_COLORS[0], isNew: true });
+  const openEditCat   = (cat: import('../../types').Category) => setCatEdit({ id: cat.id, label: cat.label, short: cat.short, color: cat.color, isNew: false });
+  const closeCatEdit  = () => setCatEdit(null);
+
+  const saveCat = () => {
+    if (!catEdit || !catEdit.label.trim() || !catEdit.short.trim()) return;
+    setCategories(prev => ({
+      ...prev,
+      [catEdit.id]: { id: catEdit.id, label: catEdit.label.trim(), short: catEdit.short.toUpperCase().slice(0, 5).trim(), color: catEdit.color, presets: prev[catEdit.id]?.presets ?? [] },
+    }));
+    setCatEdit(null);
+  };
+
+  const deleteCat = (id: string) => {
+    setCategories(prev => { const n = { ...prev }; delete n[id]; return n; });
+    if (editGoal?.category === id) setEditGoal(g => g ? { ...g, category: undefined } : g);
+    setCatEdit(null);
+  };
 
   const weekId   = useMemo(() => getWeekId(viewDate), [viewDate]);
   const weekDays = useMemo(() => getWeekDays(viewDate), [viewDate]);
@@ -493,7 +524,15 @@ const Objetivos: React.FC<ObjetivosProps> = ({ goals, setGoals, categories, curr
 
                 {/* Área */}
                 <div>
-                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 block">Área (opcional)</label>
+                  <div className="flex items-center justify-between mb-2">
+                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Área (opcional)</label>
+                    <button
+                      onClick={() => setShowCatManager(true)}
+                      className="flex items-center gap-1 text-[10px] font-black text-violet-400 hover:text-violet-600 uppercase tracking-widest transition-all"
+                    >
+                      <Plus size={10} /> Nueva área
+                    </button>
+                  </div>
                   <div className="grid grid-cols-4 gap-2">
                     <button
                       onClick={() => setEditGoal({ ...editGoal, category: undefined })}
@@ -600,6 +639,98 @@ const Objetivos: React.FC<ObjetivosProps> = ({ goals, setGoals, categories, curr
                 {isEditing ? 'Guardar cambios' : 'Guardar objetivo'}
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Modal Gestión de Áreas ── */}
+      {showCatManager && (
+        <div
+          className="fixed inset-0 z-[300] flex items-end md:items-center justify-center bg-slate-900/60 backdrop-blur-sm animate-in fade-in md:p-8"
+          onClick={() => { setShowCatManager(false); setCatEdit(null); }}
+        >
+          <div
+            className="bg-white rounded-t-3xl md:rounded-[2.5rem] w-full max-w-md shadow-2xl flex flex-col"
+            style={{ maxHeight: 'min(85svh, calc(100vh - env(safe-area-inset-top,0px)))' }}
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="flex justify-center pt-3 pb-1 md:hidden shrink-0">
+              <div className="w-10 h-1 bg-slate-200 rounded-full" />
+            </div>
+            <div className="px-5 py-4 border-b border-slate-100 flex justify-between items-center shrink-0">
+              <div className="flex items-center gap-2">
+                {catEdit && (
+                  <button onClick={closeCatEdit} className="p-1.5 hover:bg-slate-100 rounded-full mr-1">
+                    <ChevronLeft size={16} className="text-slate-400" />
+                  </button>
+                )}
+                <Palette size={16} className="text-violet-500" />
+                <h3 className="font-black text-slate-800 text-sm uppercase tracking-wide">
+                  {catEdit ? (catEdit.isNew ? 'Nueva área' : 'Editar área') : 'Mis áreas'}
+                </h3>
+              </div>
+              <button onClick={() => { setShowCatManager(false); setCatEdit(null); }} className="p-2 hover:bg-slate-100 rounded-full">
+                <X size={16} className="text-slate-400" />
+              </button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto custom-scrollbar">
+              {!catEdit ? (
+                <div className="p-5 space-y-2">
+                  {Object.values(categories).map(cat => (
+                    <div key={cat.id} className="flex items-center gap-3 p-3 rounded-2xl bg-slate-50 border border-slate-100">
+                      <div className="w-3 h-3 rounded-full shrink-0" style={{ backgroundColor: cat.color }} />
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-bold text-slate-700 truncate">{cat.label}</p>
+                        <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{cat.short}</p>
+                      </div>
+                      <div className="flex items-center gap-1 shrink-0">
+                        <button onClick={() => openEditCat(cat)} className="p-1.5 hover:bg-white rounded-xl transition-all text-slate-400 hover:text-violet-500"><Edit2 size={13} /></button>
+                        <button onClick={() => deleteCat(cat.id)} className="p-1.5 hover:bg-red-50 rounded-xl transition-all text-slate-400 hover:text-red-500"><Trash2 size={13} /></button>
+                      </div>
+                    </div>
+                  ))}
+                  <button
+                    onClick={openCreateCat}
+                    className="w-full flex items-center justify-center gap-2 py-3 rounded-2xl border-2 border-dashed border-violet-200 text-violet-500 font-black text-xs uppercase tracking-widest hover:bg-violet-50 transition-all mt-2"
+                  >
+                    <Plus size={14} /> Nueva área
+                  </button>
+                </div>
+              ) : (
+                <div className="p-5 space-y-4">
+                  <div>
+                    <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1.5 block">Nombre del área *</label>
+                    <input type="text" value={catEdit.label} onChange={e => setCatEdit(c => c && ({ ...c, label: e.target.value }))} placeholder="Ej: Trabajo, Personal, Estudio..." autoFocus className="w-full px-4 py-3 border-2 border-slate-200 focus:border-violet-400 rounded-xl text-slate-800 font-bold text-sm outline-none transition-all" />
+                  </div>
+                  <div>
+                    <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1.5 block">Sigla (máx. 5 caracteres) *</label>
+                    <input type="text" value={catEdit.short} onChange={e => setCatEdit(c => c && ({ ...c, short: e.target.value.toUpperCase().slice(0, 5) }))} placeholder="Ej: TRB, PER, EST" maxLength={5} className="w-full px-4 py-3 border-2 border-slate-200 focus:border-violet-400 rounded-xl text-slate-800 font-black text-sm outline-none transition-all uppercase tracking-widest" />
+                  </div>
+                  <div>
+                    <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2 block">Color</label>
+                    <div className="flex flex-wrap gap-2">
+                      {CAT_COLORS.map(color => (
+                        <button key={color} onClick={() => setCatEdit(c => c && ({ ...c, color }))} className={`w-8 h-8 rounded-full transition-all ${catEdit.color === color ? 'ring-4 ring-offset-1 scale-110' : 'hover:scale-105'}`} style={{ backgroundColor: color }} />
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {catEdit && (
+              <div className="px-5 py-4 border-t border-slate-100 shrink-0 space-y-2" style={{ paddingBottom: 'max(1rem, env(safe-area-inset-bottom,1rem))' }}>
+                <button onClick={saveCat} disabled={!catEdit.label.trim() || !catEdit.short.trim()} className="w-full bg-violet-600 hover:bg-violet-700 disabled:opacity-40 text-white font-black text-xs uppercase tracking-widest py-3.5 rounded-2xl transition-all">
+                  {catEdit.isNew ? 'Crear área' : 'Guardar cambios'}
+                </button>
+                {!catEdit.isNew && (
+                  <button onClick={() => deleteCat(catEdit.id)} className="w-full text-red-500 hover:bg-red-50 font-black text-xs uppercase tracking-widest py-2.5 rounded-2xl transition-all">
+                    Eliminar área
+                  </button>
+                )}
+              </div>
+            )}
           </div>
         </div>
       )}
