@@ -1,7 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { Plus, X, CheckCircle2, Circle, Trash2, Target, ChevronLeft, ChevronRight, Edit2, Calendar, Clock, Settings2, Palette } from 'lucide-react';
 import { toast } from 'sonner';
-import type { Goal, Categories, Task, TaskPriority } from '../../types';
+import type { Goal, Categories, Category, Task, TaskPriority } from '../../types';
 import { generateId, getWeekId, getWeekDays, PRIORITY_CONFIG as PRIORITY, getLocalISODate } from '../../lib/utils';
 
 const CAT_COLORS = [
@@ -71,7 +71,7 @@ const Objetivos: React.FC<ObjetivosProps> = ({ goals, setGoals, categories, setC
   const [catEdit, setCatEdit] = useState<CatEdit>(null);
 
   const openCreateCat = () => setCatEdit({ id: generateId(), label: '', short: '', color: CAT_COLORS[0], isNew: true });
-  const openEditCat   = (cat: import('../../types').Category) => setCatEdit({ id: cat.id, label: cat.label, short: cat.short, color: cat.color, isNew: false });
+  const openEditCat   = (cat: Category) => setCatEdit({ id: cat.id, label: cat.label, short: cat.short, color: cat.color, isNew: false });
   const closeCatEdit  = () => setCatEdit(null);
 
   const saveCat = () => {
@@ -711,7 +711,7 @@ const Objetivos: React.FC<ObjetivosProps> = ({ goals, setGoals, categories, setC
                     <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2 block">Color</label>
                     <div className="flex flex-wrap gap-2">
                       {CAT_COLORS.map(color => (
-                        <button key={color} onClick={() => setCatEdit(c => c && ({ ...c, color }))} className={`w-8 h-8 rounded-full transition-all ${catEdit.color === color ? 'ring-4 ring-offset-1 scale-110' : 'hover:scale-105'}`} style={{ backgroundColor: color }} />
+                        <button key={color} onClick={() => setCatEdit(c => c && ({ ...c, color }))} className={`w-8 h-8 rounded-full transition-all ${catEdit.color === color ? 'scale-110' : 'hover:scale-105'}`} style={{ backgroundColor: color, boxShadow: catEdit.color === color ? `0 0 0 2px white, 0 0 0 4px ${color}` : 'none' }} />
                       ))}
                     </div>
                   </div>

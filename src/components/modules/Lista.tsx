@@ -16,7 +16,7 @@ import {
   Circle, Loader, CheckCircle2, Inbox, GripVertical, Settings2, Palette,
 } from 'lucide-react';
 import { toast } from 'sonner';
-import type { Task, ChecklistItem, Categories, Goal } from '../../types';
+import type { Task, ChecklistItem, Categories, Category, Goal } from '../../types';
 import { generateId, getLocalISODate } from '../../lib/utils';
 
 // ─── Constants ───────────────────────────────────────────────────────────────
@@ -114,7 +114,7 @@ const Lista: React.FC<ListaProps> = ({
   const [catEdit, setCatEdit] = useState<CatEdit>(null);
 
   const openCreateCat = () => setCatEdit({ id: generateId(), label: '', short: '', color: CAT_COLORS[0], isNew: true });
-  const openEditCat   = (cat: import('../../types').Category) => setCatEdit({ id: cat.id, label: cat.label, short: cat.short, color: cat.color, isNew: false });
+  const openEditCat   = (cat: Category) => setCatEdit({ id: cat.id, label: cat.label, short: cat.short, color: cat.color, isNew: false });
   const closeCatEdit  = () => setCatEdit(null);
 
   const saveCat = () => {
@@ -591,8 +591,8 @@ const Lista: React.FC<ListaProps> = ({
                         <button
                           key={color}
                           onClick={() => setCatEdit(c => c && ({ ...c, color }))}
-                          className={`w-8 h-8 rounded-full transition-all ${catEdit.color === color ? 'ring-4 ring-offset-1 scale-110' : 'hover:scale-105'}`}
-                          style={{ backgroundColor: color, ringColor: color }}
+                          className={`w-8 h-8 rounded-full transition-all ${catEdit.color === color ? 'scale-110' : 'hover:scale-105'}`}
+                          style={{ backgroundColor: color, boxShadow: catEdit.color === color ? `0 0 0 2px white, 0 0 0 4px ${color}` : 'none' }}
                         />
                       ))}
                     </div>

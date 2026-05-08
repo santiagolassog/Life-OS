@@ -2,7 +2,7 @@ import React, { useState } from 'react'
 import { Zap, Mail, Lock, Eye, EyeOff, ArrowRight, UserPlus, LogIn } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 
-type AuthMode = 'signin' | 'signup'
+type AuthMode = 'signin' | 'signup' | 'reset'
 
 const AuthPage = () => {
   const [mode, setMode] = useState<AuthMode>('signin')
@@ -24,6 +24,12 @@ const AuthPage = () => {
         const { error } = await supabase.auth.signUp({ email, password })
         if (error) throw error
         setSuccessMsg('¡Cuenta creada! Revisa tu correo para confirmar tu cuenta.')
+      } else if (mode === 'reset') {
+        const { error } = await supabase.auth.resetPasswordForEmail(email, {
+          redirectTo: window.location.origin,
+        })
+        if (error) throw error
+        setSuccessMsg('Te enviamos un enlace para restablecer tu contraseña. Revisa tu correo.')
       } else {
         const { error } = await supabase.auth.signInWithPassword({ email, password })
         if (error) throw error
@@ -66,30 +72,37 @@ const AuthPage = () => {
         <div className="bg-white/5 border border-white/10 rounded-3xl p-6 backdrop-blur-sm shadow-2xl">
 
           {/* Tabs */}
-          <div className="flex bg-white/5 rounded-2xl p-1 mb-6 border border-white/5">
-            <button
-              onClick={() => { setMode('signin'); setError(null); setSuccessMsg(null) }}
-              className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-[11px] font-black uppercase tracking-wide transition-all ${
-                mode === 'signin'
-                  ? 'bg-indigo-500 text-white shadow-md shadow-indigo-500/30'
-                  : 'text-indigo-400 hover:text-white'
-              }`}
-            >
-              <LogIn size={13} />
-              Iniciar sesión
-            </button>
-            <button
-              onClick={() => { setMode('signup'); setError(null); setSuccessMsg(null) }}
-              className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-[11px] font-black uppercase tracking-wide transition-all ${
-                mode === 'signup'
-                  ? 'bg-indigo-500 text-white shadow-md shadow-indigo-500/30'
-                  : 'text-indigo-400 hover:text-white'
-              }`}
-            >
-              <UserPlus size={13} />
-              Crear cuenta
-            </button>
-          </div>
+          {mode !== 'reset' && (
+            <div className="flex bg-white/5 rounded-2xl p-1 mb-6 border border-white/5">
+              <button
+                onClick={() => { setMode('signin'); setError(null); setSuccessMsg(null) }}
+                className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-[11px] font-black uppercase tracking-wide transition-all ${
+                  mode === 'signin' ? 'bg-indigo-500 text-white shadow-md shadow-indigo-500/30' : 'text-indigo-400 hover:text-white'
+                }`}
+              >
+                <LogIn size={13} />
+                Iniciar sesión
+              </button>
+              <button
+                onClick={() => { setMode('signup'); setError(null); setSuccessMsg(null) }}
+                className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-[11px] font-black uppercase tracking-wide transition-all ${
+                  mode === 'signup' ? 'bg-indigo-500 text-white shadow-md shadow-indigo-500/30' : 'text-indigo-400 hover:text-white'
+                }`}
+              >
+                <UserPlus size={13} />
+                Crear cuenta
+              </button>
+            </div>
+          )}
+          {mode === 'reset' && (
+            <div className="mb-5">
+              <button onClick={() => { setMode('signin'); setError(null); setSuccessMsg(null) }} className="flex items-center gap-1.5 text-indigo-400 hover:text-white text-[11px] font-bold transition-all">
+                <ArrowRight size={12} className="rotate-180" /> Volver al inicio de sesión
+              </button>
+              <p className="text-white font-black text-sm mt-3">Recuperar contraseña</p>
+              <p className="text-indigo-400 text-[11px] mt-1">Ingresa tu correo y te enviaremos un enlace.</p>
+            </div>
+          )}
 
           <form onSubmit={handleSubmit} className="space-y-4">
 
@@ -111,8 +124,9 @@ const AuthPage = () => {
               </div>
             </div>
 
-            {/* Contraseña */}
-            <div className="space-y-1.5">
+            {/* Contraseña — oculta en modo reset */}
+            {mode === 'reset' && null}
+            <div className="space-y-1.5" style={{ display: mode === 'reset' ? 'none' : undefined }}>
               <label className="text-[10px] font-black text-indigo-300 uppercase tracking-[0.2em] block">
                 Contraseña
               </label>
@@ -161,11 +175,22 @@ const AuthPage = () => {
                 <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
               ) : (
                 <>
-                  {mode === 'signin' ? 'Entrar a LifeOS' : 'Crear mi cuenta'}
+                  {mode === 'signin' ? 'Entrar a LifeOS' : mode === 'signup' ? 'Crear mi cuenta' : 'Enviar enlace'}
                   <ArrowRight size={15} />
                 </>
               )}
             </button>
+
+            {/* Forgot password link */}
+            {mode === 'signin' && (
+              <button
+                type="button"
+                onClick={() => { setMode('reset'); setError(null); setSuccessMsg(null) }}
+                className="w-full text-center text-indigo-600 hover:text-indigo-400 text-[11px] font-bold transition-all mt-1"
+              >
+                ¿Olvidaste tu contraseña?
+              </button>
+            )}
           </form>
         </div>
 
