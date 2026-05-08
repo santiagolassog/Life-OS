@@ -1009,16 +1009,16 @@ const App = () => {
         </div>
 
         <div className="flex items-center gap-3 text-white">
-          {/* Indicador de guardado */}
-          {saveStatus !== 'idle' && (
-            <div className={`hidden sm:flex items-center gap-1.5 text-[10px] font-bold transition-all duration-300 ${saveStatus === 'saving' ? 'text-indigo-400' : 'text-emerald-400'}`}>
-              {saveStatus === 'saving' ? (
-                <><div className="w-2.5 h-2.5 border border-indigo-400 border-t-transparent rounded-full animate-spin shrink-0" />Guardando...</>
-              ) : (
-                <><CheckCircle2 size={12} />Guardado</>
-              )}
-            </div>
-          )}
+          {/* Indicador de guardado — espacio siempre reservado para no mover layout */}
+          <div className={`hidden lg:flex items-center gap-1.5 text-[10px] font-bold min-w-[90px] justify-center transition-all duration-300 ${
+            saveStatus === 'idle' ? 'opacity-0 pointer-events-none' : 'opacity-100'
+          } ${saveStatus === 'saving' ? 'text-indigo-400' : 'text-emerald-400'}`}>
+            {saveStatus === 'saving' ? (
+              <><div className="w-2.5 h-2.5 border border-indigo-400 border-t-transparent rounded-full animate-spin shrink-0" />Guardando...</>
+            ) : (
+              <><CheckCircle2 size={12} />Guardado</>
+            )}
+          </div>
 
           {/* Total horas — solo en sección Tiempo */}
           {section === 'tiempo' && (
@@ -1027,6 +1027,15 @@ const App = () => {
               <span className="text-xl font-black leading-none">{stats.total}h</span>
             </div>
           )}
+
+          {/* Ícono de guardado — mobile/tablet (siempre ocupa el mismo espacio) */}
+          <div className={`lg:hidden w-7 h-7 flex items-center justify-center transition-all duration-300 ${saveStatus === 'idle' ? 'opacity-0' : 'opacity-100'}`}>
+            {saveStatus === 'saving' ? (
+              <div className="w-4 h-4 border-2 border-indigo-400 border-t-white/60 rounded-full animate-spin" />
+            ) : (
+              <CheckCircle2 size={18} className="text-emerald-400" />
+            )}
+          </div>
 
           {/* Menú de usuario */}
           <div className="relative" ref={userMenuRef}>
