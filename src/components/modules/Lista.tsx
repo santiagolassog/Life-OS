@@ -101,9 +101,8 @@ const Lista: React.FC<ListaProps> = ({
   tasks, setTasks, checklistItems, setChecklistItems, categories, setCategories, goals, currentDate,
 }) => {
   const [subView, setSubView] = useState<ListaSubView>('tablero');
-  const [filterCat, setFilterCat]     = useState('');
-  const [filterStatus, setFilterStatus] = useState<Task['status'] | ''>('');
-  const [modalTask, setModalTask]     = useState<Task | null>(null);
+  const [filterCat, setFilterCat] = useState('');
+  const [modalTask, setModalTask] = useState<Task | null>(null);
   const [isCreating, setIsCreating]   = useState(false);
   const [expandedTask, setExpandedTask] = useState<string | null>(null);
   const [activeDragId, setActiveDragId] = useState<string | null>(null);
@@ -157,10 +156,9 @@ const Lista: React.FC<ListaProps> = ({
   const filteredTasks = useMemo(() => {
     return tasks.filter(t => {
       if (filterCat && t.categoryId !== filterCat) return false;
-      if (filterStatus && t.status !== filterStatus) return false;
       return true;
     });
-  }, [tasks, filterCat, filterStatus]);
+  }, [tasks, filterCat]);
 
   const orderSort = (a: Task, b: Task) =>
     (a.sortOrder - b.sortOrder) || a.createdAt.localeCompare(b.createdAt);

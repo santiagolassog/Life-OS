@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
+import { toast } from 'sonner';
 import { jsPDF } from 'jspdf';
 import html2canvas from 'html2canvas';
 import {
@@ -224,6 +225,22 @@ const App = () => {
 
   const [streak, setStreak] = useState(0);
 
+  // ── Conexión y estado de guardado ─────────────────────────────────────────────
+  const [isOnline, setIsOnline] = useState(
+    typeof navigator !== 'undefined' ? navigator.onLine : true
+  );
+  const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved'>('idle');
+  const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const markSaving = () => {
+    if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+    setSaveStatus('saving');
+    saveTimerRef.current = setTimeout(() => {
+      setSaveStatus('saved');
+      saveTimerRef.current = setTimeout(() => setSaveStatus('idle'), 2500);
+    }, 900);
+  };
+
   // ── Estado principal ────────────────────────────────────────────────────────
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(false);
@@ -382,112 +399,112 @@ const App = () => {
 
   useEffect(() => {
     if (loading || !userId) return;
-    pause('events');
+    markSaving(); pause('events');
     syncEvents(prevEvents.current, events, userId).catch(console.error);
     prevEvents.current = events;
   }, [events, loading, userId]);
 
   useEffect(() => {
     if (loading || !userId) return;
-    pause('categories');
+    markSaving(); pause('categories');
     syncCategories(prevCategories.current, categories, userId).catch(console.error);
     prevCategories.current = categories;
   }, [categories, loading, userId]);
 
   useEffect(() => {
     if (loading || !userId) return;
-    pause('transactions');
+    markSaving(); pause('transactions');
     syncTransactions(prevTransactions.current, transactions, userId).catch(console.error);
     prevTransactions.current = transactions;
   }, [transactions, loading, userId]);
 
   useEffect(() => {
     if (loading || !userId) return;
-    pause('fin_categories');
+    markSaving(); pause('fin_categories');
     syncFinCategories(prevFinCategories.current, finCategories, userId).catch(console.error);
     prevFinCategories.current = finCategories;
   }, [finCategories, loading, userId]);
 
   useEffect(() => {
     if (loading || !userId) return;
-    pause('goals');
+    markSaving(); pause('goals');
     syncGoals(prevGoals.current, goals, userId).catch(console.error);
     prevGoals.current = goals;
   }, [goals, loading, userId]);
 
   useEffect(() => {
     if (loading || !userId) return;
-    pause('savings');
+    markSaving(); pause('savings');
     syncSavings(prevSavings.current, savings, userId).catch(console.error);
     prevSavings.current = savings;
   }, [savings, loading, userId]);
 
   useEffect(() => {
     if (loading || !userId) return;
-    pause('month_balances');
+    markSaving(); pause('month_balances');
     syncMonthBalances(prevMonthBalances.current, monthBalances, userId).catch(console.error);
     prevMonthBalances.current = monthBalances;
   }, [monthBalances, loading, userId]);
 
   useEffect(() => {
     if (loading || !userId) return;
-    pause('savings_withdrawals');
+    markSaving(); pause('savings_withdrawals');
     syncSavingsWithdrawals(prevSavingsWithdrawals.current, savingsWithdrawals, userId).catch(console.error);
     prevSavingsWithdrawals.current = savingsWithdrawals;
   }, [savingsWithdrawals, loading, userId]);
 
   useEffect(() => {
     if (loading || !userId) return;
-    pause('savings_pockets');
+    markSaving(); pause('savings_pockets');
     syncSavingsPockets(prevSavingsPockets.current, savingsPockets, userId).catch(console.error);
     prevSavingsPockets.current = savingsPockets;
   }, [savingsPockets, loading, userId]);
 
   useEffect(() => {
     if (loading || !userId) return;
-    pause('pocket_fundings');
+    markSaving(); pause('pocket_fundings');
     syncPocketFundings(prevPocketFundings.current, pocketFundings, userId).catch(console.error);
     prevPocketFundings.current = pocketFundings;
   }, [pocketFundings, loading, userId]);
 
   useEffect(() => {
     if (loading || !userId) return;
-    pause('savings_year_balances');
+    markSaving(); pause('savings_year_balances');
     syncSavingsYearBalances(prevSavingsYearBalances.current, savingsYearBalances, userId).catch(console.error);
     prevSavingsYearBalances.current = savingsYearBalances;
   }, [savingsYearBalances, loading, userId]);
 
   useEffect(() => {
     if (loading || !userId) return;
-    pause('loans');
+    markSaving(); pause('loans');
     syncLoans(prevLoans.current, loans, userId).catch(console.error);
     prevLoans.current = loans;
   }, [loans, loading, userId]);
 
   useEffect(() => {
     if (loading || !userId) return;
-    pause('loan_payments');
+    markSaving(); pause('loan_payments');
     syncLoanPayments(prevLoanPayments.current, loanPayments, userId).catch(console.error);
     prevLoanPayments.current = loanPayments;
   }, [loanPayments, loading, userId]);
 
   useEffect(() => {
     if (loading || !userId) return;
-    pause('budgets');
+    markSaving(); pause('budgets');
     syncBudgets(prevBudgets.current, budgets, userId).catch(console.error);
     prevBudgets.current = budgets;
   }, [budgets, loading, userId]);
 
   useEffect(() => {
     if (loading || !userId) return;
-    pause('tasks');
+    markSaving(); pause('tasks');
     syncTasks(prevTasks.current, tasks, userId).catch(console.error);
     prevTasks.current = tasks;
   }, [tasks, loading, userId]);
 
   useEffect(() => {
     if (loading || !userId) return;
-    pause('checklist_items');
+    markSaving(); pause('checklist_items');
     syncChecklistItems(prevChecklistItems.current, checklistItems, userId).catch(console.error);
     prevChecklistItems.current = checklistItems;
   }, [checklistItems, loading, userId]);
@@ -630,6 +647,24 @@ const App = () => {
     if (isOnboarding) setShowOnboarding(false);
     else setShowProfile(false);
   };
+
+  // ── Detección de conexión ─────────────────────────────────────────────────────
+  useEffect(() => {
+    const handleOnline = () => {
+      setIsOnline(true);
+      toast.success('Conexión restaurada', {
+        description: 'Todos tus datos están sincronizados.',
+        duration: 3000,
+      });
+    };
+    const handleOffline = () => setIsOnline(false);
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
+  }, []);
 
   // ── Atajos de teclado (solo desktop, sin input activo) ───────────────────────
   useEffect(() => {
@@ -974,6 +1009,17 @@ const App = () => {
         </div>
 
         <div className="flex items-center gap-3 text-white">
+          {/* Indicador de guardado */}
+          {saveStatus !== 'idle' && (
+            <div className={`hidden sm:flex items-center gap-1.5 text-[10px] font-bold transition-all duration-300 ${saveStatus === 'saving' ? 'text-indigo-400' : 'text-emerald-400'}`}>
+              {saveStatus === 'saving' ? (
+                <><div className="w-2.5 h-2.5 border border-indigo-400 border-t-transparent rounded-full animate-spin shrink-0" />Guardando...</>
+              ) : (
+                <><CheckCircle2 size={12} />Guardado</>
+              )}
+            </div>
+          )}
+
           {/* Total horas — solo en sección Tiempo */}
           {section === 'tiempo' && (
             <div className="hidden sm:flex flex-col items-end border-r border-white/10 pr-3">
@@ -1042,6 +1088,15 @@ const App = () => {
           </div>
         </div>
       </header>
+
+      {/* Banner sin conexión */}
+      {!isOnline && (
+        <div className="fixed top-0 left-0 right-0 z-[500] bg-amber-500 text-white text-[11px] font-black py-2 px-4 text-center uppercase tracking-widest flex items-center justify-center gap-2 animate-in slide-in-from-top-2 duration-200 shadow-md">
+          <div className="w-2 h-2 rounded-full bg-white/70 animate-pulse shrink-0" />
+          Sin conexión — los cambios se guardarán al reconectar
+        </div>
+      )}
+
 
       <div className="flex flex-1 overflow-hidden relative">
         {isMobile && sidebarOpen && section === 'tiempo' && (
