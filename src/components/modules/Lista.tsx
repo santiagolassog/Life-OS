@@ -15,13 +15,23 @@ import {
   CheckSquare, Square, Calendar, Clock, BarChart3, List,
   Circle, Loader, CheckCircle2, Inbox, GripVertical,
 } from 'lucide-react';
+import { toast } from 'sonner';
 import type { Task, ChecklistItem, Categories, Goal } from '../../types';
 import { generateId, getLocalISODate } from '../../lib/utils';
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
+const TASK_DONE_MSGS = [
+  'Cada tarea completada te acerca más a tus metas.',
+  '¡Excelente ejecución! Sigue imparable.',
+  '¡Así se construye el éxito, paso a paso!',
+  'Un paso más hacia tu mejor versión.',
+  'La consistencia es tu superpoder.',
+];
+const pickRandom = (arr: string[]) => arr[Math.floor(Math.random() * arr.length)];
+
 const STATUS_CONFIG = {
-  backlog:    { label: 'Backlog',     color: '#8b5cf6', bg: 'bg-violet-50',   text: 'text-violet-600',  Icon: Inbox },
+  backlog:    { label: 'Por definir',  color: '#8b5cf6', bg: 'bg-violet-50',   text: 'text-violet-600',  Icon: Inbox },
   todo:       { label: 'Por Hacer',   color: '#94a3b8', bg: 'bg-slate-100',   text: 'text-slate-600',   Icon: Circle },
   inprogress: { label: 'En Progreso', color: '#3b82f6', bg: 'bg-blue-100',    text: 'text-blue-600',    Icon: Loader },
   done:       { label: 'Hechas',      color: '#10b981', bg: 'bg-emerald-100', text: 'text-emerald-700', Icon: CheckCircle2 },
@@ -146,6 +156,12 @@ const Lista: React.FC<ListaProps> = ({
         completedAt: newStatus === 'done'        ? today : (newStatus !== 'done' ? undefined : t.completedAt),
       };
     }));
+    if (newStatus === 'done') {
+      toast.success('¡Tarea completada! ✅', {
+        description: pickRandom(TASK_DONE_MSGS),
+        duration: 3500,
+      });
+    }
   }
 
   function deleteTask(id: string) {
@@ -336,7 +352,7 @@ const Lista: React.FC<ListaProps> = ({
               <div className="md:hidden">
                 <div className="flex items-center gap-2">
                   <div className="flex gap-1.5 overflow-x-auto pb-1 scrollbar-hide flex-1">
-                    {([['', 'Todas'], ['backlog', 'Backlog'], ['todo', 'Por Hacer'], ['inprogress', 'En Progreso'], ['done', 'Hechas']] as const).map(([status, label]) => (
+                    {([['', 'Todas'], ['backlog', 'Por definir'], ['todo', 'Por Hacer'], ['inprogress', 'En Progreso'], ['done', 'Hechas']] as const).map(([status, label]) => (
                       <button
                         key={status}
                         onClick={() => { setFilterStatus(status as Task['status'] | ''); setIsReorderMode(false); }}

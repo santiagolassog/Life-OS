@@ -7,12 +7,14 @@ import {
 import {
   Clock, Save, Zap, ChevronLeft, ChevronRight, X, Plus,
   PieChart as PieChartIcon, Trash2, CalendarDays, Menu, Copy, CheckCircle2, Circle, Edit2, Palette,
-  Download, ListPlus, Target, BarChart3, History, DollarSign, Star, ChevronDown, LogOut, CheckSquare
+  Download, ListPlus, Target, BarChart3, History, DollarSign, Star, ChevronDown, LogOut, CheckSquare,
+  Sparkles, Keyboard,
 } from 'lucide-react';
 import Dinero from './modules/Dinero';
 import Objetivos from './modules/Objetivos';
 import Revision from './modules/Revision';
 import Lista from './modules/Lista';
+import Hoy from './modules/Hoy';
 import type { Transaction, FinCategory, Goal, Savings, MonthBalance, SavingsWithdrawal, SavingsPocket, PocketFunding, SavingsYearBalance, Loan, LoanPayment, Budget, Task, ChecklistItem } from '../types';
 import { LOAN_OUT_CAT_ID, LOAN_IN_CAT_ID } from '../types';
 import { generateId, formatDateId as fmtDateId, getWeekDays, GRID_HOURS, fmtCurrency, getWeekId } from '../lib/utils';
@@ -192,14 +194,15 @@ const CustomTimePicker = ({ label, hour, minute, onTimeChange, minTime = "00:00"
 };
 
 
-type SectionKey = 'tiempo' | 'dinero' | 'objetivos' | 'lista' | 'revision';
+type SectionKey = 'hoy' | 'tiempo' | 'dinero' | 'objetivos' | 'lista' | 'revision';
 
 const SECTIONS: Array<{ key: SectionKey; label: string; Icon: React.FC<{ size?: number }> }> = [
-  { key: 'dinero',    label: 'Dinero',    Icon: DollarSign },
-  { key: 'tiempo',    label: 'Tiempo',    Icon: CalendarDays },
-  { key: 'lista',     label: 'Lista',     Icon: CheckSquare },
-  { key: 'objetivos', label: 'Objetivos', Icon: Target },
-  { key: 'revision',  label: 'Revisión',  Icon: BarChart3 },
+  { key: 'hoy',      label: 'Hoy',      Icon: Sparkles },
+  { key: 'dinero',   label: 'Dinero',   Icon: DollarSign },
+  { key: 'tiempo',   label: 'Tiempo',   Icon: CalendarDays },
+  { key: 'lista',    label: 'Lista',    Icon: CheckSquare },
+  { key: 'objetivos',label: 'Objetivos',Icon: Target },
+  { key: 'revision', label: 'Revisión', Icon: BarChart3 },
 ];
 
 const App = () => {
@@ -228,7 +231,8 @@ const App = () => {
   const [isExporting, setIsExporting] = useState(false);
   const reportRef = useRef<HTMLDivElement>(null);
 
-  const [section, setSection] = useState<SectionKey>('dinero');
+  const [section, setSection] = useState<SectionKey>('hoy');
+  const [showShortcuts, setShowShortcuts] = useState(false);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [finCategories, setFinCategories] = useState<FinCategory[]>(INITIAL_FIN_CATEGORIES);
   const [goals, setGoals] = useState<Goal[]>([]);
@@ -571,6 +575,34 @@ const App = () => {
 
     return () => { supabase.removeChannel(channel); };
   }, [userId, loading]);
+
+  // ── Atajos de teclado (solo desktop, sin input activo) ───────────────────────
+  useEffect(() => {
+    const hasOpenModalRef = { current: false };
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.ctrlKey || e.metaKey || e.altKey) return;
+      const tag = (e.target as HTMLElement).tagName.toLowerCase();
+      if (['input', 'textarea', 'select'].includes(tag)) return;
+      if ((e.target as HTMLElement).contentEditable === 'true') return;
+
+      switch (e.key.toLowerCase()) {
+        case 'h': setSection('hoy');       break;
+        case 'd': setSection('dinero');    break;
+        case 't': setSection('tiempo');    break;
+        case 'l': setSection('lista');     break;
+        case 'o': setSection('objetivos'); break;
+        case 'r': setSection('revision');  break;
+        case '?': setShowShortcuts(v => !v); break;
+        case 'escape':
+          setModalData(null);
+          setCatModal(null);
+          setShowShortcuts(false);
+          break;
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
 
   useEffect(() => {
     const handleResize = () => setWindowWidth(window.innerWidth);
@@ -1298,6 +1330,22 @@ const App = () => {
             </>
           )}
 
+          {/* ---- SECCIÓN HOY ---- */}
+          {section === 'hoy' && (
+            <Hoy
+              userName={user?.email?.split('@')[0] ?? 'amigo'}
+              events={events}
+              categories={categories}
+              tasks={tasks}
+              goals={goals}
+              transactions={transactions}
+              finCategories={finCategories}
+              monthBalances={monthBalances}
+              currentDate={currentDate}
+              onNavigate={setSection}
+            />
+          )}
+
           {/* ---- OTHER SECTIONS ---- */}
           {section === 'dinero' && (
             <Dinero
@@ -1381,6 +1429,49 @@ const App = () => {
               <span className="text-[8px] font-black uppercase">{label}</span>
             </button>
           ))}
+        </div>
+      )}
+
+      {/* MODAL ATAJOS DE TECLADO */}
+      {showShortcuts && (
+        <div
+          className="fixed inset-0 z-[300] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm animate-in fade-in hidden md:flex"
+          onClick={() => setShowShortcuts(false)}
+        >
+          <div
+            className="bg-white rounded-3xl shadow-2xl w-full max-w-xs p-6 animate-in zoom-in-95 duration-150"
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="flex items-center gap-2 mb-5">
+              <Keyboard size={16} className="text-indigo-500" />
+              <h3 className="font-black text-slate-800 text-sm uppercase tracking-wide">Atajos de teclado</h3>
+              <button onClick={() => setShowShortcuts(false)} className="ml-auto p-1 hover:bg-slate-100 rounded-full">
+                <X size={14} className="text-slate-400" />
+              </button>
+            </div>
+            <div className="space-y-2">
+              {[
+                { key: 'H', desc: 'Dashboard Hoy' },
+                { key: 'D', desc: 'Dinero' },
+                { key: 'T', desc: 'Tiempo' },
+                { key: 'L', desc: 'Lista' },
+                { key: 'O', desc: 'Objetivos' },
+                { key: 'R', desc: 'Revisión' },
+                { key: '?', desc: 'Mostrar atajos' },
+                { key: 'Esc', desc: 'Cerrar modal' },
+              ].map(({ key, desc }) => (
+                <div key={key} className="flex items-center justify-between">
+                  <span className="text-sm text-slate-600 font-medium">{desc}</span>
+                  <kbd className="bg-slate-100 text-slate-700 text-[11px] font-black px-2.5 py-1 rounded-lg border border-slate-200 font-mono">
+                    {key}
+                  </kbd>
+                </div>
+              ))}
+            </div>
+            <p className="text-[10px] text-slate-300 font-bold text-center mt-5 uppercase tracking-widest">
+              Solo en desktop · Sin input activo
+            </p>
+          </div>
         </div>
       )}
 

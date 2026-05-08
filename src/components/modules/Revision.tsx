@@ -265,6 +265,35 @@ const Revision: React.FC<RevisionProps> = ({
     info: { bg: 'bg-blue-50', border: 'border-blue-200', text: 'text-blue-700', Icon: Lightbulb, iconCls: 'text-blue-500' },
   };
 
+  // ── Narrativa de la semana ────────────────────────────────────────────────
+  const weekNarrative = useMemo(() => {
+    const noData = timeStats.totalEvents === 0 && goalStats.total === 0 && financialStats.count === 0;
+    if (noData) return null;
+
+    const parts: string[] = [];
+    if (timeStats.totalEvents > 0) {
+      if (timeStats.completionRate >= 80)
+        parts.push(`ejecutaste el **${timeStats.completionRate}%** de tus actividades`);
+      else if (timeStats.completionRate >= 50)
+        parts.push(`completaste el **${timeStats.completionRate}%** de tus actividades`);
+      else
+        parts.push(`registraste **${timeStats.totalEvents}** actividades (${timeStats.completionRate}% completadas)`);
+    }
+    if (goalStats.total > 0)
+      parts.push(`**${goalStats.completed}/${goalStats.total}** objetivos logrados`);
+    if (financialStats.balance > 0)
+      parts.push(`balance positivo de **$${fmt(financialStats.balance)}**`);
+    else if (financialStats.balance < 0)
+      parts.push(`gastos por encima de ingresos en **$${fmt(Math.abs(financialStats.balance))}**`);
+
+    const emoji =
+      timeStats.completionRate >= 80 && goalStats.rate >= 80 ? '🏆' :
+      timeStats.completionRate >= 60 || goalStats.rate >= 60 ? '💪' :
+      financialStats.balance < 0 ? '⚠️' : '📊';
+
+    return { parts, emoji };
+  }, [timeStats, goalStats, financialStats]);
+
   return (
     <div className="flex-1 overflow-y-auto custom-scrollbar">
       <div className="max-w-5xl mx-auto p-4 md:p-8 space-y-6 pb-28 md:pb-12">
@@ -305,6 +334,40 @@ const Revision: React.FC<RevisionProps> = ({
             </button>
           </div>
         </div>
+
+        {/* ── Narrativa de la semana ── */}
+        {weekNarrative && (
+          <div className="bg-gradient-to-br from-indigo-50 to-violet-50 border border-indigo-100 rounded-3xl p-5">
+            <div className="flex items-start gap-3">
+              <span className="text-3xl leading-none">{weekNarrative.emoji}</span>
+              <div className="flex-1">
+                <p className="text-[10px] font-black text-indigo-400 uppercase tracking-widest mb-1">
+                  {range === 'week' ? 'Tu semana' : range === 'month' ? 'Tu mes' : 'Tu año'}
+                </p>
+                <p className="text-slate-700 text-sm font-bold leading-relaxed">
+                  {weekNarrative.parts.map((part, i) => {
+                    const segments = part.split(/\*\*(.*?)\*\*/g);
+                    return (
+                      <span key={i}>
+                        {i > 0 && i < weekNarrative.parts.length && <span className="text-slate-400"> · </span>}
+                        {segments.map((s, j) => j % 2 === 1
+                          ? <strong key={j} className="text-slate-900 font-black">{s}</strong>
+                          : <span key={j}>{s}</span>
+                        )}
+                      </span>
+                    );
+                  })}
+                </p>
+                {insights.length > 0 && (
+                  <p className="text-[11px] text-indigo-500 font-bold mt-2 flex items-center gap-1">
+                    <Lightbulb size={11} />
+                    {insights[0].text}
+                  </p>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* PERA grid */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-5">

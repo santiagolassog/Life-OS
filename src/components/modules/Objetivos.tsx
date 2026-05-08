@@ -1,7 +1,21 @@
 import React, { useState, useMemo } from 'react';
 import { Plus, X, CheckCircle2, Circle, Trash2, Target, ChevronLeft, ChevronRight, Edit2, Calendar, Clock } from 'lucide-react';
+import { toast } from 'sonner';
 import type { Goal, Categories, Task, TaskPriority } from '../../types';
 import { generateId, getWeekId, getWeekDays, PRIORITY_CONFIG as PRIORITY, getLocalISODate } from '../../lib/utils';
+
+const GOAL_DONE_MSGS = [
+  'Estás construyendo hábitos ganadores. 🔥',
+  'Un objetivo más en tu historial de victorias.',
+  'La disciplina de hoy es el éxito de mañana.',
+  '¡Mentalidad campeona en acción!',
+];
+const WEEK_PERFECT_MSGS = [
+  '¡Semana perfecta! Lograste el 100% de tus objetivos. 🏆',
+  '¡100% de objetivos cumplidos! Eso es mentalidad ganadora.',
+  '¡Semana ganada! Cerraste todos tus objetivos.',
+];
+const pickRnd = (arr: string[]) => arr[Math.floor(Math.random() * arr.length)];
 
 interface ObjetivosProps {
   goals: Goal[];
@@ -64,11 +78,28 @@ const Objetivos: React.FC<ObjetivosProps> = ({ goals, setGoals, categories, curr
   // ── Acciones ──────────────────────────────────────────────────────────────
 
   const toggleGoal = (id: string) => {
-    setGoals(prev => prev.map(g =>
-      g.id === id
-        ? { ...g, completed: !g.completed, completedAt: !g.completed ? new Date().toISOString() : undefined }
-        : g
-    ));
+    setGoals(prev => {
+      const updated = prev.map(g =>
+        g.id === id
+          ? { ...g, completed: !g.completed, completedAt: !g.completed ? new Date().toISOString() : undefined }
+          : g
+      );
+      const goal = prev.find(g => g.id === id);
+      if (goal && !goal.completed) {
+        // Completando el objetivo
+        const weekGoals = updated.filter(g => g.weekId === weekId);
+        const allDone = weekGoals.length > 0 && weekGoals.every(g => g.completed);
+        if (allDone) {
+          setTimeout(() => toast.success(pickRnd(WEEK_PERFECT_MSGS), { duration: 5000 }), 300);
+        } else {
+          toast.success('¡Objetivo logrado! 🎯', {
+            description: pickRnd(GOAL_DONE_MSGS),
+            duration: 3500,
+          });
+        }
+      }
+      return updated;
+    });
   };
 
   const openCreate = () => {
