@@ -325,13 +325,13 @@ const Lista: React.FC<ListaProps> = ({
               <div className="flex gap-1.5 flex-wrap flex-1 min-w-0">
                 <button
                   onClick={() => setFilterCat('')}
-                  className={`px-3 py-1.5 rounded-full text-[10px] font-black uppercase tracking-wide transition-all ${!filterCat ? 'bg-violet-600 text-white' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}`}
+                  className={`px-3 py-1.5 rounded-full text-xs font-black uppercase tracking-wide transition-all ${!filterCat ? 'bg-violet-600 text-white' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}`}
                 >Todas</button>
                 {catList.map(cat => (
                   <button
                     key={cat.id}
                     onClick={() => setFilterCat(filterCat === cat.id ? '' : cat.id)}
-                    className={`px-3 py-1.5 rounded-full text-[10px] font-black uppercase tracking-wide transition-all flex items-center gap-1.5 ${filterCat === cat.id ? 'text-white' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}`}
+                    className={`px-3 py-1.5 rounded-full text-xs font-black uppercase tracking-wide transition-all flex items-center gap-1.5 ${filterCat === cat.id ? 'text-white' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}`}
                     style={filterCat === cat.id ? { backgroundColor: cat.color } : {}}
                   >
                     <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: filterCat === cat.id ? 'rgba(255,255,255,0.8)' : cat.color }} />
@@ -583,36 +583,36 @@ const TaskCard: React.FC<TaskCardProps> = ({
         <div className="flex items-start gap-2.5">
           <span className={`w-2 h-2 rounded-full shrink-0 mt-1.5 ${pri.dot}`} title={pri.label} />
           <div className="flex-1 min-w-0">
-            <p className={`font-black text-slate-800 leading-snug text-sm ${task.status === 'done' ? 'line-through text-slate-400' : ''}`}>
+            <p className={`font-bold text-slate-800 leading-snug text-sm line-clamp-2 ${task.status === 'done' ? 'line-through text-slate-400' : ''}`}>
               {task.title}
             </p>
             {cat && (
-              <p className="text-[10px] font-bold mt-0.5 truncate" style={{ color: cat.color }}>{cat.label}</p>
+              <p className="text-xs font-bold mt-0.5 truncate" style={{ color: cat.color }}>{cat.label}</p>
             )}
             {goal && (
               <div className="flex items-center gap-1 mt-0.5">
-                <span className="text-[9px]">🎯</span>
-                <p className="text-[10px] font-bold text-violet-500 truncate">{goal.title}</p>
+                <span className="text-xs">🎯</span>
+                <p className="text-xs font-bold text-violet-500 truncate">{goal.title}</p>
               </div>
             )}
           </div>
           <div className="flex items-center gap-0.5 shrink-0">
-            <button onClick={onEdit}   className="p-1.5 hover:bg-slate-100 rounded-full transition-all"><Edit2 size={12} className="text-slate-400" /></button>
-            <button onClick={onDelete} className="p-1.5 hover:bg-red-50   rounded-full transition-all"><Trash2 size={12} className="text-red-400" /></button>
+            <button onClick={onEdit}   className="p-1.5 hover:bg-slate-100 rounded-full transition-all"><Edit2 size={13} className="text-slate-400" /></button>
+            <button onClick={onDelete} className="p-1.5 hover:bg-red-50   rounded-full transition-all"><Trash2 size={13} className="text-red-400" /></button>
           </div>
         </div>
 
         {/* Row 2: deadline + time tracking */}
         <div className="flex items-center gap-2 mt-2 flex-wrap">
           {task.deadline && (
-            <div className={`flex items-center gap-1 text-[10px] font-bold rounded-full px-2 py-0.5 ${
+            <div className={`flex items-center gap-1 text-xs font-bold rounded-full px-2.5 py-1 ${
               overdue    ? 'bg-red-50 text-red-500'
               : isToday  ? 'bg-orange-50 text-orange-500'
               : isTomorrow ? 'bg-amber-50 text-amber-500'
               : soon     ? 'bg-yellow-50 text-yellow-600'
               : 'bg-slate-50 text-slate-400'
             }`}>
-              <Calendar size={9} />
+              <Calendar size={11} />
               {overdue    ? 'Vencida · '
                : isToday  ? 'Hoy · '
                : isTomorrow ? 'Mañana · '
@@ -622,14 +622,14 @@ const TaskCard: React.FC<TaskCardProps> = ({
             </div>
           )}
           {timeDays !== null && (
-            <div className="flex items-center gap-1 text-[10px] font-bold text-slate-400">
-              <Clock size={9} />
+            <div className="flex items-center gap-1 text-xs font-bold text-slate-400">
+              <Clock size={11} />
               {task.status === 'done' ? `${timeDays}d` : `${timeDays}d en progreso`}
             </div>
           )}
           {/* Status badge */}
-          <div className={`ml-auto flex items-center gap-1 text-[9px] font-black uppercase rounded-full px-2 py-0.5 ${cfg.bg} ${cfg.text}`}>
-            <cfg.Icon size={9} strokeWidth={2.5} />
+          <div className={`ml-auto flex items-center gap-1 text-[11px] font-black uppercase rounded-full px-2.5 py-0.5 ${cfg.bg} ${cfg.text}`}>
+            <cfg.Icon size={11} strokeWidth={2.5} />
             {cfg.label}
           </div>
         </div>
@@ -638,8 +638,8 @@ const TaskCard: React.FC<TaskCardProps> = ({
         {totalItems > 0 && (
           <div className="mt-3">
             <div className="flex items-center justify-between mb-1">
-              <span className="text-[10px] font-bold text-slate-400">{doneItems}/{totalItems} subtareas</span>
-              {pct !== null && <span className="text-[10px] font-black text-slate-500">{pct}%</span>}
+              <span className="text-xs font-bold text-slate-400">{doneItems}/{totalItems} subtareas</span>
+              {pct !== null && <span className="text-xs font-black text-slate-500">{pct}%</span>}
             </div>
             <div className="w-full h-1.5 bg-slate-100 rounded-full overflow-hidden">
               <div
@@ -654,9 +654,9 @@ const TaskCard: React.FC<TaskCardProps> = ({
         {totalItems > 0 && (
           <button
             onClick={onToggleExpand}
-            className="mt-2 flex items-center gap-1 text-[10px] font-bold text-slate-400 hover:text-slate-600 transition-all"
+            className="mt-2 flex items-center gap-1 text-xs font-bold text-slate-400 hover:text-slate-600 transition-all"
           >
-            {expanded ? <ChevronUp size={11} /> : <ChevronDown size={11} />}
+            {expanded ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
             {expanded ? 'Ocultar' : 'Ver'} subtareas
           </button>
         )}
@@ -681,17 +681,17 @@ const TaskCard: React.FC<TaskCardProps> = ({
           </div>
         )}
 
-        {/* Status quick-actions */}
-        <div className="flex gap-1.5 mt-3 pt-3 border-t border-slate-50">
+        {/* Status quick-actions — solo mobile (en desktop se usa drag & drop) */}
+        <div className="md:hidden flex gap-1.5 mt-3 pt-3 border-t border-slate-50">
           {nextStatuses.map(s => {
             const nc = STATUS_CONFIG[s];
             return (
               <button
                 key={s}
                 onClick={() => onStatusChange(task, s)}
-                className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-[10px] font-black uppercase transition-all ${nc.bg} ${nc.text} hover:opacity-80`}
+                className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-black uppercase transition-all ${nc.bg} ${nc.text} hover:opacity-80`}
               >
-                <nc.Icon size={10} strokeWidth={2.5} />
+                <nc.Icon size={12} strokeWidth={2.5} />
                 Mover a: {nc.label}
               </button>
             );

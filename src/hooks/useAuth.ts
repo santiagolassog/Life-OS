@@ -19,7 +19,19 @@ export function useAuth() {
     return () => subscription.unsubscribe()
   }, [])
 
+  /** Nombre preferido guardado en user_metadata */
+  const displayName = (user?.user_metadata?.display_name as string | undefined) ?? ''
+
+  /** Actualiza el nombre preferido en Supabase Auth */
+  const updateDisplayName = async (name: string): Promise<string | null> => {
+    const { data, error } = await supabase.auth.updateUser({
+      data: { display_name: name.trim() },
+    })
+    if (data.user) setUser(data.user)
+    return error?.message ?? null
+  }
+
   const signOut = () => supabase.auth.signOut()
 
-  return { user, authLoading, signOut }
+  return { user, authLoading, signOut, displayName, updateDisplayName }
 }

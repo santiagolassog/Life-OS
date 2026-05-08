@@ -3,7 +3,7 @@ import {
   CalendarDays, CheckSquare, Target, DollarSign,
   ChevronRight, TrendingUp, TrendingDown, Sparkles,
   Clock, Circle, Loader, CheckCircle2, Inbox,
-  AlertCircle, Sun, Moon, Sunset,
+  AlertCircle, Sun, Moon, Sunset, BarChart3,
 } from 'lucide-react';
 import type { Events, Categories, Task, Goal, Transaction, FinCategory, MonthBalance } from '../../types';
 import { formatDateId, getWeekId, getWeekDays, fmtCurrency, GRID_HOURS, PRIORITY_CONFIG } from '../../lib/utils';
@@ -15,6 +15,7 @@ type SectionKey = 'hoy' | 'tiempo' | 'dinero' | 'objetivos' | 'lista' | 'revisio
 
 interface HoyProps {
   userName: string;
+  streak: number;
   events: Events;
   categories: Categories;
   tasks: Task[];
@@ -47,7 +48,7 @@ function eventTime(hour: string) {
 // ─── Component ────────────────────────────────────────────────────────────────
 
 const Hoy: React.FC<HoyProps> = ({
-  userName, events, categories, tasks, goals,
+  userName, streak, events, categories, tasks, goals,
   transactions, finCategories, monthBalances, currentDate, onNavigate,
 }) => {
   const { text: greetText, Icon: GreetIcon } = greeting();
@@ -102,6 +103,22 @@ const Hoy: React.FC<HoyProps> = ({
     return { income, expenses, balance, maxBar, month };
   }, [transactions, monthBalances, currentDate]);
 
+  // ── Resumen semanal (para card "Esta semana") ──────────────────────────────
+  const weeklyActivity = useMemo(() => {
+    const weekDays = getWeekDays(currentDate);
+    let total = 0, completed = 0;
+    weekDays.forEach(day => {
+      const dateId = formatDateId(day);
+      const evs = events[dateId] ?? [];
+      total += evs.length;
+      completed += evs.filter(e => e.completed).length;
+    });
+    const rate = total > 0 ? Math.round((completed / total) * 100) : null;
+    return { total, completed, rate };
+  }, [events, currentDate]);
+
+  const hasWeekData = weeklyActivity.total > 0 || goalStats.total > 0 || finStats.income > 0 || finStats.expenses > 0;
+
   const isNewUser = todayEvents.all.length === 0 && tasks.length === 0 && goals.length === 0 && transactions.length === 0;
 
   // ─────────────────────────────────────────────────────────────────────────
@@ -113,18 +130,39 @@ const Hoy: React.FC<HoyProps> = ({
       <div className="max-w-3xl mx-auto p-4 md:p-8 pb-28 md:pb-12 space-y-5">
 
         {/* ── Greeting ── */}
-        <div className="flex items-center gap-3">
-          <div className="bg-indigo-600 p-2 rounded-xl shadow-lg">
-            <GreetIcon size={20} className="text-white" />
+        <div className="flex items-center justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <div className="bg-indigo-600 p-2 rounded-xl shadow-lg">
+              <GreetIcon size={20} className="text-white" />
+            </div>
+            <div>
+              <h2 className="text-xl font-black text-slate-800">
+                {greetText}{userName ? <>, <span className="capitalize">{userName}</span></> : ''}
+              </h2>
+              <p className="text-[11px] text-slate-400 font-bold capitalize">
+                {fmtDateLabel(new Date())}
+              </p>
+            </div>
           </div>
-          <div>
-            <h2 className="text-xl font-black text-slate-800">
-              {greetText}, <span className="capitalize">{userName}</span>
-            </h2>
-            <p className="text-[11px] text-slate-400 font-bold capitalize">
-              {fmtDateLabel(new Date())}
-            </p>
-          </div>
+
+          {/* Badge de racha */}
+          {streak >= 2 && (
+            <div className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full shrink-0 ${
+              streak >= 7
+                ? 'bg-amber-100 border border-amber-200'
+                : 'bg-orange-50 border border-orange-100'
+            }`}>
+              <span className="text-base leading-none">🔥</span>
+              <div className="text-right">
+                <p className={`text-xs font-black leading-none ${streak >= 7 ? 'text-amber-600' : 'text-orange-500'}`}>
+                  {streak} días
+                </p>
+                {streak >= 7 && (
+                  <p className="text-[8px] font-bold text-amber-400 uppercase tracking-wide leading-none mt-0.5">racha</p>
+                )}
+              </div>
+            </div>
+          )}
         </div>
 
         {/* ── Bienvenida usuario nuevo ── */}
@@ -400,6 +438,63 @@ const Hoy: React.FC<HoyProps> = ({
                 </div>
               )}
             </div>
+            {/* ── Card "Esta semana" ── */}
+            {hasWeekData && (
+              <button
+                onClick={() => onNavigate('revision')}
+                className="w-full bg-gradient-to-br from-indigo-50 to-violet-50 border border-indigo-100 rounded-3xl p-5 text-left hover:shadow-md transition-all active:scale-[0.99]"
+              >
+                <div className="flex items-center justify-between mb-4">
+                  <div className="flex items-center gap-2">
+                    <BarChart3 size={16} className="text-indigo-500" />
+                    <span className="text-sm font-black text-slate-700 uppercase tracking-wide">Esta semana</span>
+                  </div>
+                  <span className="text-[10px] font-black text-indigo-400 flex items-center gap-0.5">
+                    Ver análisis <ChevronRight size={11} />
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-3 gap-3">
+                  {/* Actividades */}
+                  <div className="text-center">
+                    <p className={`text-2xl font-black ${
+                      weeklyActivity.rate === null ? 'text-slate-300' :
+                      weeklyActivity.rate >= 70 ? 'text-emerald-600' :
+                      weeklyActivity.rate >= 40 ? 'text-amber-500' : 'text-red-500'
+                    }`}>
+                      {weeklyActivity.rate !== null ? `${weeklyActivity.rate}%` : '—'}
+                    </p>
+                    <p className="text-[9px] font-bold text-slate-400 uppercase mt-0.5">Actividades</p>
+                  </div>
+
+                  {/* Objetivos */}
+                  <div className="text-center border-x border-indigo-100">
+                    <p className={`text-2xl font-black ${
+                      goalStats.total === 0 ? 'text-slate-300' :
+                      goalStats.rate >= 70 ? 'text-emerald-600' :
+                      goalStats.rate >= 40 ? 'text-amber-500' : 'text-red-500'
+                    }`}>
+                      {goalStats.total === 0 ? '—' : `${goalStats.completed}/${goalStats.total}`}
+                    </p>
+                    <p className="text-[9px] font-bold text-slate-400 uppercase mt-0.5">Objetivos</p>
+                  </div>
+
+                  {/* Balance */}
+                  <div className="text-center">
+                    <p className={`text-2xl font-black truncate ${
+                      finStats.income === 0 && finStats.expenses === 0 ? 'text-slate-300' :
+                      finStats.balance >= 0 ? 'text-emerald-600' : 'text-red-500'
+                    }`}>
+                      {finStats.income === 0 && finStats.expenses === 0
+                        ? '—'
+                        : `${finStats.balance >= 0 ? '+' : '-'}$${fmtCurrency(Math.abs(finStats.balance))}`
+                      }
+                    </p>
+                    <p className="text-[9px] font-bold text-slate-400 uppercase mt-0.5">Balance</p>
+                  </div>
+                </div>
+              </button>
+            )}
           </>
         )}
       </div>

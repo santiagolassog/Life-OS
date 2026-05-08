@@ -8,7 +8,7 @@ import {
   Clock, Save, Zap, ChevronLeft, ChevronRight, X, Plus,
   PieChart as PieChartIcon, Trash2, CalendarDays, Menu, Copy, CheckCircle2, Circle, Edit2, Palette,
   Download, ListPlus, Target, BarChart3, History, DollarSign, Star, ChevronDown, LogOut, CheckSquare,
-  Sparkles, Keyboard,
+  Sparkles, Keyboard, Home, MoreHorizontal,
 } from 'lucide-react';
 import Dinero from './modules/Dinero';
 import Objetivos from './modules/Objetivos';
@@ -197,7 +197,7 @@ const CustomTimePicker = ({ label, hour, minute, onTimeChange, minTime = "00:00"
 type SectionKey = 'hoy' | 'tiempo' | 'dinero' | 'objetivos' | 'lista' | 'revision';
 
 const SECTIONS: Array<{ key: SectionKey; label: string; Icon: React.FC<{ size?: number }> }> = [
-  { key: 'hoy',      label: 'Hoy',      Icon: Sparkles },
+  { key: 'hoy',      label: 'Inicio',   Icon: Home },
   { key: 'dinero',   label: 'Dinero',   Icon: DollarSign },
   { key: 'tiempo',   label: 'Tiempo',   Icon: CalendarDays },
   { key: 'lista',    label: 'Lista',    Icon: CheckSquare },
@@ -205,13 +205,24 @@ const SECTIONS: Array<{ key: SectionKey; label: string; Icon: React.FC<{ size?: 
   { key: 'revision', label: 'Revisión', Icon: BarChart3 },
 ];
 
+// Secciones en el nav mobile principal (sin Objetivos/Revisión — van en "Más")
+const MOBILE_NAV = SECTIONS.filter(s => ['hoy','dinero','tiempo','lista'].includes(s.key));
+const MORE_SECTIONS = SECTIONS.filter(s => ['objetivos','revision'].includes(s.key));
+
 const App = () => {
-  const { user, signOut } = useAuth();
+  const { user, signOut, displayName, updateDisplayName } = useAuth();
   const userId = user?.id ?? '';
   const [userMenuOpen, setUserMenuOpen] = useState(false);
+  const [showOnboarding, setShowOnboarding] = useState(false);
+  const [showProfile, setShowProfile]     = useState(false);
+  const [showMoreMenu, setShowMoreMenu]   = useState(false);
+  const [profileName, setProfileName]     = useState('');
+  const [profileSaving, setProfileSaving] = useState(false);
   const userMenuRef = useRef<HTMLDivElement>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const hasAutoScrolled = useRef(false);
+
+  const [streak, setStreak] = useState(0);
 
   // ── Estado principal ────────────────────────────────────────────────────────
   const [loading, setLoading] = useState(true);
@@ -576,6 +587,50 @@ const App = () => {
     return () => { supabase.removeChannel(channel); };
   }, [userId, loading]);
 
+  // ── Onboarding: mostrar si el usuario no tiene nombre guardado ───────────────
+  useEffect(() => {
+    if (!loading && !loadError && !displayName) {
+      setProfileName('');
+      setShowOnboarding(true);
+    }
+  }, [loading, loadError, displayName]);
+
+  // ── Racha de días activos (localStorage por usuario) ─────────────────────────
+  useEffect(() => {
+    if (!userId || loading) return;
+    const key = `lifeos-streak-${userId}`;
+    const today = new Date();
+    const todayStr = `${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,'0')}-${String(today.getDate()).padStart(2,'0')}`;
+    const stored = localStorage.getItem(key);
+
+    if (!stored) {
+      localStorage.setItem(key, JSON.stringify({ lastVisit: todayStr, streak: 1 }));
+      setStreak(1); return;
+    }
+    const { lastVisit, streak: s } = JSON.parse(stored) as { lastVisit: string; streak: number };
+    if (lastVisit === todayStr) { setStreak(s); return; }
+
+    const yest = new Date(today); yest.setDate(today.getDate() - 1);
+    const yesterdayStr = `${yest.getFullYear()}-${String(yest.getMonth()+1).padStart(2,'0')}-${String(yest.getDate()).padStart(2,'0')}`;
+
+    const newStreak = lastVisit === yesterdayStr ? s + 1 : 1;
+    localStorage.setItem(key, JSON.stringify({ lastVisit: todayStr, streak: newStreak }));
+    setStreak(newStreak);
+  }, [userId, loading]);
+
+  const handleSaveName = async (name: string, isOnboarding = false) => {
+    if (!name.trim()) {
+      if (isOnboarding) setShowOnboarding(false);
+      else setShowProfile(false);
+      return;
+    }
+    setProfileSaving(true);
+    await updateDisplayName(name);
+    setProfileSaving(false);
+    if (isOnboarding) setShowOnboarding(false);
+    else setShowProfile(false);
+  };
+
   // ── Atajos de teclado (solo desktop, sin input activo) ───────────────────────
   useEffect(() => {
     const hasOpenModalRef = { current: false };
@@ -935,11 +990,11 @@ const App = () => {
             >
               {/* Avatar con iniciales */}
               <div className="w-7 h-7 rounded-full bg-gradient-to-br from-indigo-400 to-violet-500 flex items-center justify-center text-white text-[11px] font-black shadow-sm shrink-0">
-                {user?.email?.[0]?.toUpperCase()}
+                {(displayName || user?.email)?.[0]?.toUpperCase()}
               </div>
-              {/* Username (parte antes del @) */}
+              {/* Nombre o email */}
               <span className="text-[10px] font-bold text-indigo-200 hidden sm:block max-w-[90px] truncate leading-none">
-                {user?.email?.split('@')[0]}
+                {displayName || user?.email?.split('@')[0]}
               </span>
               <ChevronDown size={11} className={`text-indigo-400 transition-transform shrink-0 ${userMenuOpen ? 'rotate-180' : ''}`} />
             </button>
@@ -952,11 +1007,11 @@ const App = () => {
                 <div className="p-4 border-b border-indigo-800/40">
                   <div className="flex items-center gap-3">
                     <div className="w-11 h-11 rounded-2xl bg-gradient-to-br from-indigo-400 to-violet-500 flex items-center justify-center text-white text-xl font-black shadow-lg shrink-0">
-                      {user?.email?.[0]?.toUpperCase()}
+                      {(displayName || user?.email)?.[0]?.toUpperCase()}
                     </div>
                     <div className="flex-1 min-w-0">
-                      <p className="text-white text-sm font-black truncate capitalize">
-                        {user?.email?.split('@')[0]}
+                      <p className="text-white text-sm font-black truncate">
+                        {displayName || user?.email?.split('@')[0]}
                       </p>
                       <p className="text-indigo-400 text-[10px] font-medium truncate mt-0.5">
                         {user?.email}
@@ -966,7 +1021,14 @@ const App = () => {
                 </div>
 
                 {/* Acciones */}
-                <div className="p-2">
+                <div className="p-2 space-y-0.5">
+                  <button
+                    onClick={() => { setProfileName(displayName); setShowProfile(true); setUserMenuOpen(false); }}
+                    className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-indigo-300 hover:bg-white/5 hover:text-white text-[11px] font-black uppercase tracking-widest transition-all active:scale-[0.98]"
+                  >
+                    <Edit2 size={14} />
+                    Mi perfil
+                  </button>
                   <button
                     onClick={() => { signOut(); setUserMenuOpen(false); }}
                     className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-red-400 hover:bg-red-500/10 hover:text-red-300 text-[11px] font-black uppercase tracking-widest transition-all active:scale-[0.98]"
@@ -1333,7 +1395,8 @@ const App = () => {
           {/* ---- SECCIÓN HOY ---- */}
           {section === 'hoy' && (
             <Hoy
-              userName={user?.email?.split('@')[0] ?? 'amigo'}
+              userName={displayName || ''}
+              streak={streak}
               events={events}
               categories={categories}
               tasks={tasks}
@@ -1415,20 +1478,154 @@ const App = () => {
 
       {/* Mobile bottom nav */}
       {isMobile && (
-        <div
-          className="fixed bottom-0 left-0 right-0 bg-indigo-950 border-t border-indigo-900/50 flex z-[150]"
-          style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}
-        >
-          {SECTIONS.map(({ key, label, Icon }) => (
-            <button
-              key={key}
-              onClick={() => setSection(key)}
-              className={`flex-1 flex flex-col items-center justify-center py-3 gap-0.5 transition-all ${section === key ? 'text-indigo-400' : 'text-indigo-700 hover:text-indigo-500'}`}
+        <>
+          {/* Overlay que cierra el menú "Más" */}
+          {showMoreMenu && (
+            <div
+              className="fixed inset-0 z-[148]"
+              onClick={() => setShowMoreMenu(false)}
+            />
+          )}
+
+          {/* Panel "Más" — aparece encima de la nav */}
+          {showMoreMenu && (
+            <div
+              className="fixed left-0 right-0 z-[149] bg-indigo-950 border-t border-indigo-800/60 px-6 py-4 flex gap-4 animate-in slide-in-from-bottom-2 duration-150"
+              style={{ bottom: `calc(64px + env(safe-area-inset-bottom, 0px))` }}
             >
-              <Icon size={20} />
-              <span className="text-[8px] font-black uppercase">{label}</span>
+              {MORE_SECTIONS.map(({ key, label, Icon }) => (
+                <button
+                  key={key}
+                  onClick={() => { setSection(key as SectionKey); setShowMoreMenu(false); }}
+                  className={`flex-1 flex flex-col items-center justify-center gap-1.5 py-3.5 rounded-2xl transition-all active:scale-95 ${
+                    section === key
+                      ? 'bg-indigo-700/60 text-white'
+                      : 'bg-white/5 text-indigo-300 hover:bg-white/10'
+                  }`}
+                >
+                  <Icon size={22} />
+                  <span className="text-[10px] font-black uppercase tracking-wide">{label}</span>
+                </button>
+              ))}
+            </div>
+          )}
+
+          {/* Barra de nav principal — 4 ítems + Más */}
+          <div
+            className="fixed bottom-0 left-0 right-0 bg-indigo-950 border-t border-indigo-800/60 flex z-[150]"
+            style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}
+          >
+            {MOBILE_NAV.map(({ key, label, Icon }) => (
+              <button
+                key={key}
+                onClick={() => { setSection(key as SectionKey); setShowMoreMenu(false); }}
+                className={`flex-1 flex flex-col items-center justify-center py-3.5 gap-1 transition-all active:scale-95 ${
+                  section === key ? 'text-white' : 'text-indigo-400'
+                }`}
+              >
+                <Icon size={22} strokeWidth={section === key ? 2.5 : 2} />
+                <span className="text-[9px] font-black uppercase tracking-wide">{label}</span>
+              </button>
+            ))}
+
+            {/* Botón Más */}
+            <button
+              onClick={() => setShowMoreMenu(v => !v)}
+              className={`flex-1 flex flex-col items-center justify-center py-3.5 gap-1 transition-all active:scale-95 ${
+                showMoreMenu || ['objetivos','revision'].includes(section)
+                  ? 'text-white'
+                  : 'text-indigo-400'
+              }`}
+            >
+              <MoreHorizontal size={22} strokeWidth={showMoreMenu || ['objetivos','revision'].includes(section) ? 2.5 : 2} />
+              <span className="text-[9px] font-black uppercase tracking-wide">Más</span>
             </button>
-          ))}
+          </div>
+        </>
+      )}
+
+      {/* MODAL ONBOARDING — nombre preferido (primer login) */}
+      {showOnboarding && (
+        <div className="fixed inset-0 z-[400] flex items-center justify-center bg-indigo-950/80 backdrop-blur-sm animate-in fade-in p-6">
+          <div className="bg-white rounded-3xl shadow-2xl w-full max-w-sm p-7 animate-in zoom-in-95 duration-200 space-y-5">
+            <div className="text-center space-y-2">
+              <div className="text-4xl">👋</div>
+              <h2 className="text-xl font-black text-slate-800">¡Bienvenido a LifeOS!</h2>
+              <p className="text-sm text-slate-500 leading-relaxed">
+                ¿Cómo prefieres que te llame?
+              </p>
+            </div>
+            <input
+              type="text"
+              value={profileName}
+              onChange={e => setProfileName(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && handleSaveName(profileName, true)}
+              placeholder="Tu nombre o apodo..."
+              autoFocus
+              maxLength={40}
+              className="w-full px-4 py-3.5 border-2 border-slate-200 focus:border-indigo-400 rounded-2xl text-slate-800 font-bold text-base outline-none transition-all"
+            />
+            <div className="space-y-2">
+              <button
+                onClick={() => handleSaveName(profileName, true)}
+                disabled={profileSaving}
+                className="w-full bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white font-black text-sm uppercase tracking-widest py-3.5 rounded-2xl transition-all active:scale-[0.98]"
+              >
+                {profileSaving ? 'Guardando...' : 'Continuar →'}
+              </button>
+              <button
+                onClick={() => setShowOnboarding(false)}
+                className="w-full text-slate-400 hover:text-slate-600 text-xs font-bold py-1.5 transition-all"
+              >
+                Saltar por ahora
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL PERFIL — editar nombre */}
+      {showProfile && (
+        <div
+          className="fixed inset-0 z-[400] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm animate-in fade-in p-6"
+          onClick={() => setShowProfile(false)}
+        >
+          <div
+            className="bg-white rounded-3xl shadow-2xl w-full max-w-sm p-7 animate-in zoom-in-95 duration-200 space-y-5"
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between">
+              <h2 className="text-base font-black text-slate-800 uppercase tracking-wide">Mi perfil</h2>
+              <button onClick={() => setShowProfile(false)} className="p-2 hover:bg-slate-100 rounded-full">
+                <X size={16} className="text-slate-400" />
+              </button>
+            </div>
+            <div className="space-y-2">
+              <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block">
+                ¿Cómo prefieres que te llame?
+              </label>
+              <input
+                type="text"
+                value={profileName}
+                onChange={e => setProfileName(e.target.value)}
+                onKeyDown={e => e.key === 'Enter' && handleSaveName(profileName, false)}
+                placeholder="Tu nombre o apodo..."
+                autoFocus
+                maxLength={40}
+                className="w-full px-4 py-3 border-2 border-slate-200 focus:border-indigo-400 rounded-2xl text-slate-800 font-bold text-sm outline-none transition-all"
+              />
+              <p className="text-[10px] text-slate-400 font-medium px-1">
+                Correo: {user?.email}
+              </p>
+            </div>
+            <button
+              onClick={() => handleSaveName(profileName, false)}
+              disabled={profileSaving}
+              className="w-full bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white font-black text-xs uppercase tracking-widest py-3.5 rounded-2xl transition-all active:scale-[0.98]"
+            >
+              {profileSaving ? 'Guardando...' : 'Guardar cambios'}
+            </button>
+          </div>
         </div>
       )}
 
