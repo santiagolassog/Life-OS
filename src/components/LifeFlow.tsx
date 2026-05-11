@@ -386,219 +386,228 @@ const App = () => {
   const prevTasks               = useRef(tasks);
   const prevChecklistItems      = useRef(checklistItems);
 
-  // Timestamps hasta los que el RT está silenciado por tabla (ms).
-  // Cada sync local extiende el cooldown 5 s para evitar que el RT
-  // refleje nuestros propios cambios con datos potencialmente stale.
-  const rtCooldown = useRef<Record<string, number>>({});
-  const RT_COOLDOWN_MS = 5000;
-  const pause = (table: string) => {
-    rtCooldown.current[table] = Date.now() + RT_COOLDOWN_MS;
+  // Flag por tabla: true cuando el cambio vino de RT (no de acción local).
+  // El sync-effect lo detecta, actualiza prevXxx y omite el upsert a Supabase,
+  // evitando el loop local SIN bloquear eventos RT posteriores de otros dispositivos.
+  const isRTUpdate = useRef<Record<string, boolean>>({});
+
+  // Helper: marca flag, actualiza prev y omite sync si el cambio es de RT.
+  // Devuelve true cuando hay que saltar el sync.
+  const skipIfRT = (table: string, prev: React.MutableRefObject<unknown>, curr: unknown): boolean => {
+    if (isRTUpdate.current[table]) {
+      isRTUpdate.current[table] = false;
+      (prev as React.MutableRefObject<unknown>).current = curr;
+      return true;
+    }
+    return false;
   };
-  const inCooldown = (table: string) =>
-    Date.now() < (rtCooldown.current[table] ?? 0);
 
   // ── Sincronización con Supabase (fire-and-forget, sin bloquear la UI) ───────
 
   useEffect(() => {
     if (loading || !userId) return;
-    markSaving(); pause('events');
+    if (skipIfRT('events', prevEvents, events)) return;
+    markSaving();
     syncEvents(prevEvents.current, events, userId).catch(console.error);
     prevEvents.current = events;
   }, [events, loading, userId]);
 
   useEffect(() => {
     if (loading || !userId) return;
-    markSaving(); pause('categories');
+    if (skipIfRT('categories', prevCategories, categories)) return;
+    markSaving();
     syncCategories(prevCategories.current, categories, userId).catch(console.error);
     prevCategories.current = categories;
   }, [categories, loading, userId]);
 
   useEffect(() => {
     if (loading || !userId) return;
-    markSaving(); pause('transactions');
+    if (skipIfRT('transactions', prevTransactions, transactions)) return;
+    markSaving();
     syncTransactions(prevTransactions.current, transactions, userId).catch(console.error);
     prevTransactions.current = transactions;
   }, [transactions, loading, userId]);
 
   useEffect(() => {
     if (loading || !userId) return;
-    markSaving(); pause('fin_categories');
+    if (skipIfRT('fin_categories', prevFinCategories, finCategories)) return;
+    markSaving();
     syncFinCategories(prevFinCategories.current, finCategories, userId).catch(console.error);
     prevFinCategories.current = finCategories;
   }, [finCategories, loading, userId]);
 
   useEffect(() => {
     if (loading || !userId) return;
-    markSaving(); pause('goals');
+    if (skipIfRT('goals', prevGoals, goals)) return;
+    markSaving();
     syncGoals(prevGoals.current, goals, userId).catch(console.error);
     prevGoals.current = goals;
   }, [goals, loading, userId]);
 
   useEffect(() => {
     if (loading || !userId) return;
-    markSaving(); pause('savings');
+    if (skipIfRT('savings', prevSavings, savings)) return;
+    markSaving();
     syncSavings(prevSavings.current, savings, userId).catch(console.error);
     prevSavings.current = savings;
   }, [savings, loading, userId]);
 
   useEffect(() => {
     if (loading || !userId) return;
-    markSaving(); pause('month_balances');
+    if (skipIfRT('month_balances', prevMonthBalances, monthBalances)) return;
+    markSaving();
     syncMonthBalances(prevMonthBalances.current, monthBalances, userId).catch(console.error);
     prevMonthBalances.current = monthBalances;
   }, [monthBalances, loading, userId]);
 
   useEffect(() => {
     if (loading || !userId) return;
-    markSaving(); pause('savings_withdrawals');
+    if (skipIfRT('savings_withdrawals', prevSavingsWithdrawals, savingsWithdrawals)) return;
+    markSaving();
     syncSavingsWithdrawals(prevSavingsWithdrawals.current, savingsWithdrawals, userId).catch(console.error);
     prevSavingsWithdrawals.current = savingsWithdrawals;
   }, [savingsWithdrawals, loading, userId]);
 
   useEffect(() => {
     if (loading || !userId) return;
-    markSaving(); pause('savings_pockets');
+    if (skipIfRT('savings_pockets', prevSavingsPockets, savingsPockets)) return;
+    markSaving();
     syncSavingsPockets(prevSavingsPockets.current, savingsPockets, userId).catch(console.error);
     prevSavingsPockets.current = savingsPockets;
   }, [savingsPockets, loading, userId]);
 
   useEffect(() => {
     if (loading || !userId) return;
-    markSaving(); pause('pocket_fundings');
+    if (skipIfRT('pocket_fundings', prevPocketFundings, pocketFundings)) return;
+    markSaving();
     syncPocketFundings(prevPocketFundings.current, pocketFundings, userId).catch(console.error);
     prevPocketFundings.current = pocketFundings;
   }, [pocketFundings, loading, userId]);
 
   useEffect(() => {
     if (loading || !userId) return;
-    markSaving(); pause('savings_year_balances');
+    if (skipIfRT('savings_year_balances', prevSavingsYearBalances, savingsYearBalances)) return;
+    markSaving();
     syncSavingsYearBalances(prevSavingsYearBalances.current, savingsYearBalances, userId).catch(console.error);
     prevSavingsYearBalances.current = savingsYearBalances;
   }, [savingsYearBalances, loading, userId]);
 
   useEffect(() => {
     if (loading || !userId) return;
-    markSaving(); pause('loans');
+    if (skipIfRT('loans', prevLoans, loans)) return;
+    markSaving();
     syncLoans(prevLoans.current, loans, userId).catch(console.error);
     prevLoans.current = loans;
   }, [loans, loading, userId]);
 
   useEffect(() => {
     if (loading || !userId) return;
-    markSaving(); pause('loan_payments');
+    if (skipIfRT('loan_payments', prevLoanPayments, loanPayments)) return;
+    markSaving();
     syncLoanPayments(prevLoanPayments.current, loanPayments, userId).catch(console.error);
     prevLoanPayments.current = loanPayments;
   }, [loanPayments, loading, userId]);
 
   useEffect(() => {
     if (loading || !userId) return;
-    markSaving(); pause('budgets');
+    if (skipIfRT('budgets', prevBudgets, budgets)) return;
+    markSaving();
     syncBudgets(prevBudgets.current, budgets, userId).catch(console.error);
     prevBudgets.current = budgets;
   }, [budgets, loading, userId]);
 
   useEffect(() => {
     if (loading || !userId) return;
-    markSaving(); pause('tasks');
+    if (skipIfRT('tasks', prevTasks, tasks)) return;
+    markSaving();
     syncTasks(prevTasks.current, tasks, userId).catch(console.error);
     prevTasks.current = tasks;
   }, [tasks, loading, userId]);
 
   useEffect(() => {
     if (loading || !userId) return;
-    markSaving(); pause('checklist_items');
+    if (skipIfRT('checklist_items', prevChecklistItems, checklistItems)) return;
+    markSaving();
     syncChecklistItems(prevChecklistItems.current, checklistItems, userId).catch(console.error);
     prevChecklistItems.current = checklistItems;
   }, [checklistItems, loading, userId]);
 
   // ── Real-time: recibe cambios de otros dispositivos/tabs ─────────────────────
+  // El flag isRTUpdate marca el update como "venido de RT" para que el
+  // sync-effect lo salte sin upload. No hay cooldown → cada evento RT
+  // siempre se aplica, sin bloquear cambios rápidos de otros dispositivos.
   useEffect(() => {
     if (!userId || loading) return;
 
     const f = `user_id=eq.${userId}`;
+    const rt = isRTUpdate.current;
 
     const channel = supabase
       .channel(`lifeos-rt-${userId}`)
 
       .on('postgres_changes', { event: '*', schema: 'public', table: 'events', filter: f }, async () => {
-        if (inCooldown('events')) return;
         const fresh = await loadEvents();
-        prevEvents.current = fresh; setEvents(fresh);
+        rt['events'] = true; prevEvents.current = fresh; setEvents(fresh);
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'categories', filter: f }, async () => {
-        if (inCooldown('categories')) return;
         const fresh = await loadCategories();
-        prevCategories.current = fresh; setCategories(fresh);
+        rt['categories'] = true; prevCategories.current = fresh; setCategories(fresh);
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'transactions', filter: f }, async () => {
-        if (inCooldown('transactions')) return;
         const fresh = await loadTransactions();
-        prevTransactions.current = fresh; setTransactions(fresh);
+        rt['transactions'] = true; prevTransactions.current = fresh; setTransactions(fresh);
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'fin_categories', filter: f }, async () => {
-        if (inCooldown('fin_categories')) return;
         const fresh = await loadFinCategories();
-        prevFinCategories.current = fresh; setFinCategories(fresh);
+        rt['fin_categories'] = true; prevFinCategories.current = fresh; setFinCategories(fresh);
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'goals', filter: f }, async () => {
-        if (inCooldown('goals')) return;
         const fresh = await loadGoals();
-        prevGoals.current = fresh; setGoals(fresh);
+        rt['goals'] = true; prevGoals.current = fresh; setGoals(fresh);
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'savings', filter: f }, async () => {
-        if (inCooldown('savings')) return;
         const fresh = await loadSavings();
-        prevSavings.current = fresh; setSavings(fresh);
+        rt['savings'] = true; prevSavings.current = fresh; setSavings(fresh);
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'month_balances', filter: f }, async () => {
-        if (inCooldown('month_balances')) return;
         const fresh = await loadMonthBalances();
-        prevMonthBalances.current = fresh; setMonthBalances(fresh);
+        rt['month_balances'] = true; prevMonthBalances.current = fresh; setMonthBalances(fresh);
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'savings_withdrawals', filter: f }, async () => {
-        if (inCooldown('savings_withdrawals')) return;
         const fresh = await loadSavingsWithdrawals();
-        prevSavingsWithdrawals.current = fresh; setSavingsWithdrawals(fresh);
+        rt['savings_withdrawals'] = true; prevSavingsWithdrawals.current = fresh; setSavingsWithdrawals(fresh);
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'savings_pockets', filter: f }, async () => {
-        if (inCooldown('savings_pockets')) return;
         const fresh = await loadSavingsPockets();
-        prevSavingsPockets.current = fresh; setSavingsPockets(fresh);
+        rt['savings_pockets'] = true; prevSavingsPockets.current = fresh; setSavingsPockets(fresh);
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'pocket_fundings', filter: f }, async () => {
-        if (inCooldown('pocket_fundings')) return;
         const fresh = await loadPocketFundings();
-        prevPocketFundings.current = fresh; setPocketFundings(fresh);
+        rt['pocket_fundings'] = true; prevPocketFundings.current = fresh; setPocketFundings(fresh);
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'savings_year_balances', filter: f }, async () => {
-        if (inCooldown('savings_year_balances')) return;
         const fresh = await loadSavingsYearBalances();
-        prevSavingsYearBalances.current = fresh; setSavingsYearBalances(fresh);
+        rt['savings_year_balances'] = true; prevSavingsYearBalances.current = fresh; setSavingsYearBalances(fresh);
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'loans', filter: f }, async () => {
-        if (inCooldown('loans')) return;
         const fresh = await loadLoans();
-        prevLoans.current = fresh; setLoans(fresh);
+        rt['loans'] = true; prevLoans.current = fresh; setLoans(fresh);
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'loan_payments', filter: f }, async () => {
-        if (inCooldown('loan_payments')) return;
         const fresh = await loadLoanPayments();
-        prevLoanPayments.current = fresh; setLoanPayments(fresh);
+        rt['loan_payments'] = true; prevLoanPayments.current = fresh; setLoanPayments(fresh);
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'budgets', filter: f }, async () => {
-        if (inCooldown('budgets')) return;
         const fresh = await loadBudgets();
-        prevBudgets.current = fresh; setBudgets(fresh);
+        rt['budgets'] = true; prevBudgets.current = fresh; setBudgets(fresh);
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'tasks', filter: f }, async () => {
-        if (inCooldown('tasks')) return;
         const fresh = await loadTasks();
-        prevTasks.current = fresh; setTasks(fresh);
+        rt['tasks'] = true; prevTasks.current = fresh; setTasks(fresh);
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'checklist_items', filter: f }, async () => {
-        if (inCooldown('checklist_items')) return;
         const fresh = await loadChecklistItems();
-        prevChecklistItems.current = fresh; setChecklistItems(fresh);
+        rt['checklist_items'] = true; prevChecklistItems.current = fresh; setChecklistItems(fresh);
       })
 
       .subscribe();
