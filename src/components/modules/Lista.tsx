@@ -17,7 +17,7 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import type { Task, ChecklistItem, Categories, Category, Goal } from '../../types';
-import { generateId, getLocalISODate } from '../../lib/utils';
+import { generateId, getLocalISODate, getWeekId, getWeekDays } from '../../lib/utils';
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
@@ -43,7 +43,7 @@ const PRIORITY_CONFIG = {
   low:    { label: 'Baja',  color: '#94a3b8', dot: 'bg-slate-300', text: 'text-slate-400' },
 } as const;
 
-type ListaSubView = 'tablero' | 'resumen';
+type ListaSubView = 'tablero' | 'resumen' | 'historial';
 type ResumeRange = 'week' | 'month' | 'year';
 
 function daysBetween(a: string, b: string): number {
@@ -164,12 +164,29 @@ const Lista: React.FC<ListaProps> = ({
   const orderSort = (a: Task, b: Task) =>
     (a.sortOrder - b.sortOrder) || a.createdAt.localeCompare(b.createdAt);
 
+  // Semana actual (para filtrar "Hechas" en el tablero)
+  const currentWeekId = useMemo(() => getWeekId(new Date()), []);
+
   const tasksByStatus = useMemo(() => ({
     backlog:    filteredTasks.filter(t => t.status === 'backlog').sort(orderSort),
     todo:       filteredTasks.filter(t => t.status === 'todo').sort(orderSort),
     inprogress: filteredTasks.filter(t => t.status === 'inprogress').sort(orderSort),
-    done:       filteredTasks.filter(t => t.status === 'done').sort(orderSort),
-  }), [filteredTasks]);
+    // "Hechas" solo muestra las completadas ESTA semana
+    done: filteredTasks.filter(t => {
+      if (t.status !== 'done') return false;
+      if (!t.completedAt) return true;
+      return getWeekId(new Date(t.completedAt + 'T12:00:00')) === currentWeekId;
+    }).sort(orderSort),
+  }), [filteredTasks, currentWeekId]);
+
+  // Historial: done de semanas anteriores
+  const historicalDone = useMemo(() =>
+    tasks.filter(t => {
+      if (t.status !== 'done' || !t.completedAt) return false;
+      if (filterCat && t.categoryId !== filterCat) return false;
+      return getWeekId(new Date(t.completedAt + 'T12:00:00')) !== currentWeekId;
+    }).sort((a, b) => (b.completedAt ?? '').localeCompare(a.completedAt ?? '')),
+  [tasks, filterCat, currentWeekId]);
 
   const itemsByTask = useMemo(() => {
     const map: Record<string, ChecklistItem[]> = {};
@@ -340,8 +357,9 @@ const Lista: React.FC<ListaProps> = ({
         {/* ── Sub-view tabs ── */}
         <div className="flex bg-slate-100 p-1 rounded-2xl gap-1">
           {([
-            { key: 'tablero' as ListaSubView, label: 'Tablero', Icon: List },
-            { key: 'resumen' as ListaSubView, label: 'Resumen', Icon: BarChart3 },
+            { key: 'tablero'   as ListaSubView, label: 'Tablero',  Icon: List },
+            { key: 'resumen'   as ListaSubView, label: 'Resumen',  Icon: BarChart3 },
+            { key: 'historial' as ListaSubView, label: 'Historial', Icon: CheckCircle2 },
           ]).map(({ key, label, Icon }) => {
             const active = subView === key;
             return (
@@ -423,6 +441,15 @@ const Lista: React.FC<ListaProps> = ({
                           <cfg.Icon size={14} style={{ color: cfg.color }} strokeWidth={2.5} />
                           <span className="text-xs font-black text-slate-600 uppercase tracking-wide">{cfg.label}</span>
                           <span className="ml-auto text-[10px] font-black text-slate-400 bg-white rounded-full px-2 py-0.5 shadow-sm">{col.length}</span>
+                          {/* Enlace al historial solo en columna Hechas */}
+                          {status === 'done' && historicalDone.length > 0 && (
+                            <button
+                              onClick={() => setSubView('historial')}
+                              className="hidden md:flex text-[9px] font-black text-slate-400 hover:text-violet-500 uppercase tracking-widest shrink-0 transition-all"
+                            >
+                              +{historicalDone.length} →
+                            </button>
+                          )}
                         </div>
 
                         <SortableContext items={col.map(t => t.id)} strategy={verticalListSortingStrategy}>
@@ -490,6 +517,14 @@ const Lista: React.FC<ListaProps> = ({
             checklistItems={checklistItems}
             categories={categories}
             currentDate={currentDate}
+          />
+        )}
+
+        {/* ═══ HISTORIAL ═══ */}
+        {subView === 'historial' && (
+          <HistorialView
+            tasks={historicalDone}
+            categories={categories}
           />
         )}
       </div>
@@ -1462,6 +1497,87 @@ const TaskModal: React.FC<TaskModalProps> = ({
           </button>
         </div>
       </div>
+    </div>
+  );
+};
+
+// ─── HistorialView ────────────────────────────────────────────────────────────
+
+interface HistorialViewProps {
+  tasks: Task[];
+  categories: Categories;
+}
+
+const HistorialView: React.FC<HistorialViewProps> = ({ tasks, categories }) => {
+  // Agrupar por semana (weekId desc)
+  const byWeek = useMemo(() => {
+    const groups: Record<string, Task[]> = {};
+    tasks.forEach(t => {
+      const wId = getWeekId(new Date(t.completedAt! + 'T12:00:00'));
+      if (!groups[wId]) groups[wId] = [];
+      groups[wId].push(t);
+    });
+    return Object.entries(groups).sort(([a], [b]) => b.localeCompare(a));
+  }, [tasks]);
+
+  if (tasks.length === 0) return (
+    <div className="bg-white rounded-3xl border border-dashed border-slate-200 p-12 text-center">
+      <CheckCircle2 size={40} className="mx-auto text-slate-200 mb-3" />
+      <p className="text-sm font-bold text-slate-400">Sin tareas completadas en semanas anteriores</p>
+      <p className="text-xs text-slate-300 mt-1">Las tareas hechas esta semana aparecerán aquí la próxima semana</p>
+    </div>
+  );
+
+  return (
+    <div className="space-y-6">
+      {byWeek.map(([weekId, weekTasks]) => {
+        const refDate = new Date(weekTasks[0].completedAt! + 'T12:00:00');
+        const days = getWeekDays(refDate);
+        const label = `${days[0].toLocaleDateString('es-ES', { day: '2-digit', month: 'short' })} – ${days[6].toLocaleDateString('es-ES', { day: '2-digit', month: 'short', year: 'numeric' })}`;
+
+        return (
+          <div key={weekId}>
+            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3 px-1">
+              Semana {label} · {weekTasks.length} {weekTasks.length === 1 ? 'tarea' : 'tareas'}
+            </p>
+            <div className="space-y-2">
+              {weekTasks.map(task => {
+                const cat = task.categoryId ? categories[task.categoryId] : null;
+                const pri = PRIORITY_CONFIG[task.priority];
+                const elapsed = task.startedAt && task.completedAt
+                  ? Math.max(0, Math.round((new Date(task.completedAt + 'T12:00:00').getTime() - new Date(task.startedAt + 'T12:00:00').getTime()) / 86400000))
+                  : null;
+
+                return (
+                  <div key={task.id} className="flex items-center gap-3 bg-white rounded-2xl border border-slate-100 shadow-sm p-4">
+                    <CheckCircle2 size={16} className="text-emerald-500 shrink-0" />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-bold text-slate-500 line-through truncate">{task.title}</p>
+                      <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+                        {cat && <span className="text-[10px] font-bold" style={{ color: cat.color }}>{cat.label}</span>}
+                        <span className={`text-[10px] font-black ${pri.text}`}>{pri.label}</span>
+                      </div>
+                    </div>
+                    <div className="text-right shrink-0 space-y-0.5">
+                      {elapsed !== null && (
+                        <div className="flex items-center gap-1 justify-end">
+                          <Clock size={10} className="text-violet-400" />
+                          <span className="text-[11px] font-black text-violet-600">{elapsed}d</span>
+                        </div>
+                      )}
+                      {task.completedAt && (
+                        <p className="text-[9px] text-slate-300 font-bold">
+                          {new Date(task.completedAt + 'T12:00:00').toLocaleDateString('es-ES', { day: '2-digit', month: 'short' })}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        );
+      })}
     </div>
   );
 };

@@ -9,13 +9,14 @@ import {
   Clock, Save, Zap, ChevronLeft, ChevronRight, X, Plus,
   PieChart as PieChartIcon, Trash2, CalendarDays, Menu, Copy, CheckCircle2, Circle, Edit2, Palette,
   Download, ListPlus, Target, BarChart3, History, DollarSign, Star, ChevronDown, LogOut, CheckSquare,
-  Sparkles, Keyboard, Home, MoreHorizontal,
+  Sparkles, Keyboard, Home, MoreHorizontal, Search,
 } from 'lucide-react';
 import Dinero from './modules/Dinero';
 import Objetivos from './modules/Objetivos';
 import Revision from './modules/Revision';
 import Lista from './modules/Lista';
 import Hoy from './modules/Hoy';
+import SearchModal from './SearchModal';
 import type { Transaction, FinCategory, Goal, Savings, MonthBalance, SavingsWithdrawal, SavingsPocket, PocketFunding, SavingsYearBalance, Loan, LoanPayment, Budget, Task, ChecklistItem } from '../types';
 import { LOAN_OUT_CAT_ID, LOAN_IN_CAT_ID } from '../types';
 import { generateId, formatDateId as fmtDateId, getWeekDays, GRID_HOURS, fmtCurrency, getWeekId } from '../lib/utils';
@@ -214,6 +215,7 @@ const App = () => {
   const { user, signOut, displayName, updateDisplayName } = useAuth();
   const userId = user?.id ?? '';
   const [userMenuOpen, setUserMenuOpen] = useState(false);
+  const [showSearch, setShowSearch]         = useState(false);
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [showProfile, setShowProfile]     = useState(false);
   const [showMoreMenu, setShowMoreMenu]   = useState(false);
@@ -226,9 +228,9 @@ const App = () => {
   const [streak, setStreak] = useState(0);
 
   // ── Conexión y estado de guardado ─────────────────────────────────────────────
-  const [isOnline, setIsOnline] = useState(
-    typeof navigator !== 'undefined' ? navigator.onLine : true
-  );
+  // Siempre inicia en true: navigator.onLine no es confiable en dev/HMR.
+  // El banner solo aparece si la desconexión persiste más de 3 segundos.
+  const [isOnline, setIsOnline] = useState(true);
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved'>('idle');
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -648,21 +650,31 @@ const App = () => {
     else setShowProfile(false);
   };
 
-  // ── Detección de conexión ─────────────────────────────────────────────────────
+  // ── Detección de conexión con debounce de 3s ─────────────────────────────────
+  // El debounce filtra cortes momentáneos de HMR/dev que disparan false positivos.
   useEffect(() => {
+    let offlineTimer: ReturnType<typeof setTimeout> | null = null;
+
     const handleOnline = () => {
+      if (offlineTimer) { clearTimeout(offlineTimer); offlineTimer = null; }
       setIsOnline(true);
       toast.success('Conexión restaurada', {
         description: 'Todos tus datos están sincronizados.',
         duration: 3000,
       });
     };
-    const handleOffline = () => setIsOnline(false);
+
+    const handleOffline = () => {
+      // Esperar 3 s antes de mostrar el banner (descarta cortes momentáneos)
+      offlineTimer = setTimeout(() => setIsOnline(false), 3000);
+    };
+
     window.addEventListener('online', handleOnline);
     window.addEventListener('offline', handleOffline);
     return () => {
       window.removeEventListener('online', handleOnline);
       window.removeEventListener('offline', handleOffline);
+      if (offlineTimer) clearTimeout(offlineTimer);
     };
   }, []);
 
@@ -670,6 +682,12 @@ const App = () => {
   useEffect(() => {
     const hasOpenModalRef = { current: false };
     const handleKeyDown = (e: KeyboardEvent) => {
+      // Cmd/Ctrl+K abre búsqueda global
+      if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+        e.preventDefault();
+        setShowSearch(v => !v);
+        return;
+      }
       if (e.ctrlKey || e.metaKey || e.altKey) return;
       const tag = (e.target as HTMLElement).tagName.toLowerCase();
       if (['input', 'textarea', 'select'].includes(tag)) return;
@@ -983,8 +1001,9 @@ const App = () => {
             <div className="bg-indigo-500 p-1.5 rounded-lg shadow-inner"><Zap size={18} fill="white" /></div>
             <h1 className="text-lg font-black tracking-tight uppercase italic leading-none hidden sm:block">LifeOS</h1>
           </div>
+          {/* Navegación semanal — solo desktop (en mobile va en la barra de días) */}
           {section === 'tiempo' && (
-            <div className="flex items-center bg-white/5 rounded-full p-1 border border-white/10 ml-1">
+            <div className="hidden md:flex items-center bg-white/5 rounded-full p-1 border border-white/10 ml-1">
               <button onClick={() => setCurrentDate(new Date(currentDate.setDate(currentDate.getDate() - 7)))} className="p-1 hover:bg-white/10 rounded-full transition-all"><ChevronLeft size={16}/></button>
               <span className="px-3 text-xs font-bold min-w-[110px] text-center capitalize text-indigo-100">
                 {weekDays[0]?.toLocaleDateString('es-ES', { month: 'short', year: 'numeric' })}
@@ -1008,7 +1027,17 @@ const App = () => {
           ))}
         </div>
 
-        <div className="flex items-center gap-3 text-white">
+        <div className="flex items-center gap-2 md:gap-3 text-white">
+          {/* Botón búsqueda — desktop */}
+          <button
+            onClick={() => setShowSearch(true)}
+            className="hidden md:flex items-center gap-2 px-3 py-1.5 bg-white/5 hover:bg-white/10 border border-white/10 rounded-full text-indigo-300 hover:text-white transition-all"
+          >
+            <Search size={13} />
+            <span className="text-[11px] font-bold hidden lg:inline">Buscar...</span>
+            <kbd className="hidden lg:inline-flex items-center text-[9px] font-black text-indigo-500 bg-white/5 border border-white/10 px-1.5 py-0.5 rounded-md">⌘K</kbd>
+          </button>
+
           {/* Indicador de guardado — espacio siempre reservado para no mover layout */}
           <div className={`hidden lg:flex items-center gap-1.5 text-[10px] font-bold min-w-[90px] justify-center transition-all duration-300 ${
             saveStatus === 'idle' ? 'opacity-0 pointer-events-none' : 'opacity-100'
@@ -1036,6 +1065,14 @@ const App = () => {
               <CheckCircle2 size={18} className="text-emerald-400" />
             )}
           </div>
+
+          {/* Mobile: search + avatar agrupados en cluster compacto */}
+          <button
+            onClick={() => setShowSearch(true)}
+            className="md:hidden w-9 h-9 flex items-center justify-center bg-white/5 border border-white/10 rounded-full text-indigo-300 hover:text-white hover:bg-white/10 transition-all active:scale-95"
+          >
+            <Search size={16} />
+          </button>
 
           {/* Menú de usuario */}
           <div className="relative" ref={userMenuRef}>
@@ -1357,19 +1394,40 @@ const App = () => {
           {section === 'tiempo' && (
             <>
               {isMobile && (
-                <div className="bg-white border-b px-2 py-2 flex justify-around items-center shrink-0 sticky top-0 z-[60]" style={{ boxShadow: '0 1px 8px rgba(0,0,0,0.06)' }}>
-                  {weekDays.map((date, i) => {
-                    const isActive = mobileDayOffset === i + 1;
-                    const isToday = date.toDateString() === new Date().toDateString();
-                    return (
-                      <button key={i} onClick={() => setMobileDayOffset(i + 1)}
-                        className={`flex flex-col items-center justify-center w-[13%] py-2.5 rounded-2xl transition-all active:scale-95 ${isActive ? 'bg-indigo-600 shadow-md' : ''}`}>
-                        <span className={`text-[9px] font-black uppercase tracking-wide leading-none ${isActive ? 'text-indigo-200' : 'text-slate-400'}`}>{WEEK_DAYS_SHORT[i][0]}</span>
-                        <span className={`text-[18px] font-black mt-0.5 leading-none ${isActive ? 'text-white' : isToday ? 'text-indigo-600' : 'text-slate-700'}`}>{date.getDate()}</span>
-                        <div className={`w-1 h-1 rounded-full mt-1 ${isToday ? (isActive ? 'bg-white/50' : 'bg-indigo-500') : 'bg-transparent'}`} />
-                      </button>
-                    );
-                  })}
+                <div className="bg-white border-b shrink-0 sticky top-0 z-[60]" style={{ boxShadow: '0 1px 8px rgba(0,0,0,0.06)' }}>
+                  {/* Navegación de semana — mobile */}
+                  <div className="flex items-center justify-between px-3 pt-2 pb-1">
+                    <button
+                      onClick={() => { const d = new Date(currentDate); d.setDate(d.getDate() - 7); setCurrentDate(d); }}
+                      className="p-1.5 hover:bg-slate-100 rounded-full transition-all active:scale-95"
+                    >
+                      <ChevronLeft size={16} className="text-slate-400" />
+                    </button>
+                    <span className="text-[11px] font-black text-slate-500 uppercase tracking-widest capitalize">
+                      {weekDays[0]?.toLocaleDateString('es-ES', { month: 'short', year: 'numeric' })}
+                    </span>
+                    <button
+                      onClick={() => { const d = new Date(currentDate); d.setDate(d.getDate() + 7); setCurrentDate(d); }}
+                      className="p-1.5 hover:bg-slate-100 rounded-full transition-all active:scale-95"
+                    >
+                      <ChevronRight size={16} className="text-slate-400" />
+                    </button>
+                  </div>
+                  {/* Días de la semana */}
+                  <div className="px-2 pb-2 flex justify-around items-center">
+                    {weekDays.map((date, i) => {
+                      const isActive = mobileDayOffset === i + 1;
+                      const isToday = date.toDateString() === new Date().toDateString();
+                      return (
+                        <button key={i} onClick={() => setMobileDayOffset(i + 1)}
+                          className={`flex flex-col items-center justify-center w-[13%] py-2.5 rounded-2xl transition-all active:scale-95 ${isActive ? 'bg-indigo-600 shadow-md' : ''}`}>
+                          <span className={`text-[9px] font-black uppercase tracking-wide leading-none ${isActive ? 'text-indigo-200' : 'text-slate-400'}`}>{WEEK_DAYS_SHORT[i][0]}</span>
+                          <span className={`text-[18px] font-black mt-0.5 leading-none ${isActive ? 'text-white' : isToday ? 'text-indigo-600' : 'text-slate-700'}`}>{date.getDate()}</span>
+                          <div className={`w-1 h-1 rounded-full mt-1 ${isToday ? (isActive ? 'bg-white/50' : 'bg-indigo-500') : 'bg-transparent'}`} />
+                        </button>
+                      );
+                    })}
+                  </div>
                 </div>
               )}
 
@@ -1608,6 +1666,20 @@ const App = () => {
             </button>
           </div>
         </>
+      )}
+
+      {/* ── BÚSQUEDA GLOBAL ── */}
+      {showSearch && (
+        <SearchModal
+          tasks={tasks}
+          goals={goals}
+          events={events}
+          transactions={transactions}
+          categories={categories}
+          finCategories={finCategories}
+          onClose={() => setShowSearch(false)}
+          onNavigate={(section) => { setSection(section as SectionKey); setShowSearch(false); }}
+        />
       )}
 
       {/* MODAL ONBOARDING — nombre preferido (primer login) */}
