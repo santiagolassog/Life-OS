@@ -63,11 +63,12 @@ const rowToEvent = (row: Record<string, unknown>): EventEntry => ({
 })
 
 const rowToCategory = (row: Record<string, unknown>): Category => ({
-  id:      row.id as string,
-  label:   row.label as string,
-  color:   row.color as string,
-  short:   row.short as string,
-  presets: (row.presets as string[]) ?? [],
+  id:        row.id as string,
+  label:     row.label as string,
+  color:     row.color as string,
+  short:     row.short as string,
+  presets:   (row.presets as string[]) ?? [],
+  sortOrder: row.sort_order != null ? Number(row.sort_order) : 0,
 })
 
 const rowToTransaction = (row: Record<string, unknown>): Transaction => ({
@@ -170,11 +171,12 @@ const eventToDb = (e: EventEntry & { dateId: string }) => ({
 })
 
 const categoryToDb = (c: Category) => ({
-  id:      c.id,
-  label:   c.label,
-  color:   c.color,
-  short:   c.short,
-  presets: c.presets ?? [],
+  id:         c.id,
+  label:      c.label,
+  color:      c.color,
+  short:      c.short,
+  presets:    c.presets ?? [],
+  sort_order: c.sortOrder ?? 0,
 })
 
 const transactionToDb = (t: Transaction) => ({

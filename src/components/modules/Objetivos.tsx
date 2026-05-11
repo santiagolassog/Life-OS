@@ -708,7 +708,7 @@ const Objetivos: React.FC<ObjetivosProps> = ({ goals, setGoals, categories, setC
                     >
                       Ninguna
                     </button>
-                    {Object.values(categories).map(cat => (
+                    {Object.values(categories).sort((a, b) => ((a.sortOrder ?? 0) - (b.sortOrder ?? 0))).map(cat => (
                       <button
                         key={cat.id}
                         onClick={() => setEditGoal({ ...editGoal, category: cat.id })}
@@ -904,7 +904,7 @@ const Objetivos: React.FC<ObjetivosProps> = ({ goals, setGoals, categories, setC
             <div className="flex-1 overflow-y-auto custom-scrollbar">
               {!catEdit ? (
                 <div className="p-5 space-y-2">
-                  {Object.values(categories).map(cat => (
+                  {Object.values(categories).sort((a, b) => ((a.sortOrder ?? 0) - (b.sortOrder ?? 0))).map(cat => (
                     <div key={cat.id} className="flex items-center gap-3 p-3 rounded-2xl bg-slate-50 border border-slate-100">
                       <div className="w-3 h-3 rounded-full shrink-0" style={{ backgroundColor: cat.color }} />
                       <div className="flex-1 min-w-0">

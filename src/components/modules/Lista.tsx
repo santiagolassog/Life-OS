@@ -152,7 +152,7 @@ const Lista: React.FC<ListaProps> = ({
 
   // ── Derived ──────────────────────────────────────────────────────────────
 
-  const catList = useMemo(() => Object.values(categories), [categories]);
+  const catList = useMemo(() => Object.values(categories).sort((a, b) => ((a.sortOrder ?? 0) - (b.sortOrder ?? 0)) || a.label.localeCompare(b.label)), [categories]);
 
   const filteredTasks = useMemo(() => {
     return tasks.filter(t => {
@@ -575,7 +575,7 @@ const Lista: React.FC<ListaProps> = ({
               {!catEdit ? (
                 /* ── Vista: lista de áreas ── */
                 <div className="p-5 space-y-2">
-                  {Object.values(categories).map(cat => (
+                  {Object.values(categories).sort((a, b) => ((a.sortOrder ?? 0) - (b.sortOrder ?? 0))).map(cat => (
                     <div key={cat.id} className="flex items-center gap-3 p-3 rounded-2xl bg-slate-50 border border-slate-100">
                       <div className="w-3 h-3 rounded-full shrink-0" style={{ backgroundColor: cat.color }} />
                       <div className="flex-1 min-w-0">
@@ -1178,7 +1178,7 @@ const TaskModal: React.FC<TaskModalProps> = ({
   const [editingText, setEditingText]     = useState('');
   const newItemRef  = useRef<HTMLInputElement>(null);
   const editInputRef = useRef<HTMLInputElement>(null);
-  const catList = Object.values(categories);
+  const catList = Object.values(categories).sort((a, b) => ((a.sortOrder ?? 0) - (b.sortOrder ?? 0)) || a.label.localeCompare(b.label));
 
   function addItem() {
     const text = newItemText.trim();

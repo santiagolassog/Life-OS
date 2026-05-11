@@ -9,7 +9,7 @@ import {
   Clock, Save, Zap, ChevronLeft, ChevronRight, X, Plus,
   PieChart as PieChartIcon, Trash2, CalendarDays, Menu, Copy, CheckCircle2, Circle, Edit2, Palette,
   Download, ListPlus, Target, BarChart3, History, DollarSign, Star, ChevronDown, LogOut, CheckSquare,
-  Sparkles, Keyboard, Home, MoreHorizontal, Search,
+  Sparkles, Keyboard, Home, MoreHorizontal, Search, GripVertical,
 } from 'lucide-react';
 import Dinero from './modules/Dinero';
 import Objetivos from './modules/Objetivos';
@@ -756,6 +756,31 @@ const App = () => {
 
   const isMobile = windowWidth < 1024;
 
+  // Categorías ordenadas por sortOrder del usuario
+  const sortedCategories = useMemo(() =>
+    Object.values(categories).sort((a, b) =>
+      ((a.sortOrder ?? 0) - (b.sortOrder ?? 0)) || a.label.localeCompare(b.label)
+    ),
+  [categories]);
+
+  // Estado para DnD del sidebar de categorías (HTML5 nativo)
+  const [draggingCatId, setDraggingCatId] = React.useState<string | null>(null);
+  const [dragOverCatId, setDragOverCatId] = React.useState<string | null>(null);
+
+  const handleCatDrop = (targetId: string) => {
+    if (!draggingCatId || draggingCatId === targetId) { setDraggingCatId(null); setDragOverCatId(null); return; }
+    const sorted = [...sortedCategories];
+    const fromIdx = sorted.findIndex(c => c.id === draggingCatId);
+    const toIdx   = sorted.findIndex(c => c.id === targetId);
+    const [moved] = sorted.splice(fromIdx, 1);
+    sorted.splice(toIdx, 0, moved);
+    const newCats = { ...categories };
+    sorted.forEach((cat, i) => { newCats[cat.id] = { ...cat, sortOrder: (i + 1) * 1000 }; });
+    setCategories(newCats);
+    setDraggingCatId(null);
+    setDragOverCatId(null);
+  };
+
   const weekDays = useMemo(() => getWeekDays(currentDate), [currentDate]);
 
   const formatDateId = (date) => fmtDateId(date);
@@ -1156,19 +1181,39 @@ const App = () => {
               <section>
                 <div className="flex items-center justify-between mb-4 px-1">
                   <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] flex items-center gap-2"><Palette size={14} className="text-indigo-600" /> Mis Áreas</h3>
-                  <button onClick={() => setCatModal({ id: generateId(), label: '', short: '', color: '#6366f1', presets: [] })} className="p-1.5 bg-indigo-50 text-indigo-600 rounded-lg hover:bg-indigo-600 hover:text-white transition-all"><Plus size={14} /></button>
+                  <button onClick={() => setCatModal({ id: generateId(), label: '', short: '', color: '#6366f1', presets: [], sortOrder: Date.now() })} className="p-1.5 bg-indigo-50 text-indigo-600 rounded-lg hover:bg-indigo-600 hover:text-white transition-all"><Plus size={14} /></button>
                 </div>
                 <div className="space-y-1">
-                  {Object.values(categories).map(cat => (
-                    <div key={cat.id} className="group flex items-center justify-between p-2.5 rounded-xl hover:bg-slate-50 transition-all border border-transparent hover:border-slate-100">
+                  {sortedCategories.map(cat => (
+                    <div
+                      key={cat.id}
+                      draggable
+                      onDragStart={() => setDraggingCatId(cat.id)}
+                      onDragOver={e => { e.preventDefault(); setDragOverCatId(cat.id); }}
+                      onDragLeave={() => setDragOverCatId(null)}
+                      onDrop={() => handleCatDrop(cat.id)}
+                      onDragEnd={() => { setDraggingCatId(null); setDragOverCatId(null); }}
+                      className={`group flex items-center justify-between p-2.5 rounded-xl transition-all border cursor-grab active:cursor-grabbing select-none ${
+                        draggingCatId === cat.id  ? 'opacity-40 scale-[0.97]' :
+                        dragOverCatId === cat.id  ? 'bg-indigo-50 border-indigo-200 shadow-sm' :
+                        'hover:bg-slate-50 border-transparent hover:border-slate-100'
+                      }`}
+                    >
                       <div className="flex items-center gap-3">
-                        <div className="w-2.5 h-2.5 rounded-full shadow-sm" style={{ backgroundColor: cat.color }} />
+                        {/* Grip handle */}
+                        <GripVertical size={12} className="text-slate-300 opacity-0 group-hover:opacity-100 transition-opacity shrink-0" />
+                        <div className="w-2.5 h-2.5 rounded-full shadow-sm shrink-0" style={{ backgroundColor: cat.color }} />
                         <div className="flex flex-col">
                           <span className="text-xs font-bold text-slate-700">{cat.label}</span>
                           <span className="text-[8px] text-slate-400 uppercase font-black tracking-tighter">{cat.presets?.length || 0} Sub-actividades</span>
                         </div>
                       </div>
-                      <button onClick={() => setCatModal(cat)} className="opacity-0 group-hover:opacity-100 p-1 text-slate-400 hover:text-indigo-600 transition-all"><Edit2 size={12}/></button>
+                      <button
+                        onClick={e => { e.stopPropagation(); setCatModal(cat); }}
+                        className="opacity-0 group-hover:opacity-100 p-1 text-slate-400 hover:text-indigo-600 transition-all"
+                      >
+                        <Edit2 size={12}/>
+                      </button>
                     </div>
                   ))}
                 </div>
@@ -1888,7 +1933,7 @@ const App = () => {
                 <div className="space-y-2.5">
                   <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block">Área</label>
                   <div className="grid grid-cols-3 md:grid-cols-5 gap-2">
-                    {Object.values(categories).map((cat) => {
+                    {sortedCategories.map((cat) => {
                       const isActive = modalData.category === cat.id;
                       return (
                         <button key={cat.id} onClick={() => setModalData({...modalData, category: cat.id})}

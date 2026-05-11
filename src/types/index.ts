@@ -17,6 +17,7 @@ export interface Category {
   color: string
   short: string
   presets: string[]
+  sortOrder?: number   // orden manual definido por el usuario
 }
 
 export type Categories = Record<string, Category>
