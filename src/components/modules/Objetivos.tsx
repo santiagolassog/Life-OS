@@ -92,7 +92,21 @@ const Objetivos: React.FC<ObjetivosProps> = ({ goals, setGoals, categories, setC
   const weekId   = useMemo(() => getWeekId(viewDate), [viewDate]);
   const weekDays = useMemo(() => getWeekDays(viewDate), [viewDate]);
 
-  const weekGoals = useMemo(() => goals.filter(g => g.weekId === weekId), [goals, weekId]);
+  const weekGoals = useMemo(() => goals.filter(g => {
+    // Objetivos creados para esta semana — siempre visibles
+    if (g.weekId === weekId) return true;
+
+    // Objetivos de semanas ANTERIORES no completados → carry-forward
+    if (g.weekId < weekId && !g.completed) {
+      // Sin deadline: se arrastra indefinidamente hasta completarse
+      if (!g.deadline) return true;
+      // Con deadline: solo si el deadline cubre esta semana o es posterior
+      const deadlineWeekId = getWeekId(new Date(g.deadline + 'T12:00:00'));
+      return deadlineWeekId >= weekId;
+    }
+
+    return false;
+  }), [goals, weekId]);
 
   const stats = useMemo(() => {
     const total     = weekGoals.length;
@@ -326,6 +340,13 @@ const Objetivos: React.FC<ObjetivosProps> = ({ goals, setGoals, categories, setC
                             <span className="text-[9px] font-bold text-slate-300 uppercase">
                               {goal.scope === 'weekly' ? 'Semanal' : 'Diario'}
                             </span>
+
+                            {/* Badge carry-forward — viene de una semana anterior */}
+                            {goal.weekId !== weekId && !goal.completed && (
+                              <div className="flex items-center gap-1 text-[9px] font-black rounded-full px-2 py-0.5 bg-amber-50 text-amber-600 border border-amber-100">
+                                ↩ Sem. anterior
+                              </div>
+                            )}
 
                             {/* Deadline badge — objetivo pendiente */}
                             {goal.deadline && !goal.completed && (

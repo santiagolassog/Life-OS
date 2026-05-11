@@ -694,18 +694,25 @@ const TaskCard: React.FC<TaskCardProps> = ({
     ['backlog'];
 
   return (
-    <div className={`bg-white rounded-2xl border shadow-sm overflow-hidden transition-all duration-150 ${overdue ? 'border-red-200' : 'border-slate-100'}`}>
+    <div className={`group/card bg-white rounded-2xl border shadow-sm overflow-hidden transition-all duration-150 ${overdue ? 'border-red-200' : 'border-slate-100'}`}>
       {/* Top: área strip */}
       {cat && (
         <div className="h-1" style={{ backgroundColor: cat.color }} />
       )}
 
-      <div className="p-4">
-        {/* Row 1: priority dot + title + actions */}
+      <div className="p-4 relative">
+        {/* Botones desktop — overlay flotante top-right, solo al hacer hover */}
+        <div className="hidden md:flex absolute top-3 right-3 items-center gap-0.5 opacity-0 group-hover/card:opacity-100 transition-opacity z-10 bg-white/95 rounded-xl shadow-sm border border-slate-100 p-0.5">
+          <button onClick={onEdit}   className="p-1.5 hover:bg-slate-100 rounded-lg transition-all"><Edit2 size={13} className="text-slate-400" /></button>
+          <button onClick={onDelete} className="p-1.5 hover:bg-red-50   rounded-lg transition-all"><Trash2 size={13} className="text-red-400" /></button>
+        </div>
+
+        {/* Row 1: priority dot + título ancho completo + botones mobile */}
         <div className="flex items-start gap-2.5">
           <span className={`w-2 h-2 rounded-full shrink-0 mt-1.5 ${pri.dot}`} title={pri.label} />
           <div className="flex-1 min-w-0">
-            <p className={`font-bold text-slate-800 leading-snug text-sm line-clamp-2 ${task.status === 'done' ? 'line-through text-slate-400' : ''}`}>
+            {/* Desktop: sin clamp / Mobile: 2 líneas */}
+            <p className={`font-bold text-slate-800 leading-snug text-sm line-clamp-2 md:line-clamp-none ${task.status === 'done' ? 'line-through text-slate-400' : ''}`}>
               {task.title}
             </p>
             {cat && (
@@ -718,7 +725,8 @@ const TaskCard: React.FC<TaskCardProps> = ({
               </div>
             )}
           </div>
-          <div className="flex items-center gap-0.5 shrink-0">
+          {/* Botones mobile — siempre visibles, en el flujo */}
+          <div className="md:hidden flex items-center gap-0.5 shrink-0">
             <button onClick={onEdit}   className="p-1.5 hover:bg-slate-100 rounded-full transition-all"><Edit2 size={13} className="text-slate-400" /></button>
             <button onClick={onDelete} className="p-1.5 hover:bg-red-50   rounded-full transition-all"><Trash2 size={13} className="text-red-400" /></button>
           </div>
@@ -749,8 +757,8 @@ const TaskCard: React.FC<TaskCardProps> = ({
               {task.status === 'done' ? `${timeDays}d` : `${timeDays}d en progreso`}
             </div>
           )}
-          {/* Status badge */}
-          <div className={`ml-auto flex items-center gap-1 text-[11px] font-black uppercase rounded-full px-2.5 py-0.5 ${cfg.bg} ${cfg.text}`}>
+          {/* Status badge — oculto en desktop (la columna ya lo indica) */}
+          <div className={`md:hidden ml-auto flex items-center gap-1 text-[11px] font-black uppercase rounded-full px-2.5 py-0.5 ${cfg.bg} ${cfg.text}`}>
             <cfg.Icon size={11} strokeWidth={2.5} />
             {cfg.label}
           </div>
