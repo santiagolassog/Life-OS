@@ -1228,10 +1228,12 @@ const App = () => {
                 </div>
               </section>
 
-              <section className="bg-slate-50 rounded-[2.5rem] p-6 border border-slate-100 shadow-inner">
-                <div className="flex items-center justify-between mb-6">
-                  <h3 className="text-[10px] font-black text-slate-500 uppercase tracking-[0.2em] flex items-center gap-2"><History size={14} className="text-indigo-600" /> Histórico</h3>
-                  <div className="flex bg-slate-200 p-0.5 rounded-full text-[8px] font-black">
+              <section className="bg-slate-50 rounded-3xl p-5 border border-slate-100 shadow-inner">
+                <div className="flex flex-col gap-3 mb-5">
+                  <h3 className="text-[10px] font-black text-slate-500 uppercase tracking-[0.2em] flex items-center gap-2">
+                    <History size={14} className="text-indigo-600" /> Histórico
+                  </h3>
+                  <div className="flex bg-slate-200 p-0.5 rounded-full text-[8px] font-black self-start">
                     {['week', 'month', 'year'].map(r => (
                       <button key={r} onClick={() => setReportRange(r)} className={`px-3 py-1.5 rounded-full uppercase transition-all ${reportRange === r ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>
                         {r === 'week' ? 'Sem' : r === 'month' ? 'Mes' : 'Año'}
