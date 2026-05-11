@@ -111,6 +111,12 @@ All colors MUST be HSL.
   }
 }
 
+/* ── Animación barra de cuenta regresiva (popup celebración) ─────────────── */
+@keyframes countdown {
+  from { width: 100%; }
+  to   { width: 0%; }
+}
+
 /* ── Scrollbar personalizado (fino y discreto) ───────────────────────────── */
 .custom-scrollbar {
   scrollbar-width: thin;

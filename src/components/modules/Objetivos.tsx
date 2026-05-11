@@ -1,8 +1,11 @@
-import React, { useState, useMemo } from 'react';
-import { Plus, X, CheckCircle2, Circle, Trash2, Target, ChevronLeft, ChevronRight, Edit2, Calendar, Clock, Settings2, Palette } from 'lucide-react';
+import React, { useState, useMemo, useEffect } from 'react';
+import { Plus, X, CheckCircle2, Circle, Trash2, Target, ChevronLeft, ChevronRight, Edit2, Calendar, Clock, Settings2, Palette, History, Trophy } from 'lucide-react';
 import { toast } from 'sonner';
 import type { Goal, Categories, Category, Task, TaskPriority } from '../../types';
 import { generateId, getWeekId, getWeekDays, PRIORITY_CONFIG as PRIORITY, getLocalISODate } from '../../lib/utils';
+
+type ObjetivosView = 'semanal' | 'historial';
+type Celebration = { title: string; days: number | null; allDone: boolean } | null;
 
 const CAT_COLORS = [
   '#6366f1','#f59e0b','#ec4899','#3b82f6','#10b981',
@@ -61,10 +64,19 @@ function formatDeadlineLabel(deadline: string): string {
 // ── Component ─────────────────────────────────────────────────────────────────
 
 const Objetivos: React.FC<ObjetivosProps> = ({ goals, setGoals, categories, setCategories, currentDate, tasks, setTasks }) => {
+  const [view, setView] = useState<ObjetivosView>('semanal');
   const [viewDate, setViewDate] = useState(new Date(currentDate));
   const [modalOpen, setModalOpen] = useState(false);
   const [editGoal, setEditGoal] = useState<Partial<Goal> | null>(null);
   const [pendingTasks, setPendingTasks] = useState<{ id: string; title: string; priority: TaskPriority }[]>([]);
+  const [celebration, setCelebration] = useState<Celebration>(null);
+
+  // Auto-cierre del popup de celebración
+  useEffect(() => {
+    if (!celebration) return;
+    const t = setTimeout(() => setCelebration(null), 5000);
+    return () => clearTimeout(t);
+  }, [celebration]);
 
   // ── Gestión de áreas ─────────────────────────────────────────────────────────
   const [showCatManager, setShowCatManager] = useState(false);
@@ -124,24 +136,24 @@ const Objetivos: React.FC<ObjetivosProps> = ({ goals, setGoals, categories, setC
 
   const toggleGoal = (id: string) => {
     setGoals(prev => {
+      const goal = prev.find(g => g.id === id);
+      const nowIso = new Date().toISOString();
       const updated = prev.map(g =>
         g.id === id
-          ? { ...g, completed: !g.completed, completedAt: !g.completed ? new Date().toISOString() : undefined }
+          ? { ...g, completed: !g.completed, completedAt: !g.completed ? nowIso : undefined }
           : g
       );
-      const goal = prev.find(g => g.id === id);
+
       if (goal && !goal.completed) {
-        // Completando el objetivo
-        const weekGoals = updated.filter(g => g.weekId === weekId);
-        const allDone = weekGoals.length > 0 && weekGoals.every(g => g.completed);
-        if (allDone) {
-          setTimeout(() => toast.success(pickRnd(WEEK_PERFECT_MSGS), { duration: 5000 }), 300);
-        } else {
-          toast.success('¡Objetivo logrado! 🎯', {
-            description: pickRnd(GOAL_DONE_MSGS),
-            duration: 3500,
-          });
-        }
+        // Calcular días desde creación hasta hoy
+        const a = new Date(goal.createdAt); a.setHours(0,0,0,0);
+        const b = new Date(); b.setHours(0,0,0,0);
+        const days = Math.max(0, Math.round((b.getTime() - a.getTime()) / 86400000));
+
+        const weekGoalsNow = updated.filter(g => g.weekId === weekId);
+        const allDone = weekGoalsNow.length > 0 && weekGoalsNow.every(g => g.completed);
+
+        setCelebration({ title: goal.title, days, allDone });
       }
       return updated;
     });
@@ -212,6 +224,37 @@ const Objetivos: React.FC<ObjetivosProps> = ({ goals, setGoals, categories, setC
 
   const isEditing = !!editGoal?.id;
 
+  // ── Historial: objetivos completados ────────────────────────────────────────
+  const historialData = useMemo(() => {
+    const done = goals
+      .filter(g => g.completed && g.completedAt)
+      .sort((a, b) => (b.completedAt ?? '').localeCompare(a.completedAt ?? ''));
+
+    const avgDays = (() => {
+      const w = done.filter(g => g.createdAt && g.completedAt);
+      if (!w.length) return null;
+      const sum = w.reduce((s, g) => {
+        const a = new Date(g.createdAt); a.setHours(0,0,0,0);
+        const b = new Date(g.completedAt!); b.setHours(0,0,0,0);
+        return s + Math.max(0, Math.round((b.getTime() - a.getTime()) / 86400000));
+      }, 0);
+      return Math.round(sum / w.length);
+    })();
+
+    const byMonth: Record<string, Goal[]> = {};
+    done.forEach(g => {
+      const key = g.completedAt!.slice(0, 7);
+      if (!byMonth[key]) byMonth[key] = [];
+      byMonth[key].push(g);
+    });
+
+    const onTime = done.filter(g =>
+      g.deadline && g.completedAt && g.completedAt.split('T')[0] <= g.deadline
+    ).length;
+
+    return { done, avgDays, byMonth, onTime };
+  }, [goals]);
+
   return (
     <div className="flex-1 overflow-y-auto custom-scrollbar">
       <div className="max-w-5xl mx-auto p-4 md:p-8 space-y-6 pb-28 md:pb-12">
@@ -224,17 +267,119 @@ const Objetivos: React.FC<ObjetivosProps> = ({ goals, setGoals, categories, setC
             </div>
             <div>
               <h2 className="text-xl font-black text-slate-800 uppercase italic">Objetivos</h2>
-              <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">Planificación semanal</p>
+              <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">
+                {view === 'semanal' ? 'Planificación semanal' : 'Historial de logros'}
+              </p>
             </div>
           </div>
-          <div className="flex items-center bg-slate-100 rounded-full p-1">
-            <button onClick={prevWeek} className="p-1.5 hover:bg-white rounded-full transition-all"><ChevronLeft size={16} /></button>
-            <span className="px-3 text-xs font-bold min-w-[150px] text-center text-slate-600">
-              {weekDays[0]?.toLocaleDateString('es-ES', { day: '2-digit', month: 'short' })} — {weekDays[6]?.toLocaleDateString('es-ES', { day: '2-digit', month: 'short', year: 'numeric' })}
-            </span>
-            <button onClick={nextWeek} className="p-1.5 hover:bg-white rounded-full transition-all"><ChevronRight size={16} /></button>
+          <div className="flex items-center gap-2 flex-wrap">
+            {/* Toggle Semanal / Historial */}
+            <div className="flex bg-slate-100 p-1 rounded-full gap-0.5">
+              <button
+                onClick={() => setView('semanal')}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[11px] font-black uppercase tracking-wide transition-all ${view === 'semanal' ? 'bg-white shadow-sm text-violet-600' : 'text-slate-400 hover:text-slate-600'}`}
+              >
+                <Target size={11} /> Semanal
+              </button>
+              <button
+                onClick={() => setView('historial')}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[11px] font-black uppercase tracking-wide transition-all ${view === 'historial' ? 'bg-white shadow-sm text-violet-600' : 'text-slate-400 hover:text-slate-600'}`}
+              >
+                <History size={11} /> Historial
+              </button>
+            </div>
+            {/* Navegación semanal */}
+            {view === 'semanal' && (
+              <div className="flex items-center bg-slate-100 rounded-full p-1">
+                <button onClick={prevWeek} className="p-1.5 hover:bg-white rounded-full transition-all"><ChevronLeft size={16} /></button>
+                <span className="px-3 text-xs font-bold min-w-[150px] text-center text-slate-600">
+                  {weekDays[0]?.toLocaleDateString('es-ES', { day: '2-digit', month: 'short' })} — {weekDays[6]?.toLocaleDateString('es-ES', { day: '2-digit', month: 'short', year: 'numeric' })}
+                </span>
+                <button onClick={nextWeek} className="p-1.5 hover:bg-white rounded-full transition-all"><ChevronRight size={16} /></button>
+              </div>
+            )}
           </div>
         </div>
+
+        {/* ══ VISTA HISTORIAL ══ */}
+        {view === 'historial' && (
+          historialData.done.length === 0 ? (
+            <div className="bg-white rounded-3xl border border-slate-100 p-12 text-center shadow-sm">
+              <Trophy size={40} className="mx-auto text-slate-200 mb-3" />
+              <p className="text-sm font-bold text-slate-400">Aún no tienes objetivos logrados</p>
+              <p className="text-xs text-slate-300 mt-1">Cuando completes tu primer objetivo, aparecerá aquí</p>
+            </div>
+          ) : (
+            <div className="space-y-6">
+              {/* Resumen global */}
+              <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+                {[
+                  { label: 'Logrados', value: historialData.done.length, color: 'text-emerald-600', bg: 'bg-emerald-50 border-emerald-100' },
+                  { label: 'Promedio', value: historialData.avgDays !== null ? `${historialData.avgDays}d` : '—', color: 'text-violet-600', bg: 'bg-violet-50 border-violet-100' },
+                  { label: 'A tiempo', value: historialData.onTime, color: 'text-blue-600', bg: 'bg-blue-50 border-blue-100' },
+                ].map(({ label, value, color, bg }) => (
+                  <div key={label} className={`rounded-2xl border px-4 py-3.5 ${bg}`}>
+                    <p className="text-[9px] font-black uppercase tracking-widest text-slate-400">{label}</p>
+                    <p className={`text-xl font-black ${color} mt-0.5`}>{value}</p>
+                  </div>
+                ))}
+              </div>
+
+              {/* Lista por mes */}
+              {Object.entries(historialData.byMonth).map(([monthKey, mGoals]) => {
+                const [y, m] = monthKey.split('-').map(Number);
+                const monthLabel = new Date(y, m - 1, 1).toLocaleDateString('es-ES', { month: 'long', year: 'numeric' });
+                return (
+                  <div key={monthKey}>
+                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 px-1">
+                      {monthLabel} · {mGoals.length} {mGoals.length === 1 ? 'logro' : 'logros'}
+                    </p>
+                    <div className="space-y-2">
+                      {mGoals.map(g => {
+                        const cat = g.category ? categories[g.category] : null;
+                        const a = new Date(g.createdAt); a.setHours(0,0,0,0);
+                        const b = new Date(g.completedAt!); b.setHours(0,0,0,0);
+                        const days = Math.max(0, Math.round((b.getTime() - a.getTime()) / 86400000));
+                        const pri = PRIORITY[g.priority];
+                        const metDeadline = g.deadline && g.completedAt
+                          ? g.completedAt.split('T')[0] <= g.deadline : null;
+                        const completedDate = new Date(g.completedAt! + (g.completedAt!.includes('T') ? '' : 'T12:00:00'));
+                        return (
+                          <div key={g.id} className="flex items-center gap-3 bg-white rounded-2xl border border-slate-100 shadow-sm p-4">
+                            <CheckCircle2 size={18} className="text-emerald-500 shrink-0" />
+                            <div className="flex-1 min-w-0">
+                              <p className="text-sm font-bold text-slate-700 line-through truncate">{g.title}</p>
+                              <div className="flex items-center gap-2 mt-1 flex-wrap">
+                                {cat && <span className="text-[10px] font-bold" style={{ color: cat.color }}>{cat.label}</span>}
+                                <span className={`text-[10px] font-black ${pri.color}`}>{pri.label}</span>
+                              </div>
+                            </div>
+                            <div className="text-right shrink-0 space-y-1">
+                              <div className="flex items-center gap-1 justify-end">
+                                <Clock size={10} className="text-violet-400" />
+                                <span className="text-[11px] font-black text-violet-600">{days}d</span>
+                              </div>
+                              {metDeadline !== null && (
+                                <span className={`text-[9px] font-black px-1.5 py-0.5 rounded-full ${metDeadline ? 'bg-emerald-100 text-emerald-600' : 'bg-amber-100 text-amber-700'}`}>
+                                  {metDeadline ? '✓ A tiempo' : '⚠ Fuera'}
+                                </span>
+                              )}
+                              <p className="text-[9px] text-slate-300 font-bold">
+                                {completedDate.toLocaleDateString('es-ES', { day: '2-digit', month: 'short' })}
+                              </p>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )
+        )}
+
+        {view === 'semanal' && <>
 
         {/* Progress panel */}
         <div className="bg-white rounded-3xl border border-slate-100 p-5 shadow-sm">
@@ -427,6 +572,8 @@ const Objetivos: React.FC<ObjetivosProps> = ({ goals, setGoals, categories, setC
             </div>
           )}
         </div>
+        </>}
+
       </div>
 
       {/* ── FAB ── */}
@@ -660,6 +807,65 @@ const Objetivos: React.FC<ObjetivosProps> = ({ goals, setGoals, categories, setC
                 {isEditing ? 'Guardar cambios' : 'Guardar objetivo'}
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Popup de Celebración ── */}
+      {celebration && (
+        <div className="fixed inset-0 z-[500] flex items-center justify-center bg-slate-900/70 backdrop-blur-sm animate-in fade-in p-6">
+          <div className="bg-white rounded-3xl shadow-2xl w-full max-w-sm p-8 text-center space-y-5 animate-in zoom-in-95 duration-300">
+
+            {/* Emoji animado */}
+            <div className="text-6xl animate-bounce">
+              {celebration.allDone ? '🏆' : '🎯'}
+            </div>
+
+            {/* Título */}
+            <div>
+              <h2 className="text-2xl font-black text-slate-800">
+                {celebration.allDone ? '¡Semana perfecta!' : '¡Objetivo logrado!'}
+              </h2>
+              {celebration.allDone && (
+                <p className="text-emerald-500 text-sm font-bold mt-1">
+                  Completaste todos los objetivos de la semana
+                </p>
+              )}
+            </div>
+
+            {/* Objetivo y tiempo */}
+            <div className="bg-gradient-to-br from-violet-50 to-purple-50 rounded-2xl p-4 space-y-2 border border-violet-100">
+              <p className="text-slate-700 font-bold text-sm leading-snug">
+                "{celebration.title}"
+              </p>
+              {celebration.days !== null && (
+                <div className="flex items-center justify-center gap-2">
+                  <Clock size={14} className="text-violet-400" />
+                  <span className="text-violet-700 font-black text-sm">
+                    {celebration.days === 0
+                      ? 'Conquistado el mismo día 🚀'
+                      : celebration.days === 1
+                      ? 'Lo conquistaste en 1 día'
+                      : `Lo conquistaste en ${celebration.days} días`}
+                  </span>
+                </div>
+              )}
+            </div>
+
+            {/* Barra de auto-cierre */}
+            <div className="w-full h-1 bg-slate-100 rounded-full overflow-hidden">
+              <div
+                className="h-full bg-violet-400 rounded-full"
+                style={{ animation: 'countdown 5s linear forwards' }}
+              />
+            </div>
+
+            <button
+              onClick={() => setCelebration(null)}
+              className="w-full bg-violet-600 hover:bg-violet-700 active:scale-[0.98] text-white font-black text-xs uppercase tracking-widest py-3.5 rounded-2xl transition-all"
+            >
+              Continuar 🔥
+            </button>
           </div>
         </div>
       )}
