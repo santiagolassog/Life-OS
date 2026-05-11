@@ -1260,7 +1260,10 @@ const App = () => {
                     <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-200 pb-1">Distribución de Áreas</p>
                     {stats.main.map(s => (
                       <div key={s.id} className="space-y-1.5">
-                        <div className="flex items-center justify-between text-[10px] font-black uppercase tracking-tight"><span className="text-slate-600">{s.name}</span><span className="text-indigo-600">{s.hours}h ({s.percentage}%)</span></div>
+                        <div className="flex items-center gap-1 text-[10px] font-black uppercase tracking-tight min-w-0">
+                          <span className="text-slate-600 flex-1 min-w-0 truncate">{s.name}</span>
+                          <span className="text-indigo-600 shrink-0">{s.hours}h ({s.percentage}%)</span>
+                        </div>
                         <div className="w-full h-1 bg-slate-200 rounded-full overflow-hidden"><div className="h-full transition-all duration-700 ease-out" style={{ backgroundColor: s.color, width: `${s.percentage}%` }} /></div>
                       </div>
                     ))}
@@ -1273,13 +1276,9 @@ const App = () => {
                     </p>
                     <div className="space-y-2">
                       {stats.sub.length > 0 ? stats.sub.slice(0, 5).map((s, i) => (
-                        <div key={i} className="flex items-center justify-between bg-white p-2.5 rounded-xl border border-slate-100 shadow-sm transition-all hover:scale-[1.02] hover:border-indigo-100">
-                          <div className="flex flex-col overflow-hidden">
-                            <span className="text-[9px] font-black text-slate-600 uppercase truncate leading-tight">{s.name}</span>
-                          </div>
-                          <div className="flex items-center gap-1.5 shrink-0 ml-2">
-                            <span className="text-[10px] font-black text-indigo-600 bg-indigo-50 px-2 py-1 rounded-lg border border-indigo-100/50">{s.hours}h</span>
-                          </div>
+                        <div key={i} className="flex items-center gap-2 bg-white p-2.5 rounded-xl border border-slate-100 shadow-sm transition-all hover:scale-[1.02] hover:border-indigo-100 min-w-0">
+                          <span className="text-[9px] font-black text-slate-600 uppercase truncate leading-tight flex-1 min-w-0">{s.name}</span>
+                          <span className="text-[10px] font-black text-indigo-600 bg-indigo-50 px-2 py-1 rounded-lg border border-indigo-100/50 shrink-0">{s.hours}h</span>
                         </div>
                       )) : (
                         <p className="text-[10px] text-slate-400 italic text-center py-2">Agrega datos para ver el desglose.</p>
