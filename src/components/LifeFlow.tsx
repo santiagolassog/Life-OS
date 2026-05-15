@@ -9,7 +9,7 @@ import {
   Clock, Save, Zap, ChevronLeft, ChevronRight, X, Plus,
   PieChart as PieChartIcon, Trash2, CalendarDays, Menu, Copy, CheckCircle2, Circle, Edit2, Palette,
   Download, ListPlus, Target, BarChart3, History, DollarSign, Star, ChevronDown, LogOut, CheckSquare,
-  Sparkles, Keyboard, Home, MoreHorizontal, Search, GripVertical,
+  Sparkles, Keyboard, Home, MoreHorizontal, Search, GripVertical, Bot,
 } from 'lucide-react';
 import Dinero from './modules/Dinero';
 import Objetivos from './modules/Objetivos';
@@ -17,6 +17,7 @@ import Revision from './modules/Revision';
 import Lista from './modules/Lista';
 import Hoy from './modules/Hoy';
 import SearchModal from './SearchModal';
+import ChatPanel from './ChatPanel';
 import type { Transaction, FinCategory, Goal, Savings, MonthBalance, SavingsWithdrawal, SavingsPocket, PocketFunding, SavingsYearBalance, Loan, LoanPayment, Budget, Task, ChecklistItem } from '../types';
 import { LOAN_OUT_CAT_ID, LOAN_IN_CAT_ID } from '../types';
 import { generateId, formatDateId as fmtDateId, getWeekDays, GRID_HOURS, fmtCurrency, getWeekId } from '../lib/utils';
@@ -216,6 +217,7 @@ const App = () => {
   const userId = user?.id ?? '';
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const [showSearch, setShowSearch]         = useState(false);
+  const [showChat, setShowChat]             = useState(false);
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [showProfile, setShowProfile]     = useState(false);
   const [showMoreMenu, setShowMoreMenu]   = useState(false);
@@ -1722,6 +1724,29 @@ const App = () => {
           </div>
         </>
       )}
+
+      {/* ── AGENTE AI — botón flotante ── */}
+      {!showChat && (
+        <button
+          onClick={() => setShowChat(true)}
+          className="fixed bottom-24 left-6 md:bottom-10 md:left-10 z-[400] w-14 h-14 rounded-full bg-gradient-to-br from-indigo-500 to-violet-600 text-white flex items-center justify-center shadow-xl shadow-indigo-500/30 hover:scale-105 active:scale-95 transition-all"
+          title="Agente LifeOS"
+        >
+          <Bot size={24} />
+        </button>
+      )}
+
+      {/* ── AGENTE AI — panel de chat ── */}
+      <ChatPanel
+        isOpen={showChat}
+        onClose={() => setShowChat(false)}
+        moduleActive={section as 'hoy' | 'tiempo' | 'dinero' | 'objetivos' | 'lista' | 'revision'}
+        userName={displayName || user?.email?.split('@')[0] || 'Usuario'}
+        context={{
+          fecha: new Date().toISOString(),
+          seccion: section,
+        }}
+      />
 
       {/* ── BÚSQUEDA GLOBAL ── */}
       {showSearch && (
