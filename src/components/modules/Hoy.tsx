@@ -3,15 +3,17 @@ import {
   CalendarDays, CheckSquare, Target, DollarSign,
   ChevronRight, TrendingUp, TrendingDown, Sparkles,
   Clock, Circle, Loader, CheckCircle2, Inbox,
-  AlertCircle, Sun, Moon, Sunset, BarChart3,
+  AlertCircle, Sun, Moon, Sunset, BarChart3, Flame,
 } from 'lucide-react';
-import type { Events, Categories, Task, Goal, Transaction, FinCategory, MonthBalance } from '../../types';
+import type { Events, Categories, Task, Goal, Transaction, FinCategory, MonthBalance, Habit, HabitLog } from '../../types';
 import { formatDateId, getWeekId, getWeekDays, fmtCurrency, GRID_HOURS, PRIORITY_CONFIG } from '../../lib/utils';
 import { LOAN_IN_CAT_ID, LOAN_OUT_CAT_ID } from '../../types';
+import { generateId } from '../../lib/utils';
+import { toast } from 'sonner';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-type SectionKey = 'hoy' | 'tiempo' | 'dinero' | 'objetivos' | 'lista' | 'revision';
+type SectionKey = 'hoy' | 'tiempo' | 'dinero' | 'objetivos' | 'lista' | 'revision' | 'habitos';
 
 interface HoyProps {
   userName: string;
@@ -23,6 +25,9 @@ interface HoyProps {
   transactions: Transaction[];
   finCategories: FinCategory[];
   monthBalances: MonthBalance[];
+  habits: Habit[];
+  habitLogs: HabitLog[];
+  setHabitLogs: React.Dispatch<React.SetStateAction<HabitLog[]>>;
   currentDate: Date;
   onNavigate: (s: SectionKey) => void;
 }
@@ -49,7 +54,8 @@ function eventTime(hour: string) {
 
 const Hoy: React.FC<HoyProps> = ({
   userName, streak, events, categories, tasks, goals,
-  transactions, finCategories, monthBalances, currentDate, onNavigate,
+  transactions, finCategories, monthBalances, habits, habitLogs, setHabitLogs,
+  currentDate, onNavigate,
 }) => {
   const { text: greetText, Icon: GreetIcon } = greeting();
   const todayStr = formatDateId(new Date());
@@ -266,6 +272,73 @@ const Hoy: React.FC<HoyProps> = ({
 
             {/* ── Tareas activas + objetivos (grid) ── */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+
+              {/* Hábitos del día */}
+              {(() => {
+                const activeHabits = habits.filter(h => todayStr >= h.startDate);
+                if (activeHabits.length === 0) return null;
+                const todayLogIds = new Set(habitLogs.filter(l => l.date === todayStr).map(l => l.habitId));
+                const doneCount = activeHabits.filter(h => todayLogIds.has(h.id)).length;
+                const totalCount = activeHabits.length;
+
+                const toggle = (habitId: string) => {
+                  const exists = habitLogs.some(l => l.habitId === habitId && l.date === todayStr);
+                  if (exists) {
+                    setHabitLogs(prev => prev.filter(l => !(l.habitId === habitId && l.date === todayStr)));
+                  } else {
+                    setHabitLogs(prev => [...prev, { id: generateId(), habitId, date: todayStr }]);
+                    toast.success('¡Hábito completado!');
+                  }
+                };
+
+                return (
+                  <div className="bg-white rounded-3xl border border-slate-100 shadow-sm overflow-hidden">
+                    <button
+                      className="w-full flex items-center justify-between px-5 pt-5 pb-3"
+                      onClick={() => onNavigate('habitos')}
+                    >
+                      <div className="flex items-center gap-2">
+                        <Flame size={16} className="text-indigo-500" />
+                        <span className="text-sm font-black text-slate-700 uppercase tracking-wide">Hábitos de hoy</span>
+                        <span className={`text-[10px] font-black rounded-full px-2 py-0.5 ${
+                          doneCount === totalCount ? 'text-emerald-600 bg-emerald-50' : 'text-indigo-500 bg-indigo-50'
+                        }`}>
+                          {doneCount} / {totalCount}
+                        </span>
+                      </div>
+                      <ChevronRight size={14} className="text-slate-300" />
+                    </button>
+                    <div className="px-5 pb-5 space-y-2">
+                      {activeHabits.map(h => {
+                        const done = todayLogIds.has(h.id);
+                        return (
+                          <button
+                            key={h.id}
+                            onClick={() => toggle(h.id)}
+                            className={`w-full flex items-center gap-3 p-3 rounded-2xl border-2 transition-all active:scale-[0.98] ${
+                              done
+                                ? `${h.color} border-transparent text-white shadow-sm`
+                                : 'border-slate-100 bg-slate-50/60 hover:border-indigo-200 hover:bg-indigo-50/40'
+                            }`}
+                          >
+                            {done ? (
+                              <CheckCircle2 size={18} strokeWidth={2.5} className="shrink-0" />
+                            ) : (
+                              <Circle size={18} strokeWidth={2} className="text-slate-300 shrink-0" />
+                            )}
+                            <span className={`text-sm font-bold flex-1 text-left truncate ${done ? '' : 'text-slate-700'}`}>
+                              {h.name}
+                            </span>
+                            <span className={`text-[9px] font-black uppercase tracking-wider ${done ? 'text-white/80' : 'text-slate-400'}`}>
+                              {h.target}d/sem
+                            </span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              })()}
 
               {/* Tareas */}
               <div className="bg-white rounded-3xl border border-slate-100 shadow-sm overflow-hidden">

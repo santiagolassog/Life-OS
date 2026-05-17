@@ -9,15 +9,16 @@ import {
   Clock, Save, Zap, ChevronLeft, ChevronRight, X, Plus,
   PieChart as PieChartIcon, Trash2, CalendarDays, Menu, Copy, CheckCircle2, Circle, Edit2, Palette,
   Download, ListPlus, Target, BarChart3, History, DollarSign, Star, ChevronDown, LogOut, CheckSquare,
-  Sparkles, Keyboard, Home, MoreHorizontal, Search, GripVertical,
+  Sparkles, Keyboard, Home, MoreHorizontal, Search, GripVertical, Flame,
 } from 'lucide-react';
 import Dinero from './modules/Dinero';
 import Objetivos from './modules/Objetivos';
 import Revision from './modules/Revision';
 import Lista from './modules/Lista';
 import Hoy from './modules/Hoy';
+import Habitos from './modules/Habitos';
 import SearchModal, { type SearchResult } from './SearchModal';
-import type { Transaction, FinCategory, Goal, Savings, MonthBalance, SavingsWithdrawal, SavingsPocket, PocketFunding, SavingsYearBalance, Loan, LoanPayment, Budget, Task, ChecklistItem, EventEntry } from '../types';
+import type { Transaction, FinCategory, Goal, Savings, MonthBalance, SavingsWithdrawal, SavingsPocket, PocketFunding, SavingsYearBalance, Loan, LoanPayment, Budget, Task, ChecklistItem, EventEntry, Habit, HabitLog } from '../types';
 import { LOAN_OUT_CAT_ID, LOAN_IN_CAT_ID } from '../types';
 import { generateId, formatDateId as fmtDateId, getWeekDays, GRID_HOURS, fmtCurrency, getWeekId } from '../lib/utils';
 import {
@@ -25,11 +26,11 @@ import {
   loadEvents, loadCategories, loadTransactions, loadFinCategories, loadGoals,
   loadSavings, loadMonthBalances, loadSavingsWithdrawals, loadSavingsPockets,
   loadPocketFundings, loadSavingsYearBalances, loadLoans, loadLoanPayments,
-  loadBudgets, loadTasks, loadChecklistItems,
+  loadBudgets, loadTasks, loadChecklistItems, loadHabits, loadHabitLogs,
   syncEvents, syncCategories, syncTransactions, syncFinCategories, syncGoals,
   syncSavings, syncMonthBalances, syncSavingsWithdrawals, syncSavingsPockets,
   syncPocketFundings, syncSavingsYearBalances, syncLoans, syncLoanPayments, syncBudgets,
-  syncTasks, syncChecklistItems,
+  syncTasks, syncChecklistItems, syncHabits, syncHabitLogs,
 } from '../lib/db';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../hooks/useAuth';
@@ -196,20 +197,21 @@ const CustomTimePicker = ({ label, hour, minute, onTimeChange, minTime = "00:00"
 };
 
 
-type SectionKey = 'hoy' | 'tiempo' | 'dinero' | 'objetivos' | 'lista' | 'revision';
+type SectionKey = 'hoy' | 'tiempo' | 'dinero' | 'objetivos' | 'lista' | 'revision' | 'habitos';
 
 const SECTIONS: Array<{ key: SectionKey; label: string; Icon: React.FC<{ size?: number }> }> = [
   { key: 'hoy',      label: 'Inicio',   Icon: Home },
   { key: 'dinero',   label: 'Dinero',   Icon: DollarSign },
   { key: 'tiempo',   label: 'Tiempo',   Icon: CalendarDays },
   { key: 'lista',    label: 'Lista',    Icon: CheckSquare },
+  { key: 'habitos',  label: 'Hábitos',  Icon: Flame },
   { key: 'objetivos',label: 'Objetivos',Icon: Target },
   { key: 'revision', label: 'Revisión', Icon: BarChart3 },
 ];
 
-// Secciones en el nav mobile principal (sin Objetivos/Revisión — van en "Más")
+// Secciones en el nav mobile principal (sin Hábitos/Objetivos/Revisión — van en "Más")
 const MOBILE_NAV = SECTIONS.filter(s => ['hoy','dinero','tiempo','lista'].includes(s.key));
-const MORE_SECTIONS = SECTIONS.filter(s => ['objetivos','revision'].includes(s.key));
+const MORE_SECTIONS = SECTIONS.filter(s => ['habitos','objetivos','revision'].includes(s.key));
 
 const App = () => {
   const { user, signOut, displayName, updateDisplayName } = useAuth();
@@ -280,6 +282,8 @@ const App = () => {
   const [budgets, setBudgets]                       = useState<Budget[]>([]);
   const [tasks, setTasks]                           = useState<Task[]>([]);
   const [checklistItems, setChecklistItems]         = useState<ChecklistItem[]>([]);
+  const [habits, setHabits]                         = useState<Habit[]>([]);
+  const [habitLogs, setHabitLogs]                   = useState<HabitLog[]>([]);
 
   // ── Carga inicial desde Supabase (con migración automática de localStorage) ─
   useEffect(() => {
@@ -341,6 +345,8 @@ const App = () => {
         setBudgets(d.budgets ?? []);
         setTasks(d.tasks ?? []);
         setChecklistItems(d.checklistItems ?? []);
+        setHabits(d.habits ?? []);
+        setHabitLogs(d.habitLogs ?? []);
 
         // Sincronizar refs con los datos cargados ANTES de setLoading(false).
         // Así los sync-effects ven prev === curr y no re-suben nada a Supabase.
@@ -360,6 +366,8 @@ const App = () => {
         prevBudgets.current            = d.budgets ?? [];
         prevTasks.current              = d.tasks ?? [];
         prevChecklistItems.current     = d.checklistItems ?? [];
+        prevHabits.current             = d.habits ?? [];
+        prevHabitLogs.current          = d.habitLogs ?? [];
 
       } catch (err) {
         console.error('Error al cargar datos de Supabase:', err);
@@ -388,6 +396,8 @@ const App = () => {
   const prevBudgets             = useRef(budgets);
   const prevTasks               = useRef(tasks);
   const prevChecklistItems      = useRef(checklistItems);
+  const prevHabits              = useRef(habits);
+  const prevHabitLogs           = useRef(habitLogs);
 
   // Flag por tabla: true cuando el cambio vino de RT (no de acción local).
   // El sync-effect lo detecta, actualiza prevXxx y omite el upsert a Supabase,
@@ -541,6 +551,22 @@ const App = () => {
     prevChecklistItems.current = checklistItems;
   }, [checklistItems, loading, userId]);
 
+  useEffect(() => {
+    if (loading || !userId) return;
+    if (skipIfRT('habits', prevHabits, habits)) return;
+    markSaving();
+    syncHabits(prevHabits.current, habits, userId).catch(console.error);
+    prevHabits.current = habits;
+  }, [habits, loading, userId]);
+
+  useEffect(() => {
+    if (loading || !userId) return;
+    if (skipIfRT('habit_logs', prevHabitLogs, habitLogs)) return;
+    markSaving();
+    syncHabitLogs(prevHabitLogs.current, habitLogs, userId).catch(console.error);
+    prevHabitLogs.current = habitLogs;
+  }, [habitLogs, loading, userId]);
+
   // ── Real-time: recibe cambios de otros dispositivos/tabs ─────────────────────
   // El flag isRTUpdate marca el update como "venido de RT" para que el
   // sync-effect lo salte sin upload. No hay cooldown → cada evento RT
@@ -617,6 +643,14 @@ const App = () => {
       .on('postgres_changes', { event: '*', schema: 'public', table: 'checklist_items', filter: f }, async () => {
         const fresh = await loadChecklistItems();
         rt['checklist_items'] = true; prevChecklistItems.current = fresh; setChecklistItems(fresh);
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'habits', filter: f }, async () => {
+        const fresh = await loadHabits();
+        rt['habits'] = true; prevHabits.current = fresh; setHabits(fresh);
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'habit_logs', filter: f }, async () => {
+        const fresh = await loadHabitLogs();
+        rt['habit_logs'] = true; prevHabitLogs.current = fresh; setHabitLogs(fresh);
       })
 
       .subscribe();
@@ -1696,6 +1730,9 @@ const App = () => {
               transactions={transactions}
               finCategories={finCategories}
               monthBalances={monthBalances}
+              habits={habits}
+              habitLogs={habitLogs}
+              setHabitLogs={setHabitLogs}
               currentDate={currentDate}
               onNavigate={setSection}
             />
@@ -1755,6 +1792,14 @@ const App = () => {
               goals={goals}
               currentDate={currentDate}
               openEditRef={listOpenEditRef}
+            />
+          )}
+          {section === 'habitos' && (
+            <Habitos
+              habits={habits}
+              setHabits={setHabits}
+              habitLogs={habitLogs}
+              setHabitLogs={setHabitLogs}
             />
           )}
           {section === 'revision' && (
@@ -1829,12 +1874,12 @@ const App = () => {
             <button
               onClick={() => setShowMoreMenu(v => !v)}
               className={`flex-1 flex flex-col items-center justify-center py-3.5 gap-1 transition-all active:scale-95 ${
-                showMoreMenu || ['objetivos','revision'].includes(section)
+                showMoreMenu || ['habitos','objetivos','revision'].includes(section)
                   ? 'text-white'
                   : 'text-indigo-400'
               }`}
             >
-              <MoreHorizontal size={22} strokeWidth={showMoreMenu || ['objetivos','revision'].includes(section) ? 2.5 : 2} />
+              <MoreHorizontal size={22} strokeWidth={showMoreMenu || ['habitos','objetivos','revision'].includes(section) ? 2.5 : 2} />
               <span className="text-[9px] font-black uppercase tracking-wide">Más</span>
             </button>
           </div>
@@ -1850,6 +1895,7 @@ const App = () => {
           transactions={transactions}
           categories={categories}
           finCategories={finCategories}
+          habits={habits}
           onClose={() => setShowSearch(false)}
           onSearchSelect={(result) => { handleSearchSelect(result); setShowSearch(false); }}
         />

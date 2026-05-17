@@ -17,6 +17,7 @@ import type {
   Savings, MonthBalance, SavingsWithdrawal,
   SavingsPocket, PocketFunding, SavingsYearBalance,
   Loan, LoanPayment, Budget, Task, ChecklistItem,
+  Habit, HabitLog,
 } from '../types'
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -220,6 +221,37 @@ const savingsToDb = (s: Savings) => ({
   source_transaction_id: s.sourceTransactionId ?? null,
 })
 
+// Hábitos ──────────────────────────────────────────────────────────────────
+const rowToHabit = (row: Record<string, unknown>): Habit => ({
+  id:        row.id as string,
+  name:      row.name as string,
+  target:    Number(row.target),
+  color:     row.color as string,
+  startDate: row.start_date as string,
+  createdAt: row.created_at as string,
+})
+
+const habitToDb = (h: Habit) => ({
+  id:         h.id,
+  name:       h.name,
+  target:     h.target,
+  color:      h.color,
+  start_date: h.startDate,
+  created_at: h.createdAt,
+})
+
+const rowToHabitLog = (row: Record<string, unknown>): HabitLog => ({
+  id:      row.id as string,
+  habitId: row.habit_id as string,
+  date:    row.date as string,
+})
+
+const habitLogToDb = (l: HabitLog) => ({
+  id:       l.id,
+  habit_id: l.habitId,
+  date:     l.date,
+})
+
 const monthBalanceToDb = (m: MonthBalance) => ({
   id:              m.id,
   year_month:      m.yearMonth,
@@ -298,6 +330,18 @@ export async function loadGoals(): Promise<Goal[]> {
   const { data, error } = await supabase.from('goals').select('*')
   if (error) { console.error('loadGoals:', error); return [] }
   return data?.map(rowToGoal) ?? []
+}
+
+export async function loadHabits(): Promise<Habit[]> {
+  const { data, error } = await supabase.from('habits').select('*').order('created_at', { ascending: true })
+  if (error) { console.error('loadHabits:', error); return [] }
+  return data?.map(rowToHabit) ?? []
+}
+
+export async function loadHabitLogs(): Promise<HabitLog[]> {
+  const { data, error } = await supabase.from('habit_logs').select('*')
+  if (error) { console.error('loadHabitLogs:', error); return [] }
+  return data?.map(rowToHabitLog) ?? []
 }
 
 export async function loadSavings(): Promise<Savings[]> {
@@ -548,20 +592,21 @@ export async function loadAllData() {
     events, categories, transactions, finCategories, goals,
     savings, monthBalances, savingsWithdrawals, savingsPockets,
     pocketFundings, savingsYearBalances, loans, loanPayments, budgets,
-    tasks, checklistItems,
+    tasks, checklistItems, habits, habitLogs,
   ] = await Promise.all([
     loadEvents(), loadCategories(), loadTransactions(), loadFinCategories(),
     loadGoals(), loadSavings(), loadMonthBalances(), loadSavingsWithdrawals(),
     loadSavingsPockets(), loadPocketFundings(), loadSavingsYearBalances(),
     loadLoans(), loadLoanPayments(), loadBudgets(),
     loadTasks(), loadChecklistItems(),
+    loadHabits(), loadHabitLogs(),
   ])
 
   return {
     events, categories, transactions, finCategories, goals,
     savings, monthBalances, savingsWithdrawals, savingsPockets,
     pocketFundings, savingsYearBalances, loans, loanPayments, budgets,
-    tasks, checklistItems,
+    tasks, checklistItems, habits, habitLogs,
   }
 }
 
@@ -647,6 +692,26 @@ export async function syncFinCategories(prev: FinCategory[], curr: FinCategory[]
     ops.push(supabase.from('fin_categories').delete().in('id', deletedIds).then(({ error }) => { if (error) console.error('syncFinCategories delete:', error) }))
   if (upserted.length > 0)
     ops.push(supabase.from('fin_categories').upsert(upserted.map(c => withUser(finCategoryToDb(c), userId))).then(({ error }) => { if (error) console.error('syncFinCategories upsert:', error) }))
+  await Promise.all(ops)
+}
+
+export async function syncHabits(prev: Habit[], curr: Habit[], userId: string) {
+  const { upserted, deletedIds } = diffArrays(prev, curr)
+  const ops: Promise<unknown>[] = []
+  if (deletedIds.length > 0)
+    ops.push(supabase.from('habits').delete().in('id', deletedIds).then(({ error }) => { if (error) console.error('syncHabits delete:', error) }))
+  if (upserted.length > 0)
+    ops.push(supabase.from('habits').upsert(upserted.map(h => withUser(habitToDb(h), userId))).then(({ error }) => { if (error) console.error('syncHabits upsert:', error) }))
+  await Promise.all(ops)
+}
+
+export async function syncHabitLogs(prev: HabitLog[], curr: HabitLog[], userId: string) {
+  const { upserted, deletedIds } = diffArrays(prev, curr)
+  const ops: Promise<unknown>[] = []
+  if (deletedIds.length > 0)
+    ops.push(supabase.from('habit_logs').delete().in('id', deletedIds).then(({ error }) => { if (error) console.error('syncHabitLogs delete:', error) }))
+  if (upserted.length > 0)
+    ops.push(supabase.from('habit_logs').upsert(upserted.map(l => withUser(habitLogToDb(l), userId))).then(({ error }) => { if (error) console.error('syncHabitLogs upsert:', error) }))
   await Promise.all(ops)
 }
 
