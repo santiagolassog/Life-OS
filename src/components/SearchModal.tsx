@@ -12,7 +12,7 @@ import { fmtCurrency } from '../lib/utils';
 type SectionKey = 'hoy' | 'tiempo' | 'dinero' | 'objetivos' | 'lista' | 'revision';
 type ResultType = 'task' | 'goal' | 'event' | 'transaction';
 
-interface SearchResult {
+export interface SearchResult {
   id: string;
   type: ResultType;
   title: string;
@@ -171,7 +171,7 @@ const SearchModal: React.FC<SearchModalProps> = ({
       e.preventDefault();
       setSelectedIdx(i => Math.max(i - 1, 0));
     } else if (e.key === 'Enter' && results[selectedIdx]) {
-      onNavigate(results[selectedIdx].section);
+      onSearchSelect(results[selectedIdx]);
       onClose();
     } else if (e.key === 'Escape') {
       onClose();

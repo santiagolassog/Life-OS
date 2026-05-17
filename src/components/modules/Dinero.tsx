@@ -1961,7 +1961,7 @@ const Dinero: React.FC<DineroProps> = ({
                 </div>
                 <div>
                   <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 block">Ícono</label>
-                  <div className="grid grid-cols-8 gap-1.5">
+                  <div className="grid grid-cols-4 md:grid-cols-8 gap-1.5">
                     {POCKET_EMOJIS.map(emoji => (
                       <button key={emoji} onClick={() => setPocketModal({ ...pocketModal, emoji })}
                         className={`h-10 flex items-center justify-center text-xl rounded-xl transition-all active:scale-90 ${pocketModal.emoji === emoji ? 'bg-indigo-50 ring-2 ring-indigo-400 scale-110' : 'hover:bg-slate-50'}`}>

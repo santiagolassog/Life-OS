@@ -16,8 +16,8 @@ import Objetivos from './modules/Objetivos';
 import Revision from './modules/Revision';
 import Lista from './modules/Lista';
 import Hoy from './modules/Hoy';
-import SearchModal from './SearchModal';
-import type { Transaction, FinCategory, Goal, Savings, MonthBalance, SavingsWithdrawal, SavingsPocket, PocketFunding, SavingsYearBalance, Loan, LoanPayment, Budget, Task, ChecklistItem } from '../types';
+import SearchModal, { type SearchResult } from './SearchModal';
+import type { Transaction, FinCategory, Goal, Savings, MonthBalance, SavingsWithdrawal, SavingsPocket, PocketFunding, SavingsYearBalance, Loan, LoanPayment, Budget, Task, ChecklistItem, EventEntry } from '../types';
 import { LOAN_OUT_CAT_ID, LOAN_IN_CAT_ID } from '../types';
 import { generateId, formatDateId as fmtDateId, getWeekDays, GRID_HOURS, fmtCurrency, getWeekId } from '../lib/utils';
 import {
@@ -887,7 +887,7 @@ const App = () => {
     setCatModal(null);
   };
 
-    const handleOpenModal = (dayDate, hour, existingEvent = null) => {
+    const handleOpenModal = (dayDate: Date, hour: string, existingEvent: EventEntry | null = null) => {
     const dateId = formatDateId(dayDate);
     if (existingEvent) {
       const [startH, startM] = existingEvent.startHour.split(':');

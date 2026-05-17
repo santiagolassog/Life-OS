@@ -709,7 +709,7 @@ const Objetivos: React.FC<ObjetivosProps> = ({ goals, setGoals, categories, setC
                       <Plus size={10} /> Nueva área
                     </button>
                   </div>
-                  <div className="grid grid-cols-4 gap-2">
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
                     <button
                       onClick={() => setEditGoal({ ...editGoal, category: undefined })}
                       className={`py-3 rounded-xl text-[9px] font-black border-2 transition-all active:scale-95 ${!editGoal.category ? 'bg-slate-200 border-slate-300 text-slate-600' : 'bg-slate-50 border-transparent text-slate-300'}`}

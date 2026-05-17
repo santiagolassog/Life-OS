@@ -501,7 +501,7 @@ const Revision: React.FC<RevisionProps> = ({
                   <div className="w-full h-2.5 bg-white/60 rounded-full overflow-hidden">
                     <div className="h-full bg-blue-500 rounded-full transition-all duration-700" style={{ width: `${goalStats.rate}%` }} />
                   </div>
-                  <div className="grid grid-cols-3 gap-2">
+                  <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
                     {([['high', 'Alta', 'bg-red-400'], ['medium', 'Media', 'bg-amber-400'], ['low', 'Baja', 'bg-slate-300']] as const).map(([p, label, dot]) => {
                       const count = goalStats.weekGoals.filter(g => g.priority === p).length;
                       const done = goalStats.weekGoals.filter(g => g.priority === p && g.completed).length;
@@ -647,16 +647,16 @@ const Revision: React.FC<RevisionProps> = ({
                 <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-1">
                   <DollarSign size={10} /> Finanzas del período
                 </p>
-                <div className="grid grid-cols-3 gap-2 text-center">
-                  <div>
+                <div className="grid grid-cols-2 md:grid-cols-3 gap-2 text-center">
+                  <div className="md:col-span-1">
                     <p className="text-[8px] font-bold text-slate-400 uppercase">Ingresos</p>
                     <p className="text-sm font-black text-emerald-600">${fmt(financialStats.income)}</p>
                   </div>
-                  <div>
+                  <div className="md:col-span-1">
                     <p className="text-[8px] font-bold text-slate-400 uppercase">Gastos</p>
                     <p className="text-sm font-black text-red-500">${fmt(financialStats.expenses)}</p>
                   </div>
-                  <div>
+                  <div className="col-span-2 md:col-span-1">
                     <p className="text-[8px] font-bold text-slate-400 uppercase">Balance</p>
                     <p className={`text-sm font-black ${financialStats.balance >= 0 ? 'text-blue-600' : 'text-orange-500'}`}>${fmt(financialStats.balance)}</p>
                   </div>
