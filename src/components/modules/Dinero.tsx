@@ -1148,8 +1148,8 @@ const Dinero: React.FC<DineroProps> = ({
               <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">Ingresos vs Gastos — {annualStats.year}</p>
               <p className="text-[9px] text-slate-300 font-bold mb-5">Ene — Dic</p>
               <div className="h-56 md:h-64 overflow-x-auto -mx-5 px-5 custom-scrollbar">
-                <div className="min-w-fit md:min-w-full">
-                  <div className="h-56 md:h-64" style={{ width: '600px', maxWidth: '100%' }}>
+                <div className="min-w-[600px] md:min-w-full">
+                  <div className="h-56 md:h-64 w-full">
                     <ResponsiveContainer width="100%" height="100%">
                       <BarChart data={dashboardData} barGap={3} barSize={12} margin={{ left: 0, right: 0, top: 5, bottom: 5 }}>
                         <XAxis dataKey="label" tick={{ fontSize: 8, fontWeight: 800, fill: '#94a3b8' }} axisLine={false} tickLine={false} angle={-45} textAnchor="end" height={60} />
