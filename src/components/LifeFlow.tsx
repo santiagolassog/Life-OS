@@ -820,6 +820,60 @@ const App = () => {
     setCatModal({ ...catModal, presets: updated });
   };
 
+  // ── Autocompletado inteligente de actividades ────────────────────────────────
+  const getFilteredPresets = (categoryId: string, searchText: string) => {
+    if (!searchText.trim()) {
+      // Si no hay búsqueda, mostrar todos
+      return {
+        matches: categories[categoryId]?.presets ?? [],
+        exactMatch: false,
+        canCreate: false
+      };
+    }
+
+    const presets = categories[categoryId]?.presets ?? [];
+    const trimmed = searchText.trim();
+    const lowerTrimmed = trimmed.toLowerCase();
+
+    // Filtro: actividades que contengan el texto (case-insensitive)
+    const matches = presets.filter(p => p.toLowerCase().includes(lowerTrimmed));
+
+    // ¿Hay coincidencia exacta?
+    const exactMatch = matches.some(p => p.toLowerCase() === lowerTrimmed);
+
+    // ¿Puede crear? Solo si no existe exactamente y el texto no está vacío
+    const canCreate = !exactMatch && trimmed.length > 0;
+
+    return { matches, exactMatch, canCreate };
+  };
+
+  const createPresetDynamically = (categoryId: string, presetName: string) => {
+    const trimmed = presetName.trim();
+    if (!trimmed || !categories[categoryId]) return;
+
+    const preset = trimmed;
+    const existingPresets = categories[categoryId].presets ?? [];
+
+    // Evitar duplicados exactos (case-sensitive)
+    if (existingPresets.includes(preset)) {
+      // Si ya existe, solo seleccionarlo
+      setModalData({ ...modalData, task: preset });
+      return;
+    }
+
+    // Crear nuevo preset
+    setCategories(prev => ({
+      ...prev,
+      [categoryId]: {
+        ...prev[categoryId],
+        presets: [...(prev[categoryId].presets ?? []), preset]
+      }
+    }));
+
+    // Seleccionar automáticamente
+    setModalData({ ...modalData, task: preset });
+  };
+
   const handleDeleteCategory = (id) => {
     const newCats = { ...categories };
     delete newCats[id];
@@ -1962,16 +2016,38 @@ const App = () => {
                   <input type="text" placeholder="Nombre de la actividad..."
                     className="w-full bg-slate-50 border-2 border-transparent focus:border-indigo-200 rounded-2xl px-4 py-4 text-base font-black outline-none transition-all"
                     value={modalData.task} onChange={(e) => setModalData({...modalData, task: e.target.value})} />
-                  {categories[modalData.category]?.presets?.length > 0 && (
-                    <div className="flex flex-wrap gap-1.5 animate-in fade-in">
-                      {categories[modalData.category].presets.map((preset, i) => (
-                        <button key={i} onClick={() => setModalData({...modalData, task: String(preset)})}
-                          className={`px-3.5 py-2 rounded-xl text-[10px] font-black border-2 transition-all active:scale-95 ${modalData.task === preset ? 'bg-indigo-600 border-indigo-600 text-white shadow-md' : 'bg-white border-slate-100 text-slate-400 hover:border-indigo-200 hover:text-indigo-600'}`}>
-                          {preset}
-                        </button>
-                      ))}
-                    </div>
-                  )}
+                  {(() => {
+                    const { matches, canCreate } = getFilteredPresets(modalData.category, modalData.task);
+                    const hasMatches = matches.length > 0 || canCreate;
+
+                    return hasMatches && (
+                      <div className="flex flex-wrap gap-1.5 animate-in fade-in">
+                        {/* Presets filtrados */}
+                        {matches.map((preset, i) => (
+                          <button
+                            key={i}
+                            onClick={() => setModalData({...modalData, task: String(preset)})}
+                            className={`px-3.5 py-2 rounded-xl text-[10px] font-black border-2 transition-all active:scale-95
+                              ${modalData.task === preset
+                                ? 'bg-indigo-600 border-indigo-600 text-white shadow-md'
+                                : 'bg-white border-slate-100 text-slate-400 hover:border-indigo-200 hover:text-indigo-600'}`}
+                          >
+                            {preset}
+                          </button>
+                        ))}
+
+                        {/* Botón para crear nuevo preset */}
+                        {canCreate && (
+                          <button
+                            onClick={() => createPresetDynamically(modalData.category, modalData.task)}
+                            className="px-3.5 py-2 rounded-xl text-[10px] font-black border-2 border-dashed border-indigo-300 text-indigo-600 bg-indigo-50 hover:border-indigo-500 hover:bg-indigo-100 transition-all active:scale-95"
+                          >
+                            + Crear '{modalData.task.trim()}'
+                          </button>
+                        )}
+                      </div>
+                    );
+                  })()}
                 </div>
 
                 {/* Date + Time — unified card */}
