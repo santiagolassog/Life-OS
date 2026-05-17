@@ -44,6 +44,7 @@ interface DineroProps {
   setBudgets: React.Dispatch<React.SetStateAction<Budget[]>>;
   initialFinCategories: FinCategory[];
   currentDate: Date;
+  openEditRef?: React.MutableRefObject<((tx: Transaction) => void) | null>;
 }
 
 const COLOR_PALETTE = [
@@ -78,6 +79,7 @@ const Dinero: React.FC<DineroProps> = ({
   budgets, setBudgets,
   initialFinCategories,
   currentDate,
+  openEditRef,
 }) => {
   const today = getLocalISODate();
   const [tab, setTab]               = useState<DineroTab>('movimientos');
@@ -398,6 +400,13 @@ const Dinero: React.FC<DineroProps> = ({
     setFormStep(1);
     setFormOpen(true);
   };
+
+  // Exponer openEdit vía ref para búsqueda global
+  useEffect(() => {
+    if (openEditRef) {
+      openEditRef.current = openEdit;
+    }
+  }, [openEditRef]);
 
   const handleSave = () => {
     const parsedAmount = parseCOPNumber(amountInput);

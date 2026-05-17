@@ -32,7 +32,7 @@ interface SearchModalProps {
   categories: Categories;
   finCategories: FinCategory[];
   onClose: () => void;
-  onNavigate: (section: SectionKey) => void;
+  onSearchSelect: (result: SearchResult) => void;
 }
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -67,7 +67,7 @@ function fmtDateId(dateId: string): string {
 
 const SearchModal: React.FC<SearchModalProps> = ({
   tasks, goals, events, transactions, categories, finCategories,
-  onClose, onNavigate,
+  onClose, onSearchSelect,
 }) => {
   const [query, setQuery]         = useState('');
   const [selectedIdx, setSelectedIdx] = useState(0);
@@ -286,7 +286,7 @@ const SearchModal: React.FC<SearchModalProps> = ({
                         <button
                           key={result.id}
                           data-idx={globalIdx}
-                          onClick={() => { onNavigate(result.section); onClose(); }}
+                          onClick={() => { onSearchSelect(result); onClose(); }}
                           onMouseEnter={() => setSelectedIdx(globalIdx)}
                           className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-2xl text-left transition-all duration-100 ${
                             isSelected ? 'bg-indigo-50' : 'hover:bg-slate-50'

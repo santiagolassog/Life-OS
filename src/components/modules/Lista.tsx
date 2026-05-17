@@ -94,6 +94,7 @@ interface ListaProps {
   setCategories: React.Dispatch<React.SetStateAction<Categories>>;
   goals: Goal[];
   currentDate: Date;
+  openEditRef?: React.MutableRefObject<((task: Task) => void) | null>;
 }
 
 // ─── Main Component ──────────────────────────────────────────────────────────
@@ -102,7 +103,7 @@ interface ListaProps {
 type CatEdit = { id: string; label: string; short: string; color: string; isNew: boolean } | null;
 
 const Lista: React.FC<ListaProps> = ({
-  tasks, setTasks, checklistItems, setChecklistItems, categories, setCategories, goals, currentDate,
+  tasks, setTasks, checklistItems, setChecklistItems, categories, setCategories, goals, currentDate, openEditRef,
 }) => {
   const [subView, setSubView] = useState<ListaSubView>('tablero');
   const [filterCat, setFilterCat] = useState('');
@@ -254,6 +255,13 @@ const Lista: React.FC<ListaProps> = ({
     setModalTask({ ...task });
     setIsCreating(false);
   }
+
+  // Exponer openEdit vía ref para búsqueda global
+  useEffect(() => {
+    if (openEditRef) {
+      openEditRef.current = openEdit;
+    }
+  }, [openEditRef]);
 
   function closeModal() {
     setModalTask(null);

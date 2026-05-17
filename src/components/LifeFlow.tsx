@@ -391,6 +391,12 @@ const App = () => {
   // evitando el loop local SIN bloquear eventos RT posteriores de otros dispositivos.
   const isRTUpdate = useRef<Record<string, boolean>>({});
 
+  // Refs para funciones de apertura de modales en componentes hijos
+  const listOpenEditRef = useRef<(task: Task) => void>(null);
+  const objetivosOpenEditRef = useRef<(goal: Goal) => void>(null);
+  const dineroOpenEditRef = useRef<(tx: Transaction) => void>(null);
+  const tiempoHandleOpenModalRef = useRef<(date: Date, hour: string, event?: typeof events[keyof typeof events][0]) => void>(null);
+
   // Helper: marca flag, actualiza prev y omite sync si el cambio es de RT.
   // Devuelve true cuando hay que saltar el sync.
   const skipIfRT = (table: string, prev: React.MutableRefObject<unknown>, curr: unknown): boolean => {
@@ -902,6 +908,51 @@ const App = () => {
       });
     }
   };
+
+  // Manejador para búsqueda global: abre detalles de items encontrados
+  const handleSearchSelect = (result: SearchResult) => {
+    setSection(result.section);
+
+    if (result.type === 'task') {
+      const task = tasks.find(t => t.id === result.id);
+      if (task && listOpenEditRef.current) {
+        setTimeout(() => listOpenEditRef.current?.(task), 100);
+      }
+    } else if (result.type === 'goal') {
+      const goal = goals.find(g => g.id === result.id);
+      if (goal && objetivosOpenEditRef.current) {
+        setTimeout(() => objetivosOpenEditRef.current?.(goal), 100);
+      }
+    } else if (result.type === 'event') {
+      // Encontrar la fecha y evento
+      const [dateId, event] = Object.entries(events)
+        .flatMap(([dId, evs]) => evs.map(ev => [dId, ev] as const))
+        .find(([_, ev]) => ev.id === result.id) ?? [null, null];
+
+      if (dateId && event && tiempoHandleOpenModalRef.current) {
+        const eventDate = new Date(dateId + 'T12:00:00');
+        // Scrollear al día
+        setTimeout(() => {
+          const element = document.querySelector(`[data-day-id="${dateId}"]`);
+          if (element) {
+            element.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+          }
+        }, 50);
+        // Abrir el modal después del scroll
+        setTimeout(() => tiempoHandleOpenModalRef.current?.(eventDate, event.startHour, event), 150);
+      }
+    } else if (result.type === 'transaction') {
+      const tx = transactions.find(t => t.id === result.id);
+      if (tx && dineroOpenEditRef.current) {
+        setTimeout(() => dineroOpenEditRef.current?.(tx), 100);
+      }
+    }
+  };
+
+  // Asignar ref de handleOpenModal para búsqueda global
+  useEffect(() => {
+    tiempoHandleOpenModalRef.current = handleOpenModal;
+  }, []);
 
   const saveActivity = () => {
     if (!modalData) return;
@@ -1667,6 +1718,7 @@ const App = () => {
               setBudgets={setBudgets}
               initialFinCategories={INITIAL_FIN_CATEGORIES}
               currentDate={currentDate}
+              openEditRef={dineroOpenEditRef}
             />
           )}
           {section === 'objetivos' && (
@@ -1679,6 +1731,7 @@ const App = () => {
               events={events}
               tasks={tasks}
               setTasks={setTasks}
+              openEditRef={objetivosOpenEditRef}
             />
           )}
           {section === 'lista' && (
@@ -1691,6 +1744,7 @@ const App = () => {
               setCategories={setCategories}
               goals={goals}
               currentDate={currentDate}
+              openEditRef={listOpenEditRef}
             />
           )}
           {section === 'revision' && (
@@ -1787,7 +1841,7 @@ const App = () => {
           categories={categories}
           finCategories={finCategories}
           onClose={() => setShowSearch(false)}
-          onNavigate={(section) => { setSection(section as SectionKey); setShowSearch(false); }}
+          onSearchSelect={(result) => { handleSearchSelect(result); setShowSearch(false); }}
         />
       )}
 
