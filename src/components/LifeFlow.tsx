@@ -1177,16 +1177,6 @@ const App = () => {
             <div className="bg-indigo-500 p-1.5 rounded-lg shadow-inner"><Zap size={18} fill="white" /></div>
             <h1 className="text-lg font-black tracking-tight uppercase italic leading-none hidden sm:block">LifeOS</h1>
           </div>
-          {/* Navegación semanal — solo desktop (en mobile va en la barra de días) */}
-          {section === 'tiempo' && (
-            <div className="hidden md:flex items-center bg-white/5 rounded-full p-1 border border-white/10 ml-1">
-              <button onClick={() => setCurrentDate(new Date(currentDate.setDate(currentDate.getDate() - 7)))} className="p-1 hover:bg-white/10 rounded-full transition-all"><ChevronLeft size={16}/></button>
-              <span className="px-3 text-xs font-bold min-w-[110px] text-center capitalize text-indigo-100">
-                {weekDays[0]?.toLocaleDateString('es-ES', { month: 'short', year: 'numeric' })}
-              </span>
-              <button onClick={() => setCurrentDate(new Date(currentDate.setDate(currentDate.getDate() + 7)))} className="p-1 hover:bg-white/10 rounded-full transition-all"><ChevronRight size={16}/></button>
-            </div>
-          )}
         </div>
 
         {/* Section tabs — desktop */}
@@ -1225,13 +1215,6 @@ const App = () => {
             )}
           </div>
 
-          {/* Total horas — solo en sección Tiempo */}
-          {section === 'tiempo' && (
-            <div className="hidden sm:flex flex-col items-end border-r border-white/10 pr-3">
-              <span className="text-[9px] text-indigo-400 font-black uppercase tracking-widest leading-none mb-1">Total Real</span>
-              <span className="text-xl font-black leading-none">{stats.total}h</span>
-            </div>
-          )}
 
           {/* Ícono de guardado — mobile/tablet (siempre ocupa el mismo espacio) */}
           <div className={`lg:hidden w-7 h-7 flex items-center justify-center transition-all duration-300 ${saveStatus === 'idle' ? 'opacity-0' : 'opacity-100'}`}>
@@ -1600,8 +1583,8 @@ const App = () => {
                     >
                       <ChevronLeft size={16} className="text-slate-400" />
                     </button>
-                    <span className="text-[11px] font-black text-slate-500 uppercase tracking-widest capitalize">
-                      {weekDays[0]?.toLocaleDateString('es-ES', { month: 'short', year: 'numeric' })}
+                    <span className="text-[11px] font-black text-slate-500 tracking-widest capitalize">
+                      {weekDays[0]?.getDate()} {weekDays[0]?.toLocaleDateString('es-ES', { month: 'short' })} — {weekDays[6]?.getDate()} {weekDays[6]?.toLocaleDateString('es-ES', { month: 'short', year: 'numeric' })}
                     </span>
                     <button
                       onClick={() => { const d = new Date(currentDate); d.setDate(d.getDate() + 7); setCurrentDate(d); }}
@@ -1624,6 +1607,25 @@ const App = () => {
                         </button>
                       );
                     })}
+                  </div>
+                </div>
+              )}
+
+              {/* Sub-barra Tiempo — desktop: navegación de semana + total horas */}
+              {!isMobile && (
+                <div className="hidden md:flex items-center justify-between px-6 py-2.5 bg-slate-100 border-b border-slate-200 shrink-0">
+                  <div className="flex items-center gap-3">
+                    <div className="flex items-center bg-white rounded-full p-0.5 border border-slate-200 shadow-sm">
+                      <button onClick={() => { const d = new Date(currentDate); d.setDate(d.getDate() - 7); setCurrentDate(d); }} className="p-1.5 hover:bg-slate-100 rounded-full transition-all"><ChevronLeft size={14} className="text-slate-500"/></button>
+                      <span className="px-3 text-xs font-black min-w-[180px] text-center text-slate-700">
+                        {weekDays[0]?.getDate()} {weekDays[0]?.toLocaleDateString('es-ES', { month: 'short' })} — {weekDays[6]?.getDate()} {weekDays[6]?.toLocaleDateString('es-ES', { month: 'short', year: 'numeric' })}
+                      </span>
+                      <button onClick={() => { const d = new Date(currentDate); d.setDate(d.getDate() + 7); setCurrentDate(d); }} className="p-1.5 hover:bg-slate-100 rounded-full transition-all"><ChevronRight size={14} className="text-slate-500"/></button>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-[9px] text-slate-400 font-black uppercase tracking-widest">Total Real</span>
+                    <span className="text-lg font-black text-indigo-600">{stats.total}h</span>
                   </div>
                 </div>
               )}

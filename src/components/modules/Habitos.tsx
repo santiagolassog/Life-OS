@@ -338,12 +338,6 @@ export default function Habitos({ habits, setHabits, habitLogs, setHabitLogs }: 
                 </button>
               ))}
             </div>
-            <button
-              onClick={handleOpenNew}
-              className="hidden md:inline-flex items-center gap-1.5 px-4 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white text-[11px] font-black uppercase tracking-wide rounded-full shadow-md transition-all"
-            >
-              <Plus size={14} /> Nuevo
-            </button>
           </div>
         </div>
 
@@ -418,10 +412,9 @@ export default function Habitos({ habits, setHabits, habitLogs, setHabitLogs }: 
           </div>
         )}
 
-        {/* ═══ VISTA SEMANA / MES ═══ */}
-        {habits.length > 0 && view !== 'year' && habits.map((habit) => {
-          const currentDays = view === 'week' ? weekDates : monthData.days;
-          const { doneCount, periodTarget, percentage } = getHabitStats(habit, currentDays);
+        {/* ═══ VISTA SEMANA ═══ */}
+        {habits.length > 0 && view === 'week' && habits.map((habit) => {
+          const { doneCount, periodTarget, percentage } = getHabitStats(habit, weekDates);
           const isCompleted = doneCount >= periodTarget && periodTarget > 0;
 
           return (
@@ -472,82 +465,124 @@ export default function Habitos({ habits, setHabits, habitLogs, setHabitLogs }: 
               </div>
 
               {/* Tracker semana */}
-              {view === 'week' ? (
-                <div className="grid grid-cols-7 gap-2 md:gap-3">
-                  {weekDates.map((date, idx) => {
-                    const dStr = formatDate(date);
-                    const isBeforeStart = dStr < habit.startDate;
-                    const isFuture = dStr > todayStr;
-                    const isDisabled = isBeforeStart || isFuture;
-                    const active = !isDisabled && logsByDate[dStr]?.includes(habit.id);
-                    return (
-                      <button
-                        key={idx}
-                        disabled={isDisabled}
-                        onClick={() => !isDisabled && toggleLog(dStr, habit.id)}
-                        title={isFuture ? `Disponible el ${date.toLocaleDateString('es-ES', { day: 'numeric', month: 'short' })}` : ''}
-                        className={`w-full flex flex-col items-center p-2 md:p-3 rounded-2xl border-2 transition-all duration-300 ${
-                          isBeforeStart
-                            ? 'opacity-30 cursor-not-allowed border-slate-100 bg-slate-50'
-                            : isFuture
-                              ? 'opacity-50 cursor-not-allowed border-slate-100 bg-slate-50 text-slate-400'
-                              : active
-                                ? `${habit.color} border-transparent text-white shadow-lg scale-[1.03]`
-                                : 'border-slate-100 bg-white text-slate-400 hover:border-indigo-200 hover:bg-indigo-50/50 active:scale-95'
-                        } ${dStr === todayStr && !isDisabled ? 'ring-2 ring-indigo-400 ring-offset-2' : ''}`}
-                      >
-                        <span className="text-[9px] font-black uppercase tracking-tight opacity-70 mb-1">{DAYS_OF_WEEK[idx]}</span>
-                        {active ? (
-                          <CheckCircle2 size={20} strokeWidth={2.5} />
-                        ) : (
-                          <Circle size={20} strokeWidth={2} className={isDisabled ? '' : 'opacity-30'} />
-                        )}
-                        <span className="text-[11px] mt-1 font-black">{date.getDate()}</span>
-                      </button>
-                    );
-                  })}
-                </div>
-              ) : (
-                /* Tracker mes */
-                <div className="bg-slate-50/60 p-3 md:p-5 rounded-2xl border border-slate-100">
-                  <div className="grid grid-cols-7 gap-1.5 mb-3">
-                    {DAYS_OF_WEEK.map(d => (
-                      <div key={d} className="text-[9px] font-black text-slate-400 text-center uppercase tracking-widest">{d}</div>
-                    ))}
-                  </div>
-                  <div className="grid grid-cols-7 gap-1 md:gap-1.5">
-                    {monthData.grid.map((date, idx) => {
-                      if (!date) return <div key={idx} className="aspect-square" />;
-                      const dStr = formatDate(date);
-                      const isBeforeStart = dStr < habit.startDate;
-                      const isFuture = dStr > todayStr;
-                      const isDisabled = isBeforeStart || isFuture;
-                      const active = !isDisabled && logsByDate[dStr]?.includes(habit.id);
-                      return (
-                        <button
-                          key={idx}
-                          disabled={isDisabled}
-                          onClick={() => !isDisabled && toggleLog(dStr, habit.id)}
-                          className={`aspect-square w-full rounded-md flex items-center justify-center text-[10px] font-black transition-all duration-200 ${
-                            isBeforeStart
-                              ? 'opacity-30 cursor-not-allowed bg-slate-100 text-slate-400'
-                              : isFuture
-                                ? 'opacity-40 cursor-not-allowed bg-slate-100 text-slate-400'
-                                : active
-                                  ? `${habit.color} text-white shadow-sm`
-                                  : 'bg-white border border-slate-200 text-slate-400 hover:border-indigo-300 hover:text-indigo-600 active:scale-90'
-                          } ${dStr === todayStr && !isDisabled ? 'ring-2 ring-indigo-400' : ''}`}
-                        >
-                          {date.getDate()}
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-              )}
+              <div className="grid grid-cols-7 gap-2 md:gap-3">
+                {weekDates.map((date, idx) => {
+                  const dStr = formatDate(date);
+                  const isBeforeStart = dStr < habit.startDate;
+                  const isFuture = dStr > todayStr;
+                  const isDisabled = isBeforeStart || isFuture;
+                  const active = !isDisabled && logsByDate[dStr]?.includes(habit.id);
+                  return (
+                    <button
+                      key={idx}
+                      disabled={isDisabled}
+                      onClick={() => !isDisabled && toggleLog(dStr, habit.id)}
+                      title={isFuture ? `Disponible el ${date.toLocaleDateString('es-ES', { day: 'numeric', month: 'short' })}` : ''}
+                      className={`w-full flex flex-col items-center p-2 md:p-3 rounded-2xl border-2 transition-all duration-300 ${
+                        isBeforeStart
+                          ? 'opacity-30 cursor-not-allowed border-slate-100 bg-slate-50'
+                          : isFuture
+                            ? 'opacity-50 cursor-not-allowed border-slate-100 bg-slate-50 text-slate-400'
+                            : active
+                              ? `${habit.color} border-transparent text-white shadow-lg scale-[1.03]`
+                              : 'border-slate-100 bg-white text-slate-400 hover:border-indigo-200 hover:bg-indigo-50/50 active:scale-95'
+                      } ${dStr === todayStr && !isDisabled ? 'ring-2 ring-indigo-400 ring-offset-2' : ''}`}
+                    >
+                      <span className="text-[9px] font-black uppercase tracking-tight opacity-70 mb-1">{DAYS_OF_WEEK[idx]}</span>
+                      {active ? (
+                        <CheckCircle2 size={20} strokeWidth={2.5} />
+                      ) : (
+                        <Circle size={20} strokeWidth={2} className={isDisabled ? '' : 'opacity-30'} />
+                      )}
+                      <span className="text-[11px] mt-1 font-black">{date.getDate()}</span>
+                    </button>
+                  );
+                })}
+              </div>
             </div>
           );
         })}
+
+        {/* ═══ VISTA MES — grid 2 columnas desktop ═══ */}
+        {habits.length > 0 && view === 'month' && (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-5">
+            {habits.map((habit) => {
+              const { doneCount, periodTarget, percentage } = getHabitStats(habit, monthData.days);
+              const isCompleted = doneCount >= periodTarget && periodTarget > 0;
+
+              return (
+                <div
+                  key={habit.id}
+                  className="bg-white rounded-3xl border border-slate-100 p-4 md:p-5 shadow-sm"
+                >
+                  {/* Header compacto */}
+                  <div className="flex items-center justify-between mb-4">
+                    <div className="flex items-center gap-3 min-w-0">
+                      <div className={`w-2.5 h-10 rounded-full shrink-0 ${habit.color}`} />
+                      <div className="min-w-0">
+                        <h3 className="font-black text-sm text-slate-800 leading-tight truncate">{habit.name}</h3>
+                        <p className="text-[9px] text-slate-400 font-bold uppercase tracking-widest mt-0.5">
+                          Meta: {habit.target} días/sem
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2 shrink-0">
+                      <div className="flex flex-col items-center">
+                        <span className={`text-lg font-black ${isCompleted ? 'text-emerald-600' : 'text-indigo-600'}`}>
+                          {percentage}%
+                        </span>
+                        <span className="text-[8px] font-black text-slate-300">{doneCount}/{periodTarget}</span>
+                      </div>
+                      <button
+                        onClick={() => handleOpenEdit(habit)}
+                        className="p-1.5 text-slate-300 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-all"
+                      >
+                        <Edit2 size={14} />
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Calendario mes */}
+                  <div className="bg-slate-50/60 p-3 rounded-2xl border border-slate-100">
+                    <div className="grid grid-cols-7 gap-1 mb-2">
+                      {DAYS_OF_WEEK.map(d => (
+                        <div key={d} className="text-[8px] font-black text-slate-400 text-center uppercase tracking-widest">{d[0]}</div>
+                      ))}
+                    </div>
+                    <div className="grid grid-cols-7 gap-1">
+                      {monthData.grid.map((date, idx) => {
+                        if (!date) return <div key={idx} className="aspect-square" />;
+                        const dStr = formatDate(date);
+                        const isBeforeStart = dStr < habit.startDate;
+                        const isFuture = dStr > todayStr;
+                        const isDisabled = isBeforeStart || isFuture;
+                        const active = !isDisabled && logsByDate[dStr]?.includes(habit.id);
+                        return (
+                          <button
+                            key={idx}
+                            disabled={isDisabled}
+                            onClick={() => !isDisabled && toggleLog(dStr, habit.id)}
+                            className={`aspect-square w-full rounded-md flex items-center justify-center text-[10px] font-black transition-all duration-200 ${
+                              isBeforeStart
+                                ? 'opacity-30 cursor-not-allowed bg-slate-100 text-slate-400'
+                                : isFuture
+                                  ? 'opacity-40 cursor-not-allowed bg-slate-100 text-slate-400'
+                                  : active
+                                    ? `${habit.color} text-white shadow-sm`
+                                    : 'bg-white border border-slate-200 text-slate-400 hover:border-indigo-300 hover:text-indigo-600 active:scale-90'
+                            } ${dStr === todayStr && !isDisabled ? 'ring-2 ring-indigo-400' : ''}`}
+                          >
+                            {date.getDate()}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
 
         {/* ═══ VISTA AÑO ═══ */}
         {habits.length > 0 && view === 'year' && (
@@ -581,7 +616,7 @@ export default function Habitos({ habits, setHabits, habitLogs, setHabitLogs }: 
                 {(() => {
                   const yearStats = getHabitStats(selectedHabitForYear, yearMonths.flatMap(m => m.days));
                   return (
-                    <div className="relative overflow-hidden bg-gradient-to-br from-indigo-500 to-violet-600 rounded-3xl p-6 md:p-10 text-white shadow-lg">
+                    <div className="relative overflow-hidden bg-gradient-to-br from-indigo-950 to-indigo-800 rounded-3xl p-6 md:p-10 text-white shadow-lg">
                       <div className="absolute top-0 right-0 p-8 opacity-10">
                         <Sparkles size={100} />
                       </div>
@@ -643,10 +678,10 @@ export default function Habitos({ habits, setHabits, habitLogs, setHabitLogs }: 
                     </div>
                   </div>
 
-                  <div className="relative h-[260px] md:h-[320px] w-full">
-                    <div className="absolute inset-0 flex">
-                      {/* Y-axis */}
-                      <div className="flex flex-col justify-between h-[calc(100%-32px)] pr-3 text-[9px] font-black text-slate-400 border-r border-slate-100 uppercase w-10 pb-2">
+                  <div className="relative w-full">
+                    <div className="flex">
+                      {/* Y-axis — fixed */}
+                      <div className="flex flex-col justify-between h-[220px] md:h-[300px] pr-2 md:pr-3 text-[9px] font-black text-slate-400 border-r border-slate-100 uppercase w-10 shrink-0">
                         <span>100%</span>
                         <span>75%</span>
                         <span>50%</span>
@@ -654,127 +689,132 @@ export default function Habitos({ habits, setHabits, habitLogs, setHabitLogs }: 
                         <span>0%</span>
                       </div>
 
-                      <div className="flex-1 relative h-full">
-                        {/* Horizontal grid */}
-                        <div className="absolute inset-0 h-[calc(100%-32px)] flex flex-col justify-between pointer-events-none pb-2">
-                          {[0, 1, 2, 3, 4].map((i) => (
-                            <div key={i} className="w-full border-b border-slate-100" />
-                          ))}
-                        </div>
+                      {/* Chart area — scrollable on mobile */}
+                      <div className="flex-1 overflow-x-auto custom-scrollbar">
+                        <div className="min-w-[600px] md:min-w-0 relative h-[252px] md:h-[332px] pl-2">
+                          {/* Horizontal grid */}
+                          <div className="absolute inset-x-0 top-0 h-[220px] md:h-[300px] flex flex-col justify-between pointer-events-none">
+                            {[0, 1, 2, 3, 4].map((i) => (
+                              <div key={i} className="w-full border-b border-slate-100" />
+                            ))}
+                          </div>
 
-                        <svg
-                          className="w-full h-[calc(100%-32px)] overflow-visible relative z-10"
-                          viewBox="0 0 1100 300"
-                          preserveAspectRatio="none"
-                        >
-                          <defs>
-                            <linearGradient id={`grad-${selectedHabitForYear.id}`} x1="0" y1="0" x2="0" y2="1">
-                              <stop offset="0%" stopColor={hexForColor(selectedHabitForYear.color)} stopOpacity="0.2" />
-                              <stop offset="100%" stopColor={hexForColor(selectedHabitForYear.color)} stopOpacity="0" />
-                            </linearGradient>
-                          </defs>
+                          <svg
+                            className="w-full overflow-visible relative z-10"
+                            style={{ height: 'calc(100% - 32px)' }}
+                            viewBox="0 0 1100 300"
+                            preserveAspectRatio="none"
+                          >
+                            <defs>
+                              <linearGradient id={`grad-${selectedHabitForYear.id}`} x1="0" y1="0" x2="0" y2="1">
+                                <stop offset="0%" stopColor={hexForColor(selectedHabitForYear.color)} stopOpacity="0.2" />
+                                <stop offset="100%" stopColor={hexForColor(selectedHabitForYear.color)} stopOpacity="0" />
+                              </linearGradient>
+                            </defs>
 
-                          {/* Vertical guides */}
-                          {MONTHS.map((_, i) => (
-                            <line
-                              key={i}
-                              x1={i * 100} y1="0"
-                              x2={i * 100} y2="300"
-                              stroke="#e2e8f0"
-                              strokeWidth="1"
-                            />
-                          ))}
-
-                          {/* Area fill */}
-                          {(() => {
-                            const activePoints = annualCurvePoints.filter(p => p.hasData && p.percentage !== null);
-                            if (activePoints.length < 2) return null;
-                            const points = activePoints.map(p => ({ x: p.monthIndex * 100, y: 300 - (p.percentage ?? 0) * 3 }));
-                            let pathData = `M ${points[0].x},${points[0].y}`;
-                            for (let i = 0; i < points.length - 1; i++) {
-                              const curr = points[i];
-                              const next = points[i + 1];
-                              const cp1x = curr.x + (next.x - curr.x) / 2;
-                              const cp2x = curr.x + (next.x - curr.x) / 2;
-                              pathData += ` C ${cp1x},${curr.y} ${cp2x},${next.y} ${next.x},${next.y}`;
-                            }
-                            const fillPath = `${pathData} L ${points[points.length - 1].x},300 L ${points[0].x},300 Z`;
-                            return <path d={fillPath} fill={`url(#grad-${selectedHabitForYear.id})`} />;
-                          })()}
-
-                          {/* Curve line */}
-                          {(() => {
-                            const activePoints = annualCurvePoints.filter(p => p.hasData && p.percentage !== null);
-                            if (activePoints.length < 2) return null;
-                            const points = activePoints.map(p => ({ x: p.monthIndex * 100, y: 300 - (p.percentage ?? 0) * 3 }));
-                            let pathData = `M ${points[0].x},${points[0].y}`;
-                            for (let i = 0; i < points.length - 1; i++) {
-                              const curr = points[i];
-                              const next = points[i + 1];
-                              const cp1x = curr.x + (next.x - curr.x) / 2;
-                              const cp2x = curr.x + (next.x - curr.x) / 2;
-                              pathData += ` C ${cp1x},${curr.y} ${cp2x},${next.y} ${next.x},${next.y}`;
-                            }
-                            return (
-                              <path
-                                d={pathData}
-                                fill="none"
-                                stroke={hexForColor(selectedHabitForYear.color)}
-                                strokeWidth="2.5"
-                                strokeLinecap="round"
-                                strokeLinejoin="round"
+                            {/* Vertical guides */}
+                            {MONTHS.map((_, i) => (
+                              <line
+                                key={i}
+                                x1={i * 100} y1="0"
+                                x2={i * 100} y2="300"
+                                stroke="#e2e8f0"
+                                strokeWidth="1"
                               />
-                            );
-                          })()}
+                            ))}
 
-                          {/* Data points */}
-                          {annualCurvePoints.map((p, i) =>
-                            p.hasData && p.percentage !== null ? (
-                              <g key={i} className="cursor-pointer group">
-                                <circle
-                                  cx={p.monthIndex * 100}
-                                  cy={300 - (p.percentage ?? 0) * 3}
-                                  r="5"
-                                  fill="white"
+                            {/* Area fill */}
+                            {(() => {
+                              const activePoints = annualCurvePoints.filter(p => p.hasData && p.percentage !== null);
+                              if (activePoints.length < 2) return null;
+                              const points = activePoints.map(p => ({ x: p.monthIndex * 100, y: 300 - (p.percentage ?? 0) * 3 }));
+                              let pathData = `M ${points[0].x},${points[0].y}`;
+                              for (let i = 0; i < points.length - 1; i++) {
+                                const curr = points[i];
+                                const next = points[i + 1];
+                                const cp1x = curr.x + (next.x - curr.x) / 2;
+                                const cp2x = curr.x + (next.x - curr.x) / 2;
+                                pathData += ` C ${cp1x},${curr.y} ${cp2x},${next.y} ${next.x},${next.y}`;
+                              }
+                              const fillPath = `${pathData} L ${points[points.length - 1].x},300 L ${points[0].x},300 Z`;
+                              return <path d={fillPath} fill={`url(#grad-${selectedHabitForYear.id})`} />;
+                            })()}
+
+                            {/* Curve line */}
+                            {(() => {
+                              const activePoints = annualCurvePoints.filter(p => p.hasData && p.percentage !== null);
+                              if (activePoints.length < 2) return null;
+                              const points = activePoints.map(p => ({ x: p.monthIndex * 100, y: 300 - (p.percentage ?? 0) * 3 }));
+                              let pathData = `M ${points[0].x},${points[0].y}`;
+                              for (let i = 0; i < points.length - 1; i++) {
+                                const curr = points[i];
+                                const next = points[i + 1];
+                                const cp1x = curr.x + (next.x - curr.x) / 2;
+                                const cp2x = curr.x + (next.x - curr.x) / 2;
+                                pathData += ` C ${cp1x},${curr.y} ${cp2x},${next.y} ${next.x},${next.y}`;
+                              }
+                              return (
+                                <path
+                                  d={pathData}
+                                  fill="none"
                                   stroke={hexForColor(selectedHabitForYear.color)}
                                   strokeWidth="2.5"
-                                  className="transition-all"
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
                                 />
-                                <text
-                                  x={p.monthIndex * 100}
-                                  y={300 - (p.percentage ?? 0) * 3 - 14}
-                                  fontSize="11"
-                                  textAnchor="middle"
-                                  fontWeight="700"
-                                  fill={hexForColor(selectedHabitForYear.color)}
-                                  className="opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none"
-                                >
-                                  {p.percentage}%
-                                </text>
-                              </g>
-                            ) : (
-                              <circle
-                                key={i}
-                                cx={p.monthIndex * 100}
-                                cy="300"
-                                r="3"
-                                fill="#cbd5e1"
-                                opacity="0.5"
-                              />
-                            )
-                          )}
-                        </svg>
+                              );
+                            })()}
 
-                        <div className="absolute bottom-0 w-full flex justify-between">
-                          {MONTHS.map((m, i) => (
-                            <div key={i} className="flex flex-col items-center flex-1">
-                              <span className={`text-[9px] font-black uppercase tracking-widest mt-3 ${
-                                annualCurvePoints[i]?.hasData ? 'text-slate-500' : 'text-slate-300'
-                              }`}>
-                                {m.substring(0, 3)}
-                              </span>
-                            </div>
-                          ))}
+                            {/* Data points */}
+                            {annualCurvePoints.map((p, i) =>
+                              p.hasData && p.percentage !== null ? (
+                                <g key={i} className="cursor-pointer group">
+                                  <circle
+                                    cx={p.monthIndex * 100}
+                                    cy={300 - (p.percentage ?? 0) * 3}
+                                    r="5"
+                                    fill="white"
+                                    stroke={hexForColor(selectedHabitForYear.color)}
+                                    strokeWidth="2.5"
+                                    className="transition-all"
+                                  />
+                                  <text
+                                    x={p.monthIndex * 100}
+                                    y={300 - (p.percentage ?? 0) * 3 - 14}
+                                    fontSize="11"
+                                    textAnchor="middle"
+                                    fontWeight="700"
+                                    fill={hexForColor(selectedHabitForYear.color)}
+                                    className="opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none"
+                                  >
+                                    {p.percentage}%
+                                  </text>
+                                </g>
+                              ) : (
+                                <circle
+                                  key={i}
+                                  cx={p.monthIndex * 100}
+                                  cy="300"
+                                  r="3"
+                                  fill="#cbd5e1"
+                                  opacity="0.5"
+                                />
+                              )
+                            )}
+                          </svg>
+
+                          {/* Month labels */}
+                          <div className="flex w-full pt-2">
+                            {MONTHS.map((m, i) => (
+                              <div key={i} className="flex-1 text-center">
+                                <span className={`text-[9px] font-black uppercase tracking-wider ${
+                                  annualCurvePoints[i]?.hasData ? 'text-slate-500' : 'text-slate-300'
+                                }`}>
+                                  {m.substring(0, 3)}
+                                </span>
+                              </div>
+                            ))}
+                          </div>
                         </div>
                       </div>
                     </div>
@@ -872,10 +912,10 @@ export default function Habitos({ habits, setHabits, habitLogs, setHabitLogs }: 
         )}
       </div>
 
-      {/* ═══ FAB MOBILE ═══ */}
+      {/* ═══ FAB ═══ */}
       <button
         onClick={handleOpenNew}
-        className="fixed bottom-24 right-6 md:hidden w-14 h-14 bg-indigo-600 hover:bg-indigo-700 text-white rounded-full flex items-center justify-center shadow-lg shadow-indigo-500/30 hover:scale-105 active:scale-95 transition-all z-[100]"
+        className="fixed bottom-24 right-6 md:bottom-10 md:right-10 w-14 h-14 bg-indigo-600 hover:bg-indigo-700 text-white rounded-full flex items-center justify-center shadow-lg shadow-indigo-500/30 hover:scale-105 active:scale-95 transition-all z-[100]"
       >
         <Plus size={24} strokeWidth={2.5} />
       </button>
