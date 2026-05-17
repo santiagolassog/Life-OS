@@ -168,7 +168,7 @@ const PrestamosTab: React.FC<PrestamosTabProps> = ({
 
       {/* ── Summary strip ── */}
       <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
-        <div className="grid grid-cols-3 divide-x divide-slate-100">
+        <div className="grid grid-cols-1 md:grid-cols-3 divide-y md:divide-y-0 md:divide-x divide-slate-100">
           {/* Prestado */}
           <div className="p-4 flex flex-col gap-1.5">
             <div className="flex items-center gap-1.5">

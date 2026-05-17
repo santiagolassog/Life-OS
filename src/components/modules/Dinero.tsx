@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
   PieChart as RechartsPieChart, Pie, Cell,
@@ -44,6 +44,7 @@ interface DineroProps {
   setBudgets: React.Dispatch<React.SetStateAction<Budget[]>>;
   initialFinCategories: FinCategory[];
   currentDate: Date;
+  openEditRef?: React.MutableRefObject<((tx: Transaction) => void) | null>;
 }
 
 const COLOR_PALETTE = [
@@ -78,6 +79,7 @@ const Dinero: React.FC<DineroProps> = ({
   budgets, setBudgets,
   initialFinCategories,
   currentDate,
+  openEditRef,
 }) => {
   const today = getLocalISODate();
   const [tab, setTab]               = useState<DineroTab>('movimientos');
@@ -398,6 +400,13 @@ const Dinero: React.FC<DineroProps> = ({
     setFormStep(1);
     setFormOpen(true);
   };
+
+  // Exponer openEdit vía ref para búsqueda global
+  useEffect(() => {
+    if (openEditRef) {
+      openEditRef.current = openEdit;
+    }
+  }, [openEditRef]);
 
   const handleSave = () => {
     const parsedAmount = parseCOPNumber(amountInput);
@@ -1135,20 +1144,24 @@ const Dinero: React.FC<DineroProps> = ({
               ))}
             </div>
 
-            <div className="bg-white rounded-3xl border border-slate-100 p-5 shadow-sm">
+            <div className="bg-white rounded-3xl border border-slate-100 p-5 shadow-sm overflow-hidden">
               <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">Ingresos vs Gastos — {annualStats.year}</p>
               <p className="text-[9px] text-slate-300 font-bold mb-5">Ene — Dic</p>
-              <div className="h-64">
-                <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={dashboardData} barGap={3} barSize={10}>
-                    <XAxis dataKey="label" tick={{ fontSize: 9, fontWeight: 800, fill: '#94a3b8' }} axisLine={false} tickLine={false} />
-                    <YAxis tick={{ fontSize: 9, fontWeight: 700, fill: '#94a3b8' }} axisLine={false} tickLine={false} tickFormatter={(v: number) => `$${v >= 1000 ? (v / 1000).toFixed(0) + 'k' : v}`} width={45} />
-                    <Tooltip contentStyle={{ borderRadius: '12px', border: 'none', fontSize: '10px', fontWeight: 800, boxShadow: '0 4px 12px rgba(0,0,0,.1)' }}
-                      formatter={(v: number, name: string) => [`$${fmt(v)}`, name === 'income' ? 'Ingresos' : 'Gastos']} />
-                    <Bar dataKey="income" name="income" fill="#10b981" radius={[4, 4, 0, 0]} />
-                    <Bar dataKey="gastos" name="gastos" fill="#ef4444" radius={[4, 4, 0, 0]} />
-                  </BarChart>
-                </ResponsiveContainer>
+              <div className="h-56 md:h-64 overflow-x-auto -mx-5 px-5 custom-scrollbar">
+                <div className="min-w-[600px] md:min-w-full">
+                  <div className="h-56 md:h-64 w-full">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <BarChart data={dashboardData} barGap={3} barSize={12} margin={{ left: 0, right: 0, top: 5, bottom: 5 }}>
+                        <XAxis dataKey="label" tick={{ fontSize: 8, fontWeight: 800, fill: '#94a3b8' }} axisLine={false} tickLine={false} angle={-45} textAnchor="end" height={60} />
+                        <YAxis tick={{ fontSize: 9, fontWeight: 700, fill: '#94a3b8' }} axisLine={false} tickLine={false} tickFormatter={(v: number) => `$${v >= 1000 ? (v / 1000).toFixed(0) + 'k' : v}`} width={40} />
+                        <Tooltip contentStyle={{ borderRadius: '12px', border: 'none', fontSize: '10px', fontWeight: 800, boxShadow: '0 4px 12px rgba(0,0,0,.1)' }}
+                          formatter={(v: number, name: string) => [`$${fmt(v)}`, name === 'income' ? 'Ingresos' : 'Gastos']} />
+                        <Bar dataKey="income" name="income" fill="#10b981" radius={[4, 4, 0, 0]} />
+                        <Bar dataKey="gastos" name="gastos" fill="#ef4444" radius={[4, 4, 0, 0]} />
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </div>
+                </div>
               </div>
               <div className="flex gap-5 mt-3 justify-center">
                 {[['#10b981', 'Ingresos'], ['#ef4444', 'Gastos']].map(([color, label]) => (
@@ -1952,7 +1965,7 @@ const Dinero: React.FC<DineroProps> = ({
                 </div>
                 <div>
                   <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 block">Ícono</label>
-                  <div className="grid grid-cols-8 gap-1.5">
+                  <div className="grid grid-cols-4 md:grid-cols-8 gap-1.5">
                     {POCKET_EMOJIS.map(emoji => (
                       <button key={emoji} onClick={() => setPocketModal({ ...pocketModal, emoji })}
                         className={`h-10 flex items-center justify-center text-xl rounded-xl transition-all active:scale-90 ${pocketModal.emoji === emoji ? 'bg-indigo-50 ring-2 ring-indigo-400 scale-110' : 'hover:bg-slate-50'}`}>

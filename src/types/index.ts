@@ -7,6 +7,7 @@ export interface EventEntry {
   completed: boolean
   energy?: number
   impact?: number
+  habitId?: string
 }
 
 export type Events = Record<string, EventEntry[]>
@@ -158,4 +159,23 @@ export interface ChecklistItem {
   done: boolean
   order: number
   createdAt: string
+}
+
+// ────────────────────────────────────────────────────────
+// HÁBITOS
+// ────────────────────────────────────────────────────────
+
+export interface Habit {
+  id: string
+  name: string
+  target: number          // días por semana (1-7)
+  color: string           // 'bg-indigo-500', 'bg-emerald-500', etc.
+  startDate: string       // "YYYY-MM-DD"
+  createdAt: string       // ISO timestamp
+}
+
+export interface HabitLog {
+  id: string
+  habitId: string
+  date: string            // "YYYY-MM-DD"
 }

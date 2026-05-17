@@ -9,16 +9,17 @@ import {
   Clock, Save, Zap, ChevronLeft, ChevronRight, X, Plus,
   PieChart as PieChartIcon, Trash2, CalendarDays, Menu, Copy, CheckCircle2, Circle, Edit2, Palette,
   Download, ListPlus, Target, BarChart3, History, DollarSign, Star, ChevronDown, LogOut, CheckSquare,
-  Sparkles, Keyboard, Home, MoreHorizontal, Search, GripVertical, Bot,
+  Sparkles, Keyboard, Home, MoreHorizontal, Search, GripVertical, Bot, Flame,
 } from 'lucide-react';
 import Dinero from './modules/Dinero';
 import Objetivos from './modules/Objetivos';
 import Revision from './modules/Revision';
 import Lista from './modules/Lista';
 import Hoy from './modules/Hoy';
-import SearchModal from './SearchModal';
+import Habitos from './modules/Habitos';
+import SearchModal, { type SearchResult } from './SearchModal';
 import ChatPanel from './ChatPanel';
-import type { Transaction, FinCategory, Goal, Savings, MonthBalance, SavingsWithdrawal, SavingsPocket, PocketFunding, SavingsYearBalance, Loan, LoanPayment, Budget, Task, ChecklistItem } from '../types';
+import type { Transaction, FinCategory, Goal, Savings, MonthBalance, SavingsWithdrawal, SavingsPocket, PocketFunding, SavingsYearBalance, Loan, LoanPayment, Budget, Task, ChecklistItem, EventEntry, Habit, HabitLog } from '../types';
 import { LOAN_OUT_CAT_ID, LOAN_IN_CAT_ID } from '../types';
 import { generateId, formatDateId as fmtDateId, getWeekDays, GRID_HOURS, fmtCurrency, getWeekId } from '../lib/utils';
 import {
@@ -26,11 +27,11 @@ import {
   loadEvents, loadCategories, loadTransactions, loadFinCategories, loadGoals,
   loadSavings, loadMonthBalances, loadSavingsWithdrawals, loadSavingsPockets,
   loadPocketFundings, loadSavingsYearBalances, loadLoans, loadLoanPayments,
-  loadBudgets, loadTasks, loadChecklistItems,
+  loadBudgets, loadTasks, loadChecklistItems, loadHabits, loadHabitLogs,
   syncEvents, syncCategories, syncTransactions, syncFinCategories, syncGoals,
   syncSavings, syncMonthBalances, syncSavingsWithdrawals, syncSavingsPockets,
   syncPocketFundings, syncSavingsYearBalances, syncLoans, syncLoanPayments, syncBudgets,
-  syncTasks, syncChecklistItems,
+  syncTasks, syncChecklistItems, syncHabits, syncHabitLogs,
 } from '../lib/db';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../hooks/useAuth';
@@ -197,20 +198,21 @@ const CustomTimePicker = ({ label, hour, minute, onTimeChange, minTime = "00:00"
 };
 
 
-type SectionKey = 'hoy' | 'tiempo' | 'dinero' | 'objetivos' | 'lista' | 'revision';
+type SectionKey = 'hoy' | 'tiempo' | 'dinero' | 'objetivos' | 'lista' | 'revision' | 'habitos';
 
 const SECTIONS: Array<{ key: SectionKey; label: string; Icon: React.FC<{ size?: number }> }> = [
   { key: 'hoy',      label: 'Inicio',   Icon: Home },
   { key: 'dinero',   label: 'Dinero',   Icon: DollarSign },
   { key: 'tiempo',   label: 'Tiempo',   Icon: CalendarDays },
   { key: 'lista',    label: 'Lista',    Icon: CheckSquare },
+  { key: 'habitos',  label: 'Hábitos',  Icon: Flame },
   { key: 'objetivos',label: 'Objetivos',Icon: Target },
   { key: 'revision', label: 'Revisión', Icon: BarChart3 },
 ];
 
-// Secciones en el nav mobile principal (sin Objetivos/Revisión — van en "Más")
+// Secciones en el nav mobile principal (sin Hábitos/Objetivos/Revisión — van en "Más")
 const MOBILE_NAV = SECTIONS.filter(s => ['hoy','dinero','tiempo','lista'].includes(s.key));
-const MORE_SECTIONS = SECTIONS.filter(s => ['objetivos','revision'].includes(s.key));
+const MORE_SECTIONS = SECTIONS.filter(s => ['habitos','objetivos','revision'].includes(s.key));
 
 const App = () => {
   const { user, signOut, displayName, updateDisplayName } = useAuth();
@@ -256,7 +258,10 @@ const App = () => {
   const [catModal, setCatModal] = useState(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [draggedItem, setDraggedItem] = useState(null);
-  const [mobileDayOffset, setMobileDayOffset] = useState(new Date().getDay() || 1);
+  const [mobileDayOffset, setMobileDayOffset] = useState(() => {
+    const day = new Date().getDay();
+    return day === 0 ? 7 : day;
+  });
   const [windowWidth, setWindowWidth] = useState(typeof window !== 'undefined' ? window.innerWidth : 1200);
   const [newPreset, setNewPreset] = useState("");
   const [reportRange, setReportRange] = useState('week');
@@ -279,6 +284,8 @@ const App = () => {
   const [budgets, setBudgets]                       = useState<Budget[]>([]);
   const [tasks, setTasks]                           = useState<Task[]>([]);
   const [checklistItems, setChecklistItems]         = useState<ChecklistItem[]>([]);
+  const [habits, setHabits]                         = useState<Habit[]>([]);
+  const [habitLogs, setHabitLogs]                   = useState<HabitLog[]>([]);
 
   // ── Carga inicial desde Supabase (con migración automática de localStorage) ─
   useEffect(() => {
@@ -340,6 +347,8 @@ const App = () => {
         setBudgets(d.budgets ?? []);
         setTasks(d.tasks ?? []);
         setChecklistItems(d.checklistItems ?? []);
+        setHabits(d.habits ?? []);
+        setHabitLogs(d.habitLogs ?? []);
 
         // Sincronizar refs con los datos cargados ANTES de setLoading(false).
         // Así los sync-effects ven prev === curr y no re-suben nada a Supabase.
@@ -359,6 +368,8 @@ const App = () => {
         prevBudgets.current            = d.budgets ?? [];
         prevTasks.current              = d.tasks ?? [];
         prevChecklistItems.current     = d.checklistItems ?? [];
+        prevHabits.current             = d.habits ?? [];
+        prevHabitLogs.current          = d.habitLogs ?? [];
 
       } catch (err) {
         console.error('Error al cargar datos de Supabase:', err);
@@ -387,11 +398,19 @@ const App = () => {
   const prevBudgets             = useRef(budgets);
   const prevTasks               = useRef(tasks);
   const prevChecklistItems      = useRef(checklistItems);
+  const prevHabits              = useRef(habits);
+  const prevHabitLogs           = useRef(habitLogs);
 
   // Flag por tabla: true cuando el cambio vino de RT (no de acción local).
   // El sync-effect lo detecta, actualiza prevXxx y omite el upsert a Supabase,
   // evitando el loop local SIN bloquear eventos RT posteriores de otros dispositivos.
   const isRTUpdate = useRef<Record<string, boolean>>({});
+
+  // Refs para funciones de apertura de modales en componentes hijos
+  const listOpenEditRef = useRef<(task: Task) => void>(null);
+  const objetivosOpenEditRef = useRef<(goal: Goal) => void>(null);
+  const dineroOpenEditRef = useRef<(tx: Transaction) => void>(null);
+  const tiempoHandleOpenModalRef = useRef<(date: Date, hour: string, event?: typeof events[keyof typeof events][0]) => void>(null);
 
   // Helper: marca flag, actualiza prev y omite sync si el cambio es de RT.
   // Devuelve true cuando hay que saltar el sync.
@@ -534,6 +553,22 @@ const App = () => {
     prevChecklistItems.current = checklistItems;
   }, [checklistItems, loading, userId]);
 
+  useEffect(() => {
+    if (loading || !userId) return;
+    if (skipIfRT('habits', prevHabits, habits)) return;
+    markSaving();
+    syncHabits(prevHabits.current, habits, userId).catch(console.error);
+    prevHabits.current = habits;
+  }, [habits, loading, userId]);
+
+  useEffect(() => {
+    if (loading || !userId) return;
+    if (skipIfRT('habit_logs', prevHabitLogs, habitLogs)) return;
+    markSaving();
+    syncHabitLogs(prevHabitLogs.current, habitLogs, userId).catch(console.error);
+    prevHabitLogs.current = habitLogs;
+  }, [habitLogs, loading, userId]);
+
   // ── Real-time: recibe cambios de otros dispositivos/tabs ─────────────────────
   // El flag isRTUpdate marca el update como "venido de RT" para que el
   // sync-effect lo salte sin upload. No hay cooldown → cada evento RT
@@ -610,6 +645,14 @@ const App = () => {
       .on('postgres_changes', { event: '*', schema: 'public', table: 'checklist_items', filter: f }, async () => {
         const fresh = await loadChecklistItems();
         rt['checklist_items'] = true; prevChecklistItems.current = fresh; setChecklistItems(fresh);
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'habits', filter: f }, async () => {
+        const fresh = await loadHabits();
+        rt['habits'] = true; prevHabits.current = fresh; setHabits(fresh);
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'habit_logs', filter: f }, async () => {
+        const fresh = await loadHabitLogs();
+        rt['habit_logs'] = true; prevHabitLogs.current = fresh; setHabitLogs(fresh);
       })
 
       .subscribe();
@@ -822,6 +865,60 @@ const App = () => {
     setCatModal({ ...catModal, presets: updated });
   };
 
+  // ── Autocompletado inteligente de actividades ────────────────────────────────
+  const getFilteredPresets = (categoryId: string, searchText: string) => {
+    if (!searchText.trim()) {
+      // Si no hay búsqueda, mostrar todos
+      return {
+        matches: categories[categoryId]?.presets ?? [],
+        exactMatch: false,
+        canCreate: false
+      };
+    }
+
+    const presets = categories[categoryId]?.presets ?? [];
+    const trimmed = searchText.trim();
+    const lowerTrimmed = trimmed.toLowerCase();
+
+    // Filtro: actividades que contengan el texto (case-insensitive)
+    const matches = presets.filter(p => p.toLowerCase().includes(lowerTrimmed));
+
+    // ¿Hay coincidencia exacta?
+    const exactMatch = matches.some(p => p.toLowerCase() === lowerTrimmed);
+
+    // ¿Puede crear? Solo si no existe exactamente y el texto no está vacío
+    const canCreate = !exactMatch && trimmed.length > 0;
+
+    return { matches, exactMatch, canCreate };
+  };
+
+  const createPresetDynamically = (categoryId: string, presetName: string) => {
+    const trimmed = presetName.trim();
+    if (!trimmed || !categories[categoryId]) return;
+
+    const preset = trimmed;
+    const existingPresets = categories[categoryId].presets ?? [];
+
+    // Evitar duplicados exactos (case-sensitive)
+    if (existingPresets.includes(preset)) {
+      // Si ya existe, solo seleccionarlo
+      setModalData({ ...modalData, task: preset });
+      return;
+    }
+
+    // Crear nuevo preset
+    setCategories(prev => ({
+      ...prev,
+      [categoryId]: {
+        ...prev[categoryId],
+        presets: [...(prev[categoryId].presets ?? []), preset]
+      }
+    }));
+
+    // Seleccionar automáticamente
+    setModalData({ ...modalData, task: preset });
+  };
+
   const handleDeleteCategory = (id) => {
     const newCats = { ...categories };
     delete newCats[id];
@@ -829,7 +926,7 @@ const App = () => {
     setCatModal(null);
   };
 
-    const handleOpenModal = (dayDate, hour, existingEvent = null) => {
+    const handleOpenModal = (dayDate: Date, hour: string, existingEvent: EventEntry | null = null) => {
     const dateId = formatDateId(dayDate);
     if (existingEvent) {
       const [startH, startM] = existingEvent.startHour.split(':');
@@ -846,14 +943,59 @@ const App = () => {
       setModalData({
         id: generateId(), dateId,
         startHour: h, startMin: m, endHour: endH, endMin: m,
-        category: Object.keys(categories)[0] || '', task: '', isEditing: false, mode: 'edit', completed: false, selectedDays: [], energy: undefined, impact: undefined
+        category: Object.keys(categories)[0] || '', task: '', isEditing: false, mode: 'edit', completed: false, selectedDays: [], energy: undefined, impact: undefined, habitId: undefined
       });
     }
   };
 
+  // Manejador para búsqueda global: abre detalles de items encontrados
+  const handleSearchSelect = (result: SearchResult) => {
+    setSection(result.section);
+
+    if (result.type === 'task') {
+      const task = tasks.find(t => t.id === result.id);
+      if (task && listOpenEditRef.current) {
+        setTimeout(() => listOpenEditRef.current?.(task), 100);
+      }
+    } else if (result.type === 'goal') {
+      const goal = goals.find(g => g.id === result.id);
+      if (goal && objetivosOpenEditRef.current) {
+        setTimeout(() => objetivosOpenEditRef.current?.(goal), 100);
+      }
+    } else if (result.type === 'event') {
+      // Encontrar la fecha y evento
+      const [dateId, event] = Object.entries(events)
+        .flatMap(([dId, evs]) => evs.map(ev => [dId, ev] as const))
+        .find(([_, ev]) => ev.id === result.id) ?? [null, null];
+
+      if (dateId && event && tiempoHandleOpenModalRef.current) {
+        const eventDate = new Date(dateId + 'T12:00:00');
+        // Scrollear al día
+        setTimeout(() => {
+          const element = document.querySelector(`[data-day-id="${dateId}"]`);
+          if (element) {
+            element.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+          }
+        }, 50);
+        // Abrir el modal después del scroll
+        setTimeout(() => tiempoHandleOpenModalRef.current?.(eventDate, event.startHour, event), 150);
+      }
+    } else if (result.type === 'transaction') {
+      const tx = transactions.find(t => t.id === result.id);
+      if (tx && dineroOpenEditRef.current) {
+        setTimeout(() => dineroOpenEditRef.current?.(tx), 100);
+      }
+    }
+  };
+
+  // Asignar ref de handleOpenModal para búsqueda global
+  useEffect(() => {
+    tiempoHandleOpenModalRef.current = handleOpenModal;
+  }, []);
+
   const saveActivity = () => {
     if (!modalData) return;
-    const { dateId, id, startHour, startMin, endHour, endMin, category, task, mode, selectedDays, completed, energy, impact } = modalData;
+    const { dateId, id, startHour, startMin, endHour, endMin, category, task, mode, selectedDays, completed, energy, impact, habitId } = modalData;
     const startStr = `${startHour}:${startMin}`;
     const endStr = `${endHour}:${endMin}`;
 
@@ -874,15 +1016,26 @@ const App = () => {
           if (!nextEvents[dId]) nextEvents[dId] = [];
           nextEvents[dId].push({
             id: generateId(),
-            startHour: startStr, endHour: endStr, category, task: String(task), completed: mode === 'edit' ? !!completed : false
+            startHour: startStr, endHour: endStr, category, task: String(task), completed: mode === 'edit' ? !!completed : false, habitId: habitId || undefined
           });
         });
       } else {
         if (!nextEvents[dateId]) nextEvents[dateId] = [];
-        nextEvents[dateId].push({ id, startHour: startStr, endHour: endStr, category, task: String(task), completed: !!completed, energy: energy || undefined, impact: impact || undefined });
+        nextEvents[dateId].push({ id, startHour: startStr, endHour: endStr, category, task: String(task), completed: !!completed, energy: energy || undefined, impact: impact || undefined, habitId: habitId || undefined });
       }
       return nextEvents;
     });
+
+    // Auto-check hábito si la actividad está completada y tiene habitId
+    if (completed && habitId) {
+      const targetDate = dateId;
+      const alreadyLogged = habitLogs.some(l => l.habitId === habitId && l.date === targetDate);
+      if (!alreadyLogged) {
+        setHabitLogs(prev => [...prev, { id: generateId(), habitId, date: targetDate }]);
+        toast('🔗 Hábito marcado automáticamente', { duration: 2000 });
+      }
+    }
+
     setModalData(null);
   };
 
@@ -1037,16 +1190,6 @@ const App = () => {
             <div className="bg-indigo-500 p-1.5 rounded-lg shadow-inner"><Zap size={18} fill="white" /></div>
             <h1 className="text-lg font-black tracking-tight uppercase italic leading-none hidden sm:block">LifeOS</h1>
           </div>
-          {/* Navegación semanal — solo desktop (en mobile va en la barra de días) */}
-          {section === 'tiempo' && (
-            <div className="hidden md:flex items-center bg-white/5 rounded-full p-1 border border-white/10 ml-1">
-              <button onClick={() => setCurrentDate(new Date(currentDate.setDate(currentDate.getDate() - 7)))} className="p-1 hover:bg-white/10 rounded-full transition-all"><ChevronLeft size={16}/></button>
-              <span className="px-3 text-xs font-bold min-w-[110px] text-center capitalize text-indigo-100">
-                {weekDays[0]?.toLocaleDateString('es-ES', { month: 'short', year: 'numeric' })}
-              </span>
-              <button onClick={() => setCurrentDate(new Date(currentDate.setDate(currentDate.getDate() + 7)))} className="p-1 hover:bg-white/10 rounded-full transition-all"><ChevronRight size={16}/></button>
-            </div>
-          )}
         </div>
 
         {/* Section tabs — desktop */}
@@ -1085,13 +1228,6 @@ const App = () => {
             )}
           </div>
 
-          {/* Total horas — solo en sección Tiempo */}
-          {section === 'tiempo' && (
-            <div className="hidden sm:flex flex-col items-end border-r border-white/10 pr-3">
-              <span className="text-[9px] text-indigo-400 font-black uppercase tracking-widest leading-none mb-1">Total Real</span>
-              <span className="text-xl font-black leading-none">{stats.total}h</span>
-            </div>
-          )}
 
           {/* Ícono de guardado — mobile/tablet (siempre ocupa el mismo espacio) */}
           <div className={`lg:hidden w-7 h-7 flex items-center justify-center transition-all duration-300 ${saveStatus === 'idle' ? 'opacity-0' : 'opacity-100'}`}>
@@ -1460,8 +1596,8 @@ const App = () => {
                     >
                       <ChevronLeft size={16} className="text-slate-400" />
                     </button>
-                    <span className="text-[11px] font-black text-slate-500 uppercase tracking-widest capitalize">
-                      {weekDays[0]?.toLocaleDateString('es-ES', { month: 'short', year: 'numeric' })}
+                    <span className="text-[11px] font-black text-slate-500 tracking-widest capitalize">
+                      {weekDays[0]?.getDate()} {weekDays[0]?.toLocaleDateString('es-ES', { month: 'short' })} — {weekDays[6]?.getDate()} {weekDays[6]?.toLocaleDateString('es-ES', { month: 'short', year: 'numeric' })}
                     </span>
                     <button
                       onClick={() => { const d = new Date(currentDate); d.setDate(d.getDate() + 7); setCurrentDate(d); }}
@@ -1488,24 +1624,49 @@ const App = () => {
                 </div>
               )}
 
-              <div ref={scrollContainerRef} className="flex-1 overflow-auto custom-scrollbar scroll-smooth">
-                <div className="mt-3 md:mt-6 px-3 pb-3 md:px-6 md:pb-6">
-                  <div className="inline-block min-w-full bg-white rounded-[2.5rem] shadow-sm border border-slate-200 relative overflow-hidden">
-                    <div className={`grid ${isMobile ? 'grid-cols-[60px_1fr]' : 'grid-cols-[80px_repeat(7,1fr)]'} sticky top-0 z-[50] bg-indigo-950 text-white`}>
-                      {!isMobile && <div className="p-4 border-r border-white/10 flex items-center justify-center text-indigo-300 font-black text-[9px] tracking-[0.2em] bg-indigo-950 sticky left-0 z-[51]">HORARIO</div>}
-                      {weekDays.map((date) => {
-                        const isVisible = !isMobile || (formatDateId(date) === formatDateId(currentVisibleDays[0]));
-                        if (!isVisible) return null;
-                        const isToday = date.toDateString() === new Date().toDateString();
-                        return (
-                          <div key={formatDateId(date)} className={`p-4 text-center border-r border-white/5 flex flex-col gap-1 bg-indigo-950 ${isToday ? 'bg-indigo-800/40' : ''}`}>
-                            <span className="text-[8px] font-black uppercase tracking-widest text-indigo-300 leading-none">{date.toLocaleDateString('es-ES', { weekday: 'long' })}</span>
-                            <span className={`text-xl font-black font-sans ${isToday ? 'text-indigo-400' : 'text-white'}`}>{date.getDate()}</span>
-                          </div>
-                        );
-                      })}
+              {/* Sub-barra Tiempo — desktop: navegación de semana + total horas */}
+              {!isMobile && (
+                <div className="hidden md:flex items-center justify-between px-6 py-2.5 bg-slate-100 border-b border-slate-200 shrink-0">
+                  <div className="flex items-center gap-3">
+                    <div className="flex items-center bg-white rounded-full p-0.5 border border-slate-200 shadow-sm">
+                      <button onClick={() => { const d = new Date(currentDate); d.setDate(d.getDate() - 7); setCurrentDate(d); }} className="p-1.5 hover:bg-slate-100 rounded-full transition-all"><ChevronLeft size={14} className="text-slate-500"/></button>
+                      <span className="px-3 text-xs font-black min-w-[180px] text-center text-slate-700">
+                        {weekDays[0]?.getDate()} {weekDays[0]?.toLocaleDateString('es-ES', { month: 'short' })} — {weekDays[6]?.getDate()} {weekDays[6]?.toLocaleDateString('es-ES', { month: 'short', year: 'numeric' })}
+                      </span>
+                      <button onClick={() => { const d = new Date(currentDate); d.setDate(d.getDate() + 7); setCurrentDate(d); }} className="p-1.5 hover:bg-slate-100 rounded-full transition-all"><ChevronRight size={14} className="text-slate-500"/></button>
                     </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-[9px] text-slate-400 font-black uppercase tracking-widest">Total Real</span>
+                    <span className="text-lg font-black text-indigo-600">{stats.total}h</span>
+                  </div>
+                </div>
+              )}
 
+              <div ref={scrollContainerRef} className="flex-1 overflow-auto custom-scrollbar scroll-smooth">
+                <div className={`${isMobile ? 'px-3' : 'px-6'}`}>
+                  <div className="min-w-full relative">
+                    {!isMobile && (
+                      <div className="sticky top-0 z-50 bg-slate-50 pt-3">
+                        <div className="bg-white rounded-t-[2.5rem] shadow-sm border-x border-t border-slate-200 overflow-hidden">
+                          <div className={`grid ${isMobile ? 'grid-cols-[60px_1fr]' : 'grid-cols-[80px_repeat(7,1fr)]'} bg-indigo-950 text-white`}>
+                            {!isMobile && <div className="p-4 border-r border-white/10 flex items-center justify-center text-indigo-300 font-black text-[9px] tracking-[0.2em] bg-indigo-950 sticky left-0 z-[51]">HORARIO</div>}
+                            {weekDays.map((date) => {
+                              const isVisible = !isMobile || (formatDateId(date) === formatDateId(currentVisibleDays[0]));
+                              if (!isVisible) return null;
+                              const isToday = date.toDateString() === new Date().toDateString();
+                              return (
+                                <div key={formatDateId(date)} className={`p-4 text-center border-r border-white/5 flex flex-col gap-1 bg-indigo-950 ${isToday ? 'bg-indigo-800/40' : ''}`}>
+                                  <span className="text-[8px] font-black uppercase tracking-widest text-indigo-300 leading-none">{date.toLocaleDateString('es-ES', { weekday: 'long' })}</span>
+                                  <span className={`text-xl font-black font-sans ${isToday ? 'text-indigo-400' : 'text-white'}`}>{date.getDate()}</span>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                    <div className={`bg-white ${!isMobile ? 'rounded-b-[2.5rem] border-x border-b' : 'mt-3 rounded-[2.5rem] border'} shadow-sm border-slate-200 overflow-hidden`}>
                     <div className={`grid ${isMobile ? 'grid-cols-[60px_1fr]' : 'grid-cols-[80px_repeat(7,1fr)]'} relative`}>
                       <div className={`flex flex-col border-r bg-slate-50/80 sticky left-0 z-[45] md:bg-slate-100/90 backdrop-blur-sm`}>
                         {GRID_HOURS.slice(0, -1).map((hour) => (
@@ -1519,7 +1680,7 @@ const App = () => {
                         const dateId = formatDateId(date);
                         const dayEvents = events[dateId] || [];
                         return (
-                          <div key={dateId} className="border-r h-full relative min-w-[140px]" onDragOver={(e) => e.preventDefault()} onDrop={(e) => handleDrop(e, dateId, draggedItem?.startHour)}>
+                          <div key={dateId} className="border-r h-full relative" onDragOver={(e) => e.preventDefault()} onDrop={(e) => handleDrop(e, dateId, draggedItem?.startHour)}>
                             <div className="absolute inset-0 z-0">
                               {GRID_HOURS.slice(0, -1).filter(h => h.endsWith(':00') || h.endsWith(':30')).map((hour) => (
                                 <div key={hour} onClick={() => handleOpenModal(date, hour)} style={{ height: `${FIELD_HEIGHT}px` }} className={`transition-colors cursor-pointer flex items-center justify-center group/cell border-slate-100 ${hour.endsWith(':30') ? 'border-b border-dashed opacity-30' : 'border-b'}`}><Plus size={14} className="text-indigo-200 opacity-0 group-hover/cell:opacity-100 scale-75" /></div>
@@ -1553,6 +1714,7 @@ const App = () => {
                         );
                       })}
                     </div>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -1583,6 +1745,9 @@ const App = () => {
               transactions={transactions}
               finCategories={finCategories}
               monthBalances={monthBalances}
+              habits={habits}
+              habitLogs={habitLogs}
+              setHabitLogs={setHabitLogs}
               currentDate={currentDate}
               onNavigate={setSection}
             />
@@ -1615,6 +1780,7 @@ const App = () => {
               setBudgets={setBudgets}
               initialFinCategories={INITIAL_FIN_CATEGORIES}
               currentDate={currentDate}
+              openEditRef={dineroOpenEditRef}
             />
           )}
           {section === 'objetivos' && (
@@ -1627,6 +1793,7 @@ const App = () => {
               events={events}
               tasks={tasks}
               setTasks={setTasks}
+              openEditRef={objetivosOpenEditRef}
             />
           )}
           {section === 'lista' && (
@@ -1639,6 +1806,15 @@ const App = () => {
               setCategories={setCategories}
               goals={goals}
               currentDate={currentDate}
+              openEditRef={listOpenEditRef}
+            />
+          )}
+          {section === 'habitos' && (
+            <Habitos
+              habits={habits}
+              setHabits={setHabits}
+              habitLogs={habitLogs}
+              setHabitLogs={setHabitLogs}
             />
           )}
           {section === 'revision' && (
@@ -1649,6 +1825,8 @@ const App = () => {
               finCategories={finCategories}
               goals={goals}
               tasks={tasks}
+              habits={habits}
+              habitLogs={habitLogs}
               currentDate={currentDate}
               onDownloadReport={downloadReport}
               isExporting={isExporting}
@@ -1713,12 +1891,12 @@ const App = () => {
             <button
               onClick={() => setShowMoreMenu(v => !v)}
               className={`flex-1 flex flex-col items-center justify-center py-3.5 gap-1 transition-all active:scale-95 ${
-                showMoreMenu || ['objetivos','revision'].includes(section)
+                showMoreMenu || ['habitos','objetivos','revision'].includes(section)
                   ? 'text-white'
                   : 'text-indigo-400'
               }`}
             >
-              <MoreHorizontal size={22} strokeWidth={showMoreMenu || ['objetivos','revision'].includes(section) ? 2.5 : 2} />
+              <MoreHorizontal size={22} strokeWidth={showMoreMenu || ['habitos','objetivos','revision'].includes(section) ? 2.5 : 2} />
               <span className="text-[9px] font-black uppercase tracking-wide">Más</span>
             </button>
           </div>
@@ -1757,8 +1935,9 @@ const App = () => {
           transactions={transactions}
           categories={categories}
           finCategories={finCategories}
+          habits={habits}
           onClose={() => setShowSearch(false)}
-          onNavigate={(section) => { setSection(section as SectionKey); setShowSearch(false); }}
+          onSearchSelect={(result) => { handleSearchSelect(result); setShowSearch(false); }}
         />
       )}
 
@@ -1987,17 +2166,69 @@ const App = () => {
                   <input type="text" placeholder="Nombre de la actividad..."
                     className="w-full bg-slate-50 border-2 border-transparent focus:border-indigo-200 rounded-2xl px-4 py-4 text-base font-black outline-none transition-all"
                     value={modalData.task} onChange={(e) => setModalData({...modalData, task: e.target.value})} />
-                  {categories[modalData.category]?.presets?.length > 0 && (
-                    <div className="flex flex-wrap gap-1.5 animate-in fade-in">
-                      {categories[modalData.category].presets.map((preset, i) => (
-                        <button key={i} onClick={() => setModalData({...modalData, task: String(preset)})}
-                          className={`px-3.5 py-2 rounded-xl text-[10px] font-black border-2 transition-all active:scale-95 ${modalData.task === preset ? 'bg-indigo-600 border-indigo-600 text-white shadow-md' : 'bg-white border-slate-100 text-slate-400 hover:border-indigo-200 hover:text-indigo-600'}`}>
-                          {preset}
-                        </button>
-                      ))}
-                    </div>
-                  )}
+                  {(() => {
+                    const { matches, canCreate } = getFilteredPresets(modalData.category, modalData.task);
+                    const hasMatches = matches.length > 0 || canCreate;
+
+                    return hasMatches && (
+                      <div className="flex flex-wrap gap-1.5 animate-in fade-in">
+                        {/* Presets filtrados */}
+                        {matches.map((preset, i) => (
+                          <button
+                            key={i}
+                            onClick={() => setModalData({...modalData, task: String(preset)})}
+                            className={`px-3.5 py-2 rounded-xl text-[10px] font-black border-2 transition-all active:scale-95
+                              ${modalData.task === preset
+                                ? 'bg-indigo-600 border-indigo-600 text-white shadow-md'
+                                : 'bg-white border-slate-100 text-slate-400 hover:border-indigo-200 hover:text-indigo-600'}`}
+                          >
+                            {preset}
+                          </button>
+                        ))}
+
+                        {/* Botón para crear nuevo preset */}
+                        {canCreate && (
+                          <button
+                            onClick={() => createPresetDynamically(modalData.category, modalData.task)}
+                            className="px-3.5 py-2 rounded-xl text-[10px] font-black border-2 border-dashed border-indigo-300 text-indigo-600 bg-indigo-50 hover:border-indigo-500 hover:bg-indigo-100 transition-all active:scale-95"
+                          >
+                            + Crear '{modalData.task.trim()}'
+                          </button>
+                        )}
+                      </div>
+                    );
+                  })()}
                 </div>
+
+                {/* Asociar hábito (opcional) */}
+                {habits.length > 0 && (
+                  <div className="space-y-2.5">
+                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block">
+                      Asociar a hábito <span className="text-slate-300 normal-case tracking-normal">(opcional)</span>
+                    </label>
+                    <div className="flex flex-wrap gap-2">
+                      {habits
+                        .filter(h => !modalData.dateId || h.startDate <= modalData.dateId)
+                        .map(h => {
+                          const isSelected = modalData.habitId === h.id;
+                          return (
+                            <button
+                              key={h.id}
+                              onClick={() => setModalData({...modalData, habitId: isSelected ? undefined : h.id})}
+                              className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-[11px] font-black border-2 transition-all active:scale-95 ${
+                                isSelected
+                                  ? `${h.color} border-transparent text-white shadow-md`
+                                  : 'bg-white border-slate-100 text-slate-500 hover:border-indigo-200'
+                              }`}
+                            >
+                              <Flame size={12} />
+                              {h.name}
+                            </button>
+                          );
+                        })}
+                    </div>
+                  </div>
+                )}
 
                 {/* Date + Time — unified card */}
                 <div className="space-y-2.5">

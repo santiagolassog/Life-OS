@@ -36,6 +36,7 @@ interface ObjetivosProps {
   events: Record<string, any[]>;
   tasks: Task[];
   setTasks: React.Dispatch<React.SetStateAction<Task[]>>;
+  openEditRef?: React.MutableRefObject<((goal: Goal) => void) | null>;
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -63,7 +64,7 @@ function formatDeadlineLabel(deadline: string): string {
 
 // ── Component ─────────────────────────────────────────────────────────────────
 
-const Objetivos: React.FC<ObjetivosProps> = ({ goals, setGoals, categories, setCategories, currentDate, tasks, setTasks }) => {
+const Objetivos: React.FC<ObjetivosProps> = ({ goals, setGoals, categories, setCategories, currentDate, tasks, setTasks, openEditRef }) => {
   const [view, setView] = useState<ObjetivosView>('semanal');
   const [viewDate, setViewDate] = useState(new Date(currentDate));
   const [modalOpen, setModalOpen] = useState(false);
@@ -170,6 +171,13 @@ const Objetivos: React.FC<ObjetivosProps> = ({ goals, setGoals, categories, setC
     setPendingTasks([]);
     setModalOpen(true);
   };
+
+  // Exponer openEdit vía ref para búsqueda global
+  useEffect(() => {
+    if (openEditRef) {
+      openEditRef.current = openEdit;
+    }
+  }, [openEditRef]);
 
   const closeModal = () => {
     setEditGoal(null);
@@ -701,7 +709,7 @@ const Objetivos: React.FC<ObjetivosProps> = ({ goals, setGoals, categories, setC
                       <Plus size={10} /> Nueva área
                     </button>
                   </div>
-                  <div className="grid grid-cols-4 gap-2">
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
                     <button
                       onClick={() => setEditGoal({ ...editGoal, category: undefined })}
                       className={`py-3 rounded-xl text-[9px] font-black border-2 transition-all active:scale-95 ${!editGoal.category ? 'bg-slate-200 border-slate-300 text-slate-600' : 'bg-slate-50 border-transparent text-slate-300'}`}

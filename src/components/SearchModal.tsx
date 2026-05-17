@@ -2,17 +2,17 @@ import React, { useState, useMemo, useEffect, useRef } from 'react';
 import {
   Search, X, CheckSquare, Target, CalendarDays,
   DollarSign, ChevronRight, Inbox, Circle, Loader,
-  CheckCircle2, ArrowUp, ArrowDown, CornerDownLeft,
+  CheckCircle2, ArrowUp, ArrowDown, CornerDownLeft, Flame,
 } from 'lucide-react';
-import type { Task, Goal, Events, Transaction, FinCategory, Categories } from '../types';
+import type { Task, Goal, Events, Transaction, FinCategory, Categories, Habit } from '../types';
 import { fmtCurrency } from '../lib/utils';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-type SectionKey = 'hoy' | 'tiempo' | 'dinero' | 'objetivos' | 'lista' | 'revision';
-type ResultType = 'task' | 'goal' | 'event' | 'transaction';
+type SectionKey = 'hoy' | 'tiempo' | 'dinero' | 'objetivos' | 'lista' | 'revision' | 'habitos';
+type ResultType = 'task' | 'goal' | 'event' | 'transaction' | 'habit';
 
-interface SearchResult {
+export interface SearchResult {
   id: string;
   type: ResultType;
   title: string;
@@ -31,8 +31,9 @@ interface SearchModalProps {
   transactions: Transaction[];
   categories: Categories;
   finCategories: FinCategory[];
+  habits: Habit[];
   onClose: () => void;
-  onNavigate: (section: SectionKey) => void;
+  onSearchSelect: (result: SearchResult) => void;
 }
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -56,6 +57,7 @@ const TYPE_CONFIG: Record<ResultType, { label: string; color: string; Icon: Reac
   goal:        { label: 'Objetivos',     color: '#6366f1', Icon: Target },
   event:       { label: 'Actividades',   color: '#3b82f6', Icon: CalendarDays },
   transaction: { label: 'Transacciones', color: '#10b981', Icon: DollarSign },
+  habit:       { label: 'Hábitos',       color: '#6366f1', Icon: Flame },
 };
 
 function fmtDateId(dateId: string): string {
@@ -66,8 +68,8 @@ function fmtDateId(dateId: string): string {
 // ─── Component ────────────────────────────────────────────────────────────────
 
 const SearchModal: React.FC<SearchModalProps> = ({
-  tasks, goals, events, transactions, categories, finCategories,
-  onClose, onNavigate,
+  tasks, goals, events, transactions, categories, finCategories, habits,
+  onClose, onSearchSelect,
 }) => {
   const [query, setQuery]         = useState('');
   const [selectedIdx, setSelectedIdx] = useState(0);
@@ -159,8 +161,24 @@ const SearchModal: React.FC<SearchModalProps> = ({
         });
       });
 
+    // Habits
+    habits
+      .filter(h => h.name.toLowerCase().includes(q))
+      .slice(0, 4)
+      .forEach(h => {
+        all.push({
+          id: h.id, type: 'habit',
+          title: h.name,
+          subtitle: `Meta: ${h.target} días/sem`,
+          meta: `Inicio: ${h.startDate}`,
+          color: '#6366f1',
+          Icon: Flame,
+          section: 'habitos',
+        });
+      });
+
     return all;
-  }, [query, tasks, goals, events, transactions, categories, finCategories]);
+  }, [query, tasks, goals, events, transactions, categories, finCategories, habits]);
 
   // ── Keyboard navigation ─────────────────────────────────────────────────────
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -171,7 +189,7 @@ const SearchModal: React.FC<SearchModalProps> = ({
       e.preventDefault();
       setSelectedIdx(i => Math.max(i - 1, 0));
     } else if (e.key === 'Enter' && results[selectedIdx]) {
-      onNavigate(results[selectedIdx].section);
+      onSearchSelect(results[selectedIdx]);
       onClose();
     } else if (e.key === 'Escape') {
       onClose();
@@ -189,7 +207,7 @@ const SearchModal: React.FC<SearchModalProps> = ({
 
   // ── Grouped results ─────────────────────────────────────────────────────────
   const groups = useMemo(() => {
-    const order: ResultType[] = ['task', 'goal', 'event', 'transaction'];
+    const order: ResultType[] = ['task', 'goal', 'event', 'transaction', 'habit'];
     return order
       .map(type => ({ type, items: results.filter(r => r.type === type) }))
       .filter(g => g.items.length > 0);
@@ -286,7 +304,7 @@ const SearchModal: React.FC<SearchModalProps> = ({
                         <button
                           key={result.id}
                           data-idx={globalIdx}
-                          onClick={() => { onNavigate(result.section); onClose(); }}
+                          onClick={() => { onSearchSelect(result); onClose(); }}
                           onMouseEnter={() => setSelectedIdx(globalIdx)}
                           className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-2xl text-left transition-all duration-100 ${
                             isSelected ? 'bg-indigo-50' : 'hover:bg-slate-50'
