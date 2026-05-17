@@ -7,6 +7,7 @@ export interface EventEntry {
   completed: boolean
   energy?: number
   impact?: number
+  habitId?: string
 }
 
 export type Events = Record<string, EventEntry[]>

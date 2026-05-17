@@ -21,11 +21,11 @@ const HABIT_COLORS = [
 ];
 
 const HABIT_DONE_MSGS = [
-  '¡Un día más sumado a tu identidad!',
-  '¡La consistencia es tu superpoder!',
-  '¡Otro hábito ganado!',
-  '¡Sigue construyendo tu mejor versión!',
-  '¡Excelente! La disciplina lo es todo.',
+  { text: '¡Un día más sumado a tu identidad!', emoji: '🔥' },
+  { text: '¡La consistencia es tu superpoder!', emoji: '💪' },
+  { text: '¡Otro hábito ganado!', emoji: '✅' },
+  { text: '¡Sigue construyendo tu mejor versión!', emoji: '🚀' },
+  { text: '¡Excelente! La disciplina lo es todo.', emoji: '⭐' },
 ];
 
 // ─── Date Utilities ───────────────────────────────────────────────────────────
@@ -55,7 +55,7 @@ const getNextMonday = (): string => {
   return formatDate(d);
 };
 
-const pickRandom = (arr: string[]) => arr[Math.floor(Math.random() * arr.length)];
+const pickRandom = <T,>(arr: T[]): T => arr[Math.floor(Math.random() * arr.length)];
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -213,7 +213,8 @@ export default function Habitos({ habits, setHabits, habitLogs, setHabitLogs }: 
       setHabitLogs(prev => prev.filter(l => !(l.habitId === habitId && l.date === dateStr)));
     } else {
       setHabitLogs(prev => [...prev, { id: generateId(), habitId, date: dateStr }]);
-      toast.success(pickRandom(HABIT_DONE_MSGS));
+      const msg = pickRandom(HABIT_DONE_MSGS);
+      toast(`${msg.emoji} ${msg.text}`, { duration: 2000 });
     }
   };
 

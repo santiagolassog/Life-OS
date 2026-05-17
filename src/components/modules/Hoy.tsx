@@ -207,7 +207,16 @@ const Hoy: React.FC<HoyProps> = ({
       setHabitLogs(prev => prev.filter(l => !(l.habitId === habitId && l.date === todayStr)));
     } else {
       setHabitLogs(prev => [...prev, { id: generateId(), habitId, date: todayStr }]);
-      toast.success('¡Hábito completado!');
+      const emojis = ['🔥', '💪', '✅', '🚀', '⭐'];
+      const msgs = [
+        '¡Un día más sumado a tu identidad!',
+        '¡La consistencia es tu superpoder!',
+        '¡Otro hábito ganado!',
+        '¡Sigue construyendo tu mejor versión!',
+        '¡Excelente! La disciplina lo es todo.',
+      ];
+      const idx = Math.floor(Math.random() * msgs.length);
+      toast(`${emojis[idx]} ${msgs[idx]}`, { duration: 2000 });
     }
   };
 

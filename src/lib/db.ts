@@ -61,6 +61,7 @@ const rowToEvent = (row: Record<string, unknown>): EventEntry => ({
   completed: row.completed as boolean,
   energy:    row.energy != null ? (row.energy as number) : undefined,
   impact:    row.impact != null ? (row.impact as number) : undefined,
+  habitId:   row.habit_id != null ? (row.habit_id as string) : undefined,
 })
 
 const rowToCategory = (row: Record<string, unknown>): Category => ({
@@ -169,6 +170,7 @@ const eventToDb = (e: EventEntry & { dateId: string }) => ({
   completed:   e.completed,
   energy:      e.energy ?? null,
   impact:      e.impact ?? null,
+  habit_id:    e.habitId ?? null,
 })
 
 const categoryToDb = (c: Category) => ({

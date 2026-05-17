@@ -941,7 +941,7 @@ const App = () => {
       setModalData({
         id: generateId(), dateId,
         startHour: h, startMin: m, endHour: endH, endMin: m,
-        category: Object.keys(categories)[0] || '', task: '', isEditing: false, mode: 'edit', completed: false, selectedDays: [], energy: undefined, impact: undefined
+        category: Object.keys(categories)[0] || '', task: '', isEditing: false, mode: 'edit', completed: false, selectedDays: [], energy: undefined, impact: undefined, habitId: undefined
       });
     }
   };
@@ -993,7 +993,7 @@ const App = () => {
 
   const saveActivity = () => {
     if (!modalData) return;
-    const { dateId, id, startHour, startMin, endHour, endMin, category, task, mode, selectedDays, completed, energy, impact } = modalData;
+    const { dateId, id, startHour, startMin, endHour, endMin, category, task, mode, selectedDays, completed, energy, impact, habitId } = modalData;
     const startStr = `${startHour}:${startMin}`;
     const endStr = `${endHour}:${endMin}`;
 
@@ -1014,15 +1014,26 @@ const App = () => {
           if (!nextEvents[dId]) nextEvents[dId] = [];
           nextEvents[dId].push({
             id: generateId(),
-            startHour: startStr, endHour: endStr, category, task: String(task), completed: mode === 'edit' ? !!completed : false
+            startHour: startStr, endHour: endStr, category, task: String(task), completed: mode === 'edit' ? !!completed : false, habitId: habitId || undefined
           });
         });
       } else {
         if (!nextEvents[dateId]) nextEvents[dateId] = [];
-        nextEvents[dateId].push({ id, startHour: startStr, endHour: endStr, category, task: String(task), completed: !!completed, energy: energy || undefined, impact: impact || undefined });
+        nextEvents[dateId].push({ id, startHour: startStr, endHour: endStr, category, task: String(task), completed: !!completed, energy: energy || undefined, impact: impact || undefined, habitId: habitId || undefined });
       }
       return nextEvents;
     });
+
+    // Auto-check hábito si la actividad está completada y tiene habitId
+    if (completed && habitId) {
+      const targetDate = dateId;
+      const alreadyLogged = habitLogs.some(l => l.habitId === habitId && l.date === targetDate);
+      if (!alreadyLogged) {
+        setHabitLogs(prev => [...prev, { id: generateId(), habitId, date: targetDate }]);
+        toast('🔗 Hábito marcado automáticamente', { duration: 2000 });
+      }
+    }
+
     setModalData(null);
   };
 
@@ -1812,6 +1823,8 @@ const App = () => {
               finCategories={finCategories}
               goals={goals}
               tasks={tasks}
+              habits={habits}
+              habitLogs={habitLogs}
               currentDate={currentDate}
               onDownloadReport={downloadReport}
               isExporting={isExporting}
@@ -2161,6 +2174,36 @@ const App = () => {
                     );
                   })()}
                 </div>
+
+                {/* Asociar hábito (opcional) */}
+                {habits.length > 0 && (
+                  <div className="space-y-2.5">
+                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block">
+                      Asociar a hábito <span className="text-slate-300 normal-case tracking-normal">(opcional)</span>
+                    </label>
+                    <div className="flex flex-wrap gap-2">
+                      {habits
+                        .filter(h => !modalData.dateId || h.startDate <= modalData.dateId)
+                        .map(h => {
+                          const isSelected = modalData.habitId === h.id;
+                          return (
+                            <button
+                              key={h.id}
+                              onClick={() => setModalData({...modalData, habitId: isSelected ? undefined : h.id})}
+                              className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-[11px] font-black border-2 transition-all active:scale-95 ${
+                                isSelected
+                                  ? `${h.color} border-transparent text-white shadow-md`
+                                  : 'bg-white border-slate-100 text-slate-500 hover:border-indigo-200'
+                              }`}
+                            >
+                              <Flame size={12} />
+                              {h.name}
+                            </button>
+                          );
+                        })}
+                    </div>
+                  </div>
+                )}
 
                 {/* Date + Time — unified card */}
                 <div className="space-y-2.5">

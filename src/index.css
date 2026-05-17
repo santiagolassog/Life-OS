@@ -137,6 +137,61 @@ All colors MUST be HSL.
   background: rgba(99, 102, 241, 0.4);
 }
 
+/* ── Sonner toast: auto-width + animated gradient ────────────────────────── */
+[data-sonner-toaster] [data-sonner-toast] {
+  --width: fit-content !important;
+  width: fit-content !important;
+  min-width: 0 !important;
+}
+
+.toast-shimmer {
+  background: linear-gradient(135deg, #312e81, #6366f1, #8b5cf6, #6366f1, #312e81);
+  background-size: 300% 300%;
+  animation: toast-gradient 3s ease infinite, toast-enter 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+  position: relative;
+  overflow: hidden;
+}
+
+.toast-shimmer::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    105deg,
+    transparent 40%,
+    rgba(255, 255, 255, 0.15) 45%,
+    rgba(255, 255, 255, 0.25) 50%,
+    rgba(255, 255, 255, 0.15) 55%,
+    transparent 60%
+  );
+  background-size: 200% 100%;
+  animation: toast-shine 2.5s ease-in-out infinite;
+  border-radius: inherit;
+  pointer-events: none;
+}
+
+@keyframes toast-gradient {
+  0%, 100% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+}
+
+@keyframes toast-shine {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+@keyframes toast-enter {
+  0% { opacity: 0; transform: translateY(8px) scale(0.95); }
+  100% { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+/* Mobile: subir toast por encima del bottom nav */
+@media (max-width: 767px) {
+  [data-sonner-toaster] {
+    bottom: 140px !important;
+  }
+}
+
 /* ── Ocultar scrollbar en listas horizontales ────────────────────────────── */
 .scrollbar-hide {
   scrollbar-width: none;

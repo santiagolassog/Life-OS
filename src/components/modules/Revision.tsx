@@ -5,9 +5,9 @@ import {
 import {
   BarChart3, Clock, DollarSign, Lightbulb,
   CheckCircle2, AlertTriangle,
-  ChevronLeft, ChevronRight, Zap, Star, Download
+  ChevronLeft, ChevronRight, Zap, Star, Download, Flame
 } from 'lucide-react';
-import type { Events, Categories, Transaction, FinCategory, Goal, Task } from '../../types';
+import type { Events, Categories, Transaction, FinCategory, Goal, Task, Habit, HabitLog } from '../../types';
 import { LOAN_IN_CAT_ID, LOAN_OUT_CAT_ID } from '../../types';
 import { getWeekId, getWeekDays, formatDateId, GRID_HOURS, fmtCurrency as fmt } from '../../lib/utils';
 
@@ -27,6 +27,8 @@ interface RevisionProps {
   finCategories: FinCategory[];
   goals: Goal[];
   tasks: Task[];
+  habits: Habit[];
+  habitLogs: HabitLog[];
   currentDate: Date;
   onDownloadReport: () => void;
   isExporting: boolean;
@@ -35,7 +37,7 @@ interface RevisionProps {
 type Range = 'week' | 'month' | 'year';
 
 const Revision: React.FC<RevisionProps> = ({
-  events, categories, transactions, finCategories, goals, tasks, currentDate,
+  events, categories, transactions, finCategories, goals, tasks, habits, habitLogs, currentDate,
   onDownloadReport, isExporting
 }) => {
   const [range, setRange] = useState<Range>('week');
@@ -197,6 +199,62 @@ const Revision: React.FC<RevisionProps> = ({
 
     return { total, inProgress, byCatArr, maxCount };
   }, [tasks, isInRange, categories]);
+
+  // ── Habit stats ──────────────────────────────────────────────────────────
+  const habitStats = useMemo(() => {
+    // Get all dates in the period
+    const periodDates: string[] = [];
+    if (range === 'week') {
+      weekDays.forEach(d => periodDates.push(formatDateId(d)));
+    } else if (range === 'month') {
+      const y = viewDate.getFullYear(), m = viewDate.getMonth();
+      const daysInMonth = new Date(y, m + 1, 0).getDate();
+      for (let d = 1; d <= daysInMonth; d++) {
+        periodDates.push(formatDateId(new Date(y, m, d)));
+      }
+    } else {
+      const y = viewDate.getFullYear();
+      for (let m = 0; m < 12; m++) {
+        const daysInMonth = new Date(y, m + 1, 0).getDate();
+        for (let d = 1; d <= daysInMonth; d++) {
+          periodDates.push(formatDateId(new Date(y, m, d)));
+        }
+      }
+    }
+
+    const today = formatDateId(new Date());
+    const activeDates = periodDates.filter(d => d <= today);
+
+    // Per-habit stats
+    const perHabit = habits.map(h => {
+      const relevantDates = activeDates.filter(d => d >= h.startDate);
+      const logsInPeriod = habitLogs.filter(l => l.habitId === h.id && relevantDates.includes(l.date));
+      const doneCount = logsInPeriod.length;
+
+      // Target for period: target days per week × number of weeks
+      const weeksInPeriod = Math.max(1, relevantDates.length / 7);
+      const periodTarget = Math.round(h.target * weeksInPeriod);
+      const pct = periodTarget > 0 ? Math.min(100, Math.round((doneCount / periodTarget) * 100)) : 0;
+
+      // Current streak
+      let streak = 0;
+      const sortedDates = [...activeDates].filter(d => d >= h.startDate).sort().reverse();
+      for (const d of sortedDates) {
+        if (habitLogs.some(l => l.habitId === h.id && l.date === d)) streak++;
+        else break;
+      }
+
+      return { id: h.id, name: h.name, color: h.color, doneCount, periodTarget, pct, streak };
+    });
+
+    const activeHabits = perHabit.filter(h => h.periodTarget > 0);
+    const totalDone = activeHabits.reduce((s, h) => s + h.doneCount, 0);
+    const totalTarget = activeHabits.reduce((s, h) => s + h.periodTarget, 0);
+    const overallPct = totalTarget > 0 ? Math.round((totalDone / totalTarget) * 100) : 0;
+    const bestStreak = activeHabits.reduce((best, h) => Math.max(best, h.streak), 0);
+
+    return { perHabit: activeHabits, overallPct, totalDone, totalTarget, bestStreak, count: habits.length };
+  }, [habits, habitLogs, range, weekDays, viewDate]);
 
   const insights = useMemo(() => {
     const list: Array<{ type: 'success' | 'warning' | 'danger' | 'info'; text: string }> = [];
@@ -600,6 +658,52 @@ const Revision: React.FC<RevisionProps> = ({
                 <p className="text-[9px] text-blue-400 font-bold">{taskStats.inProgress} en progreso</p>
               )}
             </div>
+
+            {/* Hábitos */}
+            <div className="space-y-2 mt-1">
+              <div className="flex items-center justify-between">
+                <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-1">
+                  <Flame size={10} className="text-indigo-500" /> Hábitos
+                </p>
+                {habitStats.count > 0 && (
+                  <span className={`text-sm font-black ${habitStats.overallPct >= 70 ? 'text-emerald-600' : habitStats.overallPct >= 40 ? 'text-amber-500' : 'text-red-500'}`}>
+                    {habitStats.overallPct}%
+                  </span>
+                )}
+              </div>
+              {habitStats.perHabit.length > 0 ? (
+                <>
+                  <div className="w-full h-2 bg-white/60 rounded-full overflow-hidden">
+                    <div
+                      className={`h-full rounded-full transition-all duration-700 ${habitStats.overallPct >= 70 ? 'bg-emerald-500' : habitStats.overallPct >= 40 ? 'bg-amber-400' : 'bg-red-400'}`}
+                      style={{ width: `${habitStats.overallPct}%` }}
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    {habitStats.perHabit.map(h => (
+                      <div key={h.id} className="flex items-center gap-2 min-w-0">
+                        <div className="w-1.5 h-1.5 rounded-full shrink-0 bg-indigo-400" />
+                        <span className="text-[10px] font-bold text-slate-600 truncate flex-1">{h.name}</span>
+                        <span className={`text-[10px] font-black tabular-nums shrink-0 ${h.pct >= 70 ? 'text-emerald-600' : h.pct >= 40 ? 'text-amber-500' : 'text-red-500'}`}>
+                          {h.doneCount}/{h.periodTarget}
+                        </span>
+                        <span className="text-[9px] font-bold text-slate-400 shrink-0 w-8 text-right">{h.pct}%</span>
+                      </div>
+                    ))}
+                  </div>
+                  {habitStats.bestStreak > 0 && (
+                    <div className="bg-white/60 rounded-xl px-3 py-2 flex items-center gap-2">
+                      <span className="text-sm leading-none">🔥</span>
+                      <span className="text-[10px] font-bold text-slate-500">
+                        Mejor racha: <span className="font-black text-emerald-600">{habitStats.bestStreak} días</span>
+                      </span>
+                    </div>
+                  )}
+                </>
+              ) : (
+                <p className="text-[10px] text-emerald-400 italic font-bold">Sin hábitos activos en este período</p>
+              )}
+            </div>
           </div>
 
           {/* R — REVISAR */}
@@ -735,46 +839,6 @@ const Revision: React.FC<RevisionProps> = ({
                   <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mt-1">Impacto medio</p>
                 </div>
               </div>
-
-              {/* Barras por categoría */}
-              {energyStats.catStats.length > 0 && (
-                <div className="bg-white rounded-3xl border border-slate-100 shadow-sm p-5 space-y-4">
-                  <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Energía vs Impacto por área</p>
-                  {energyStats.catStats.map(cat => {
-                    const badge =
-                      cat.quadrant === 'leverage' ? { text: '🌟 Leverage',     bg: 'bg-emerald-100', color: 'text-emerald-700' } :
-                      cat.quadrant === 'worthit'  ? { text: '💪 Vale la pena', bg: 'bg-blue-100',    color: 'text-blue-700'    } :
-                      cat.quadrant === 'drain'    ? { text: '🔥 Te drena',     bg: 'bg-red-100',     color: 'text-red-700'     } :
-                                                    { text: '😴 Ruido',        bg: 'bg-slate-100',   color: 'text-slate-500'   };
-                    return (
-                      <div key={cat.id} className="space-y-2">
-                        <div className="flex items-center justify-between gap-2">
-                          <div className="flex items-center gap-2 min-w-0">
-                            <div className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: cat.color }} />
-                            <span className="text-xs font-black text-slate-700 truncate">{cat.name}</span>
-                            <span className={`text-[9px] font-black px-1.5 py-0.5 rounded-full shrink-0 ${badge.bg} ${badge.color}`}>{badge.text}</span>
-                          </div>
-                          <span className="text-[10px] text-slate-400 font-bold shrink-0">{cat.hours}h</span>
-                        </div>
-                        <div className="space-y-1">
-                          <div className="flex items-center gap-2">
-                            <span className="text-[9px] text-orange-400 font-black w-16 shrink-0">E: {cat.avgEnergy}/5</span>
-                            <div className="flex-1 h-2 bg-orange-50 rounded-full overflow-hidden">
-                              <div className="h-full rounded-full bg-gradient-to-r from-orange-300 to-orange-500 transition-all duration-700" style={{ width: `${(cat.avgEnergy / 5) * 100}%` }} />
-                            </div>
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <span className="text-[9px] text-emerald-500 font-black w-16 shrink-0">I: {cat.avgImpact}/5</span>
-                            <div className="flex-1 h-2 bg-emerald-50 rounded-full overflow-hidden">
-                              <div className="h-full rounded-full bg-gradient-to-r from-emerald-300 to-emerald-500 transition-all duration-700" style={{ width: `${(cat.avgImpact / 5) * 100}%` }} />
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
 
               {/* Cuadrantes 80/20 */}
               <div className="grid grid-cols-2 gap-3">
