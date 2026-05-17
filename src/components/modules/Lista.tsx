@@ -50,6 +50,10 @@ function daysBetween(a: string, b: string): number {
   return Math.max(0, Math.round((new Date(b).getTime() - new Date(a).getTime()) / 86400000));
 }
 
+function hoursBetween(a: string, b: string): number {
+  return Math.max(0, Math.round((new Date(b).getTime() - new Date(a).getTime()) / 3600000));
+}
+
 /**
  * Parsea un deadline "YYYY-MM-DD" como mediodía local para evitar que
  * la interpretación UTC-midnight produzca "ayer" en zonas UTC negativas.
@@ -165,7 +169,8 @@ const Lista: React.FC<ListaProps> = ({
     (a.sortOrder - b.sortOrder) || a.createdAt.localeCompare(b.createdAt);
 
   // Semana actual (para filtrar "Hechas" en el tablero)
-  const currentWeekId = useMemo(() => getWeekId(new Date()), []);
+  // Se recalcula cuando cambia currentDate (cada vez que abre la app con una nueva semana)
+  const currentWeekId = useMemo(() => getWeekId(currentDate), [currentDate]);
 
   const tasksByStatus = useMemo(() => ({
     backlog:    filteredTasks.filter(t => t.status === 'backlog').sort(orderSort),
@@ -208,7 +213,7 @@ const Lista: React.FC<ListaProps> = ({
         ...t,
         status: newStatus,
         startedAt:   newStatus === 'inprogress' && !t.startedAt ? today : t.startedAt,
-        completedAt: newStatus === 'done'        ? today : (newStatus !== 'done' ? undefined : t.completedAt),
+        completedAt: newStatus === 'done' && !t.completedAt ? today : t.completedAt,
       };
     }));
     if (newStatus === 'done') {
@@ -305,10 +310,18 @@ const Lista: React.FC<ListaProps> = ({
       ? (over.id as Task['status'])
       : (overTask?.status ?? activeTask.status);
 
+    const today = getLocalISODate();
+
     setTasks(prev => {
-      let updated = prev.map(t =>
-        t.id === activeTask.id ? { ...t, status: targetStatus } : t
-      );
+      let updated = prev.map(t => {
+        if (t.id !== activeTask.id) return t;
+        return {
+          ...t,
+          status: targetStatus,
+          startedAt:   targetStatus === 'inprogress' && !t.startedAt ? today : t.startedAt,
+          completedAt: targetStatus === 'done' && !t.completedAt ? today : t.completedAt,
+        };
+      });
 
       if (overTask) {
         const col     = updated.filter(t => t.status === targetStatus).sort(orderSort);
@@ -523,7 +536,7 @@ const Lista: React.FC<ListaProps> = ({
         {/* ═══ HISTORIAL ═══ */}
         {subView === 'historial' && (
           <HistorialView
-            tasks={historicalDone}
+            tasks={tasks}
             categories={categories}
           />
         )}
@@ -970,19 +983,40 @@ const ResumenView: React.FC<ResumenViewProps> = ({ tasks, categories, currentDat
     setViewDate(d);
   }
 
+  // Convierte Date a YYYY-MM-DD en LOCAL time (no UTC)
+  function dateToString(date: Date): string {
+    const y = date.getFullYear();
+    const m = String(date.getMonth() + 1).padStart(2, '0');
+    const d = String(date.getDate()).padStart(2, '0');
+    return `${y}-${m}-${d}`;
+  }
+
+  function getWeekRange(date: Date): { start: string; end: string } {
+    const d = new Date(date);
+    d.setDate(d.getDate() - ((d.getDay() + 6) % 7));
+    d.setHours(0, 0, 0, 0);
+    const start = dateToString(d);
+    const end = new Date(d);
+    end.setDate(end.getDate() + 6);
+    const endStr = dateToString(end);
+    return { start, end: endStr };
+  }
+
   function inRange(dateStr?: string): boolean {
     if (!dateStr) return false;
-    const [y, m, d] = dateStr.split('-').map(Number);
-    const date = new Date(y, m - 1, d);
+
     if (range === 'week') {
-      const mon = new Date(viewDate);
-      mon.setDate(viewDate.getDate() - ((viewDate.getDay() + 6) % 7));
-      mon.setHours(0,0,0,0);
-      const sun = new Date(mon); sun.setDate(mon.getDate() + 6);
-      return date >= mon && date <= sun;
+      const { start, end } = getWeekRange(viewDate);
+      return dateStr >= start && dateStr <= end;
     }
-    if (range === 'month') return y === viewDate.getFullYear() && m - 1 === viewDate.getMonth();
-    return y === viewDate.getFullYear();
+    if (range === 'month') {
+      const [y, m] = dateStr.split('-');
+      const viewY = viewDate.getFullYear().toString();
+      const viewM = String(viewDate.getMonth() + 1).padStart(2, '0');
+      return y === viewY && m === viewM;
+    }
+    const year = dateStr.split('-')[0];
+    return year === viewDate.getFullYear().toString();
   }
 
   const periodLabel = useMemo(() => {
@@ -1026,14 +1060,28 @@ const ResumenView: React.FC<ResumenViewProps> = ({ tasks, categories, currentDat
     return { periodDone, periodStarted, totalInPeriod, avgDays, byCatArr, maxCount };
   }, [tasks, range, viewDate, categories]);
 
-  // Recent completed tasks
-  const recentDone = useMemo(() =>
-    tasks
-      .filter(t => t.status === 'done' && t.completedAt)
-      .sort((a, b) => (b.completedAt ?? '').localeCompare(a.completedAt ?? ''))
-      .slice(0, 5),
-    [tasks]
-  );
+  // Tasks completed in this period, grouped by category
+  const completedByCategory = useMemo(() => {
+    const periodTasks = stats.periodDone.sort((a, b) =>
+      (b.completedAt ?? '').localeCompare(a.completedAt ?? '')
+    );
+
+    const grouped: Record<string, typeof periodTasks> = {};
+    periodTasks.forEach(t => {
+      const catId = t.categoryId ?? '__none__';
+      if (!grouped[catId]) grouped[catId] = [];
+      grouped[catId].push(t);
+    });
+
+    return Object.entries(grouped)
+      .map(([catId, tasks]) => ({
+        catId,
+        label: catId === '__none__' ? 'Sin área' : (categories[catId]?.label ?? catId),
+        color: catId === '__none__' ? '#94a3b8' : (categories[catId]?.color ?? '#94a3b8'),
+        tasks,
+      }))
+      .sort((a, b) => b.tasks.length - a.tasks.length);
+  }, [stats.periodDone, categories]);
 
   return (
     <div className="space-y-5">
@@ -1122,33 +1170,50 @@ const ResumenView: React.FC<ResumenViewProps> = ({ tasks, categories, currentDat
         </div>
       </div>
 
-      {/* Recent completions */}
-      {recentDone.length > 0 && (
-        <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-5">
-          <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-3">Últimas completadas</p>
-          <div className="space-y-2">
-            {recentDone.map(task => {
-              const cat = task.categoryId ? categories[task.categoryId] : null;
-              const days = task.startedAt && task.completedAt ? daysBetween(task.startedAt, task.completedAt) : null;
-              return (
-                <div key={task.id} className="flex items-center gap-3 py-2 border-b border-slate-50 last:border-0">
-                  <CheckCircle2 size={14} className="text-emerald-500 shrink-0" />
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-bold text-slate-700 truncate">{task.title}</p>
-                    {cat && <p className="text-[10px] font-bold truncate" style={{ color: cat.color }}>{cat.label}</p>}
-                  </div>
-                  <div className="text-right shrink-0">
-                    {days !== null && <p className="text-[10px] font-black text-slate-400">{days}d</p>}
-                    {task.completedAt && (
-                      <p className="text-[9px] text-slate-300 font-bold">
-                        {new Date(task.completedAt + 'T12:00:00').toLocaleDateString('es-ES', { day: '2-digit', month: 'short' })}
-                      </p>
-                    )}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
+      {/* Completed tasks by category */}
+      {completedByCategory.length > 0 ? (
+        <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-5 space-y-5">
+          <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">
+            Tareas completadas ({stats.periodDone.length})
+          </p>
+          {completedByCategory.map(({ catId, label, color, tasks }) => (
+            <div key={catId} className="space-y-2">
+              <div className="flex items-center gap-2 px-1">
+                <div className="w-2 h-2 rounded-full" style={{ backgroundColor: color }} />
+                <p className="text-[10px] font-bold text-slate-600 uppercase tracking-wide">{label}</p>
+                <span className="ml-auto text-[9px] font-black text-slate-400">{tasks.length}</span>
+              </div>
+              <div className="space-y-1 pl-1">
+                {tasks.map(task => {
+                  const hours = task.startedAt && task.completedAt ? hoursBetween(task.startedAt, task.completedAt) : null;
+                  return (
+                    <div key={task.id} className="flex items-center gap-2 py-2 text-[12px]">
+                      <CheckCircle2 size={12} className="text-emerald-500 shrink-0" />
+                      <p className="flex-1 font-medium text-slate-700 truncate">{task.title}</p>
+                      <div className="flex items-center gap-2 shrink-0">
+                        {hours !== null && (
+                          <div className="flex items-center gap-1">
+                            <Clock size={10} className="text-violet-400" />
+                            <span className="font-bold text-violet-600 tabular-nums min-w-[25px] text-right">{hours}h</span>
+                          </div>
+                        )}
+                        {task.completedAt && (
+                          <span className="text-slate-400 font-bold tabular-nums min-w-[45px] text-right text-[10px]">
+                            {new Date(task.completedAt + 'T12:00:00').toLocaleDateString('es-ES', { day: '2-digit', month: 'short' })}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <div className="bg-slate-50 rounded-2xl border border-dashed border-slate-200 p-8 text-center">
+          <CheckCircle2 size={32} className="mx-auto text-slate-200 mb-3" />
+          <p className="text-sm font-bold text-slate-400">Sin tareas completadas en este período</p>
         </div>
       )}
     </div>
@@ -1509,22 +1574,27 @@ interface HistorialViewProps {
 }
 
 const HistorialView: React.FC<HistorialViewProps> = ({ tasks, categories }) => {
-  // Agrupar por semana (weekId desc)
+  // Filtrar TODAS las tareas completadas y agrupar por semana (weekId desc)
+  const allCompleted = useMemo(() =>
+    tasks.filter(t => t.status === 'done' && t.completedAt),
+    [tasks]
+  );
+
   const byWeek = useMemo(() => {
     const groups: Record<string, Task[]> = {};
-    tasks.forEach(t => {
+    allCompleted.forEach(t => {
       const wId = getWeekId(new Date(t.completedAt! + 'T12:00:00'));
       if (!groups[wId]) groups[wId] = [];
       groups[wId].push(t);
     });
     return Object.entries(groups).sort(([a], [b]) => b.localeCompare(a));
-  }, [tasks]);
+  }, [allCompleted]);
 
-  if (tasks.length === 0) return (
+  if (allCompleted.length === 0) return (
     <div className="bg-white rounded-3xl border border-dashed border-slate-200 p-12 text-center">
       <CheckCircle2 size={40} className="mx-auto text-slate-200 mb-3" />
-      <p className="text-sm font-bold text-slate-400">Sin tareas completadas en semanas anteriores</p>
-      <p className="text-xs text-slate-300 mt-1">Las tareas hechas esta semana aparecerán aquí la próxima semana</p>
+      <p className="text-sm font-bold text-slate-400">Sin tareas completadas aún</p>
+      <p className="text-xs text-slate-300 mt-1">Las tareas que completes aparecerán aquí</p>
     </div>
   );
 
@@ -1544,9 +1614,7 @@ const HistorialView: React.FC<HistorialViewProps> = ({ tasks, categories }) => {
               {weekTasks.map(task => {
                 const cat = task.categoryId ? categories[task.categoryId] : null;
                 const pri = PRIORITY_CONFIG[task.priority];
-                const elapsed = task.startedAt && task.completedAt
-                  ? Math.max(0, Math.round((new Date(task.completedAt + 'T12:00:00').getTime() - new Date(task.startedAt + 'T12:00:00').getTime()) / 86400000))
-                  : null;
+                const elapsed = task.startedAt && task.completedAt ? hoursBetween(task.startedAt, task.completedAt) : null;
 
                 return (
                   <div key={task.id} className="flex items-center gap-3 bg-white rounded-2xl border border-slate-100 shadow-sm p-4">
@@ -1562,7 +1630,7 @@ const HistorialView: React.FC<HistorialViewProps> = ({ tasks, categories }) => {
                       {elapsed !== null && (
                         <div className="flex items-center gap-1 justify-end">
                           <Clock size={10} className="text-violet-400" />
-                          <span className="text-[11px] font-black text-violet-600">{elapsed}d</span>
+                          <span className="text-[11px] font-black text-violet-600">{elapsed}h</span>
                         </div>
                       )}
                       {task.completedAt && (
