@@ -254,7 +254,10 @@ const App = () => {
   const [catModal, setCatModal] = useState(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [draggedItem, setDraggedItem] = useState(null);
-  const [mobileDayOffset, setMobileDayOffset] = useState(new Date().getDay() || 1);
+  const [mobileDayOffset, setMobileDayOffset] = useState(() => {
+    const day = new Date().getDay();
+    return day === 0 ? 7 : day;
+  });
   const [windowWidth, setWindowWidth] = useState(typeof window !== 'undefined' ? window.innerWidth : 1200);
   const [newPreset, setNewPreset] = useState("");
   const [reportRange, setReportRange] = useState('week');
@@ -1592,23 +1595,29 @@ const App = () => {
               )}
 
               <div ref={scrollContainerRef} className="flex-1 overflow-auto custom-scrollbar scroll-smooth">
-                <div className="mt-3 md:mt-6 px-3 pb-3 md:px-6 md:pb-6">
-                  <div className="inline-block min-w-full bg-white rounded-[2.5rem] shadow-sm border border-slate-200 relative overflow-hidden">
-                    <div className={`grid ${isMobile ? 'grid-cols-[60px_1fr]' : 'grid-cols-[80px_repeat(7,1fr)]'} sticky top-0 z-[50] bg-indigo-950 text-white`}>
-                      {!isMobile && <div className="p-4 border-r border-white/10 flex items-center justify-center text-indigo-300 font-black text-[9px] tracking-[0.2em] bg-indigo-950 sticky left-0 z-[51]">HORARIO</div>}
-                      {weekDays.map((date) => {
-                        const isVisible = !isMobile || (formatDateId(date) === formatDateId(currentVisibleDays[0]));
-                        if (!isVisible) return null;
-                        const isToday = date.toDateString() === new Date().toDateString();
-                        return (
-                          <div key={formatDateId(date)} className={`p-4 text-center border-r border-white/5 flex flex-col gap-1 bg-indigo-950 ${isToday ? 'bg-indigo-800/40' : ''}`}>
-                            <span className="text-[8px] font-black uppercase tracking-widest text-indigo-300 leading-none">{date.toLocaleDateString('es-ES', { weekday: 'long' })}</span>
-                            <span className={`text-xl font-black font-sans ${isToday ? 'text-indigo-400' : 'text-white'}`}>{date.getDate()}</span>
+                <div className={`${isMobile ? 'px-3' : 'px-6'}`}>
+                  <div className="min-w-full relative">
+                    {!isMobile && (
+                      <div className="sticky top-0 z-50 bg-slate-50 pt-3">
+                        <div className="bg-white rounded-t-[2.5rem] shadow-sm border-x border-t border-slate-200 overflow-hidden">
+                          <div className={`grid ${isMobile ? 'grid-cols-[60px_1fr]' : 'grid-cols-[80px_repeat(7,1fr)]'} bg-indigo-950 text-white`}>
+                            {!isMobile && <div className="p-4 border-r border-white/10 flex items-center justify-center text-indigo-300 font-black text-[9px] tracking-[0.2em] bg-indigo-950 sticky left-0 z-[51]">HORARIO</div>}
+                            {weekDays.map((date) => {
+                              const isVisible = !isMobile || (formatDateId(date) === formatDateId(currentVisibleDays[0]));
+                              if (!isVisible) return null;
+                              const isToday = date.toDateString() === new Date().toDateString();
+                              return (
+                                <div key={formatDateId(date)} className={`p-4 text-center border-r border-white/5 flex flex-col gap-1 bg-indigo-950 ${isToday ? 'bg-indigo-800/40' : ''}`}>
+                                  <span className="text-[8px] font-black uppercase tracking-widest text-indigo-300 leading-none">{date.toLocaleDateString('es-ES', { weekday: 'long' })}</span>
+                                  <span className={`text-xl font-black font-sans ${isToday ? 'text-indigo-400' : 'text-white'}`}>{date.getDate()}</span>
+                                </div>
+                              );
+                            })}
                           </div>
-                        );
-                      })}
-                    </div>
-
+                        </div>
+                      </div>
+                    )}
+                    <div className={`bg-white ${!isMobile ? 'rounded-b-[2.5rem] border-x border-b' : 'mt-3 rounded-[2.5rem] border'} shadow-sm border-slate-200 overflow-hidden`}>
                     <div className={`grid ${isMobile ? 'grid-cols-[60px_1fr]' : 'grid-cols-[80px_repeat(7,1fr)]'} relative`}>
                       <div className={`flex flex-col border-r bg-slate-50/80 sticky left-0 z-[45] md:bg-slate-100/90 backdrop-blur-sm`}>
                         {GRID_HOURS.slice(0, -1).map((hour) => (
@@ -1622,7 +1631,7 @@ const App = () => {
                         const dateId = formatDateId(date);
                         const dayEvents = events[dateId] || [];
                         return (
-                          <div key={dateId} className="border-r h-full relative min-w-[140px]" onDragOver={(e) => e.preventDefault()} onDrop={(e) => handleDrop(e, dateId, draggedItem?.startHour)}>
+                          <div key={dateId} className="border-r h-full relative" onDragOver={(e) => e.preventDefault()} onDrop={(e) => handleDrop(e, dateId, draggedItem?.startHour)}>
                             <div className="absolute inset-0 z-0">
                               {GRID_HOURS.slice(0, -1).filter(h => h.endsWith(':00') || h.endsWith(':30')).map((hour) => (
                                 <div key={hour} onClick={() => handleOpenModal(date, hour)} style={{ height: `${FIELD_HEIGHT}px` }} className={`transition-colors cursor-pointer flex items-center justify-center group/cell border-slate-100 ${hour.endsWith(':30') ? 'border-b border-dashed opacity-30' : 'border-b'}`}><Plus size={14} className="text-indigo-200 opacity-0 group-hover/cell:opacity-100 scale-75" /></div>
@@ -1655,6 +1664,7 @@ const App = () => {
                           </div>
                         );
                       })}
+                    </div>
                     </div>
                   </div>
                 </div>

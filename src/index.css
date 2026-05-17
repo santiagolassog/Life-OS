@@ -152,3 +152,8 @@ All colors MUST be HSL.
 .no-scrollbar::-webkit-scrollbar {
   display: none;
 }
+
+/* ── Ensure scrollbar width consistency for sticky headers ─────────────────── */
+.custom-scrollbar {
+  scrollbar-gutter: stable;
+}
