@@ -454,10 +454,10 @@ const Hoy: React.FC<HoyProps> = ({
                   </span>
                 </div>
 
-                <div className="grid grid-cols-3 gap-3">
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 md:gap-3">
                   {/* Actividades */}
-                  <div className="text-center">
-                    <p className={`text-2xl font-black ${
+                  <div className="text-center md:border-r-0 border-b md:border-b-0 border-indigo-100 pb-4 md:pb-0">
+                    <p className={`text-2xl md:text-2xl font-black ${
                       weeklyActivity.rate === null ? 'text-slate-300' :
                       weeklyActivity.rate >= 70 ? 'text-emerald-600' :
                       weeklyActivity.rate >= 40 ? 'text-amber-500' : 'text-red-500'
@@ -468,8 +468,8 @@ const Hoy: React.FC<HoyProps> = ({
                   </div>
 
                   {/* Objetivos */}
-                  <div className="text-center border-x border-indigo-100">
-                    <p className={`text-2xl font-black ${
+                  <div className="text-center md:border-x border-indigo-100 md:px-3 pb-4 md:pb-0 md:border-b-0 border-b">
+                    <p className={`text-2xl md:text-2xl font-black ${
                       goalStats.total === 0 ? 'text-slate-300' :
                       goalStats.rate >= 70 ? 'text-emerald-600' :
                       goalStats.rate >= 40 ? 'text-amber-500' : 'text-red-500'
@@ -481,7 +481,7 @@ const Hoy: React.FC<HoyProps> = ({
 
                   {/* Balance */}
                   <div className="text-center">
-                    <p className={`text-2xl font-black truncate ${
+                    <p className={`text-2xl md:text-2xl font-black ${
                       finStats.income === 0 && finStats.expenses === 0 ? 'text-slate-300' :
                       finStats.balance >= 0 ? 'text-emerald-600' : 'text-red-500'
                     }`}>
