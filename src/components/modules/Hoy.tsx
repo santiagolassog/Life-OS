@@ -274,14 +274,14 @@ const Hoy: React.FC<HoyProps> = ({
               <div className="absolute top-0 right-0 w-48 h-48 bg-indigo-500/10 rounded-full blur-3xl pointer-events-none" />
 
               {/* Left: Greeting */}
-              <div className="space-y-1 relative z-10">
-                <div className="flex items-center gap-2">
-                  <GreetIcon size={18} className="text-indigo-300" />
-                  <h2 className="text-lg md:text-xl font-black text-white">
+              <div className="space-y-0.5 relative z-10">
+                <div className="flex items-center gap-1.5">
+                  <GreetIcon size={16} className="text-indigo-300 shrink-0" />
+                  <h2 className="text-base md:text-xl font-black text-white leading-tight">
                     {greetText}{userName ? <>, <span className="capitalize">{userName}</span></> : ''}
                   </h2>
                 </div>
-                <p className="text-[11px] text-indigo-300 font-bold capitalize">{fmtDateLabel(new Date())}</p>
+                <p className="text-[11px] text-indigo-300 font-bold capitalize leading-none">{fmtDateLabel(new Date())}</p>
 
                 {/* Streak badge */}
                 {streak >= 2 && (
