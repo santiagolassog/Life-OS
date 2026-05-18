@@ -9,7 +9,7 @@ import {
   Clock, Save, Zap, ChevronLeft, ChevronRight, X, Plus,
   PieChart as PieChartIcon, Trash2, CalendarDays, Menu, Copy, CheckCircle2, Circle, Edit2, Palette,
   Download, ListPlus, Target, BarChart3, History, DollarSign, Star, ChevronDown, LogOut, CheckSquare,
-  Sparkles, Keyboard, Home, MoreHorizontal, Search, GripVertical, Flame,
+  Sparkles, Keyboard, Home, MoreHorizontal, Search, GripVertical, Flame, GraduationCap, Shield,
 } from 'lucide-react';
 import Dinero from './modules/Dinero';
 import Objetivos from './modules/Objetivos';
@@ -17,6 +17,8 @@ import Revision from './modules/Revision';
 import Lista from './modules/Lista';
 import Hoy from './modules/Hoy';
 import Habitos from './modules/Habitos';
+import Admin from './modules/Admin';
+import Academia from './modules/Academia';
 import SearchModal, { type SearchResult } from './SearchModal';
 import type { Transaction, FinCategory, Goal, Savings, MonthBalance, SavingsWithdrawal, SavingsPocket, PocketFunding, SavingsYearBalance, Loan, LoanPayment, Budget, Task, ChecklistItem, EventEntry, Habit, HabitLog } from '../types';
 import { LOAN_OUT_CAT_ID, LOAN_IN_CAT_ID } from '../types';
@@ -197,7 +199,7 @@ const CustomTimePicker = ({ label, hour, minute, onTimeChange, minTime = "00:00"
 };
 
 
-type SectionKey = 'hoy' | 'tiempo' | 'dinero' | 'objetivos' | 'lista' | 'revision' | 'habitos';
+type SectionKey = 'hoy' | 'tiempo' | 'dinero' | 'objetivos' | 'lista' | 'revision' | 'habitos' | 'academia' | 'admin';
 
 const SECTIONS: Array<{ key: SectionKey; label: string; Icon: React.FC<{ size?: number }> }> = [
   { key: 'hoy',      label: 'Inicio',   Icon: Home },
@@ -207,14 +209,15 @@ const SECTIONS: Array<{ key: SectionKey; label: string; Icon: React.FC<{ size?: 
   { key: 'habitos',  label: 'Hábitos',  Icon: Flame },
   { key: 'objetivos',label: 'Objetivos',Icon: Target },
   { key: 'revision', label: 'Revisión', Icon: BarChart3 },
+  { key: 'academia', label: 'Academia', Icon: GraduationCap },
 ];
 
 // Secciones en el nav mobile principal (sin Hábitos/Objetivos/Revisión — van en "Más")
 const MOBILE_NAV = SECTIONS.filter(s => ['hoy','dinero','tiempo','lista'].includes(s.key));
-const MORE_SECTIONS = SECTIONS.filter(s => ['habitos','objetivos','revision'].includes(s.key));
+const MORE_SECTIONS = SECTIONS.filter(s => ['habitos','objetivos','revision','academia'].includes(s.key));
 
 const App = () => {
-  const { user, signOut, displayName, updateDisplayName } = useAuth();
+  const { user, signOut, displayName, updateDisplayName, isSuperAdmin } = useAuth();
   const userId = user?.id ?? '';
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const [showSearch, setShowSearch]         = useState(false);
@@ -1202,6 +1205,16 @@ const App = () => {
               <span className="hidden lg:inline">{label}</span>
             </button>
           ))}
+          {/* Admin — solo super_admin */}
+          {isSuperAdmin && (
+            <button
+              onClick={() => setSection('admin')}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[11px] font-black uppercase tracking-wide transition-all ${section === 'admin' ? 'bg-amber-500 text-white shadow-lg' : 'text-amber-400 hover:text-white hover:bg-amber-500/20'}`}
+            >
+              <Shield size={12} />
+              <span className="hidden lg:inline">Admin</span>
+            </button>
+          )}
         </div>
 
         <div className="flex items-center gap-2 md:gap-3 text-white">
@@ -1830,6 +1843,8 @@ const App = () => {
               isExporting={isExporting}
             />
           )}
+          {section === 'academia' && <Academia />}
+          {section === 'admin' && isSuperAdmin && <Admin />}
         </main>
       </div>
 
@@ -1864,6 +1879,19 @@ const App = () => {
                   <span className="text-[10px] font-black uppercase tracking-wide">{label}</span>
                 </button>
               ))}
+              {isSuperAdmin && (
+                <button
+                  onClick={() => { setSection('admin'); setShowMoreMenu(false); }}
+                  className={`flex-1 flex flex-col items-center justify-center gap-1.5 py-3.5 rounded-2xl transition-all active:scale-95 ${
+                    section === 'admin'
+                      ? 'bg-amber-500/40 text-amber-200'
+                      : 'bg-amber-500/10 text-amber-400 hover:bg-amber-500/20'
+                  }`}
+                >
+                  <Shield size={22} />
+                  <span className="text-[10px] font-black uppercase tracking-wide">Admin</span>
+                </button>
+              )}
             </div>
           )}
 
@@ -1889,12 +1917,12 @@ const App = () => {
             <button
               onClick={() => setShowMoreMenu(v => !v)}
               className={`flex-1 flex flex-col items-center justify-center py-3.5 gap-1 transition-all active:scale-95 ${
-                showMoreMenu || ['habitos','objetivos','revision'].includes(section)
+                showMoreMenu || ['habitos','objetivos','revision','academia','admin'].includes(section)
                   ? 'text-white'
                   : 'text-indigo-400'
               }`}
             >
-              <MoreHorizontal size={22} strokeWidth={showMoreMenu || ['habitos','objetivos','revision'].includes(section) ? 2.5 : 2} />
+              <MoreHorizontal size={22} strokeWidth={showMoreMenu || ['habitos','objetivos','revision','academia','admin'].includes(section) ? 2.5 : 2} />
               <span className="text-[9px] font-black uppercase tracking-wide">Más</span>
             </button>
           </div>
