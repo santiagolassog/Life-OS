@@ -89,17 +89,9 @@ create policy "super_admin puede hacer todo en companies"
     )
   );
 
-create policy "miembros pueden leer su empresa"
-  on public.companies for select
-  to authenticated using (
-    exists (
-      select 1 from public.company_members
-      where company_id = companies.id and user_id = auth.uid()
-    )
-  );
-
 
 -- ── 3. Miembros de empresa ─────────────────────────────────────────────────────
+-- (se crea ANTES que la policy de companies que la referencia)
 create table if not exists public.company_members (
   id          uuid primary key default gen_random_uuid(),
   company_id  uuid not null references public.companies(id) on delete cascade,
@@ -124,6 +116,18 @@ create policy "super_admin puede hacer todo en company_members"
 create policy "miembros pueden ver sus propias membresías"
   on public.company_members for select
   to authenticated using (user_id = auth.uid());
+
+
+-- Policy de companies que referencia company_members
+-- (se agrega aquí, DESPUÉS de crear la tabla company_members)
+create policy "miembros pueden leer su empresa"
+  on public.companies for select
+  to authenticated using (
+    exists (
+      select 1 from public.company_members
+      where company_id = companies.id and user_id = auth.uid()
+    )
+  );
 
 
 -- ── 4. Módulos habilitados por empresa ─────────────────────────────────────────
@@ -262,7 +266,9 @@ alter publication supabase_realtime add table public.user_profiles;
 
 
 -- ── 9. Para marcar a Santiago como super_admin ────────────────────────────────
--- Reemplaza el email con el tuyo y ejecuta DESPUÉS de hacer login al menos una vez
+-- Ejecuta esto en un SEGUNDO query, DESPUÉS de haber ejecutado todo lo de arriba
+-- y haber hecho login al menos una vez en la app:
+--
 -- update public.user_profiles
 -- set role = 'super_admin'
--- where email = 'TU_EMAIL@aqui.com';
+-- where email = 'santiago97.sl@gmail.com';
