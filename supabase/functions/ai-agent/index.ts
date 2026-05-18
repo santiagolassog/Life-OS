@@ -22,19 +22,20 @@ const corsHeaders = {
 
 // ─── Tool definitions (se amplían en cada sesión de módulo) ───────────────────
 
+// Gemini REST API usa snake_case: function_declarations (no camelCase)
 const TOOLS = [
   {
-    functionDeclarations: [
+    function_declarations: [
       {
         name: 'pedir_aclaracion',
         description: 'Pide aclaración al usuario cuando falta información para ejecutar una acción. Devuelve una pregunta con opciones de selección rápida.',
         parameters: {
-          type: 'object',
+          type: 'OBJECT',
           properties: {
-            pregunta: { type: 'string', description: 'La pregunta a hacer al usuario' },
+            pregunta: { type: 'STRING', description: 'La pregunta a hacer al usuario' },
             opciones: {
-              type: 'array',
-              items: { type: 'string' },
+              type: 'ARRAY',
+              items: { type: 'STRING' },
               description: 'Lista de opciones de respuesta rápida para el usuario',
             },
           },
@@ -45,9 +46,9 @@ const TOOLS = [
         name: 'confirmar_accion',
         description: 'Pide confirmación al usuario antes de ejecutar una acción destructiva (editar, eliminar).',
         parameters: {
-          type: 'object',
+          type: 'OBJECT',
           properties: {
-            descripcion: { type: 'string', description: 'Descripción clara de la acción a confirmar' },
+            descripcion: { type: 'STRING', description: 'Descripción clara de la acción a confirmar' },
           },
           required: ['descripcion'],
         },
@@ -230,8 +231,19 @@ Deno.serve(async (req: Request) => {
     const apiKey = Deno.env.get('GEMINI_API_KEY')
     if (!apiKey) throw new Error('GEMINI_API_KEY no configurada')
 
+    // DEBUG: listar modelos disponibles para esta key
+    if (message.trim().toLowerCase() === 'list models') {
+      const listRes = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${apiKey}`)
+      const listData = await listRes.json()
+      const names = (listData.models ?? []).map((m: Record<string,unknown>) => m.name).join('\n')
+      return new Response(
+        JSON.stringify({ type: 'text', text: `Modelos disponibles:\n${names || JSON.stringify(listData)}` }),
+        { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+      )
+    }
+
     const geminiRes = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`,
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`,
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -254,10 +266,12 @@ Deno.serve(async (req: Request) => {
     })
 
   } catch (error) {
-    console.error('ai-agent error:', error)
+    const msg = error instanceof Error ? error.message : String(error)
+    console.error('ai-agent error:', msg)
+    // Retorna 200 para que el cliente vea el mensaje de error real
     return new Response(
-      JSON.stringify({ type: 'error', text: 'Ocurrió un error. Intenta de nuevo.' }),
-      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+      JSON.stringify({ type: 'error', text: `⚠️ ${msg}` }),
+      { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
     )
   }
 })
