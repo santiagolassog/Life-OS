@@ -1918,7 +1918,7 @@ const App = () => {
       <ChatPanel
         isOpen={showChat}
         onClose={() => setShowChat(false)}
-        moduleActive={section as 'hoy' | 'tiempo' | 'dinero' | 'objetivos' | 'lista' | 'revision'}
+        moduleActive={section as SectionKey}
         userName={displayName || user?.email?.split('@')[0] || 'Usuario'}
         context={{
           fecha: new Date().toISOString(),

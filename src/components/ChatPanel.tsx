@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react'
 import {
   X, Send, Bot, Sparkles, Loader2,
-  CalendarDays, CheckSquare, Target, DollarSign, BarChart3, Home,
+  CalendarDays, CheckSquare, Target, DollarSign, BarChart3, Home, Flame,
 } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 
@@ -15,7 +15,7 @@ export interface ChatMessage {
   type?: 'text' | 'clarification' | 'error'
 }
 
-type SectionKey = 'hoy' | 'tiempo' | 'dinero' | 'objetivos' | 'lista' | 'revision'
+type SectionKey = 'hoy' | 'tiempo' | 'dinero' | 'objetivos' | 'lista' | 'revision' | 'habitos'
 
 interface ChatPanelProps {
   isOpen: boolean
@@ -34,6 +34,7 @@ const MODULE_SUGGESTIONS: Record<SectionKey, string[]> = {
   objetivos: ['Crea un objetivo para esta semana', '¿Cómo voy con mis objetivos?', 'Logré el objetivo de...'],
   dinero:    ['Gasté 20.000 en comida', '¿Cuánto gasté esta semana?', 'Registra un ingreso'],
   revision:  ['¿Cómo estuvo mi semana?', '¿Cuál es mi actividad más eficiente?', 'Compara esta semana con la anterior'],
+  habitos:   ['¿Cuántos hábitos completé esta semana?', 'Muéstrame mi racha actual', '¿Cuál es mi hábito más consistente?'],
 }
 
 const MODULE_ICONS: Record<SectionKey, React.FC<{ size?: number; className?: string }>> = {
@@ -43,6 +44,7 @@ const MODULE_ICONS: Record<SectionKey, React.FC<{ size?: number; className?: str
   objetivos: Target,
   dinero:    DollarSign,
   revision:  BarChart3,
+  habitos:   Flame,
 }
 
 function uid() {
