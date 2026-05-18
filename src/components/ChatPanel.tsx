@@ -220,18 +220,41 @@ const ChatPanel: React.FC<ChatPanelProps> = ({
 
                 {/* Chips for clarification */}
                 {msg.chips && msg.chips.length > 0 && (
-                  <div className="flex flex-wrap gap-1.5">
-                    {msg.chips.map((chip, i) => (
-                      <button
-                        key={i}
-                        onClick={() => handleChip(chip)}
-                        disabled={isLoading}
-                        className="px-3 py-1.5 bg-indigo-50 border border-indigo-200 text-indigo-700 text-[11px] font-black rounded-full hover:bg-indigo-600 hover:text-white hover:border-indigo-600 transition-all active:scale-95 disabled:opacity-50"
-                      >
-                        {chip}
-                      </button>
-                    ))}
-                  </div>
+                  msg.chips.length <= 4 ? (
+                    /* Chips en fila para pocas opciones */
+                    <div className="flex flex-wrap gap-1.5">
+                      {msg.chips.map((chip, i) => (
+                        <button
+                          key={i}
+                          onClick={() => handleChip(chip)}
+                          disabled={isLoading}
+                          className="px-3 py-1.5 bg-indigo-50 border border-indigo-200 text-indigo-700 text-[11px] font-black rounded-full hover:bg-indigo-600 hover:text-white hover:border-indigo-600 transition-all active:scale-95 disabled:opacity-50"
+                        >
+                          {chip}
+                        </button>
+                      ))}
+                    </div>
+                  ) : (
+                    /* Lista vertical scrollable para muchas opciones */
+                    <div className="flex flex-col gap-1 max-h-48 overflow-y-auto custom-scrollbar pr-1">
+                      {msg.chips.map((chip, i) => (
+                        <button
+                          key={i}
+                          onClick={() => handleChip(chip)}
+                          disabled={isLoading}
+                          className={`w-full text-left px-3.5 py-2.5 rounded-xl text-xs font-bold border transition-all active:scale-[0.98] disabled:opacity-50 ${
+                            chip.startsWith('No ') || chip === 'Cancelar' || chip === 'No asociar' || chip === 'No, cancelar'
+                              ? 'bg-slate-50 border-slate-200 text-slate-500 hover:bg-slate-100'
+                              : chip.includes('...') || chip.toLowerCase().includes('otra')
+                              ? 'bg-violet-50 border-violet-200 text-violet-700 hover:bg-violet-600 hover:text-white hover:border-violet-600'
+                              : 'bg-indigo-50 border-indigo-200 text-indigo-700 hover:bg-indigo-600 hover:text-white hover:border-indigo-600'
+                          }`}
+                        >
+                          {chip}
+                        </button>
+                      ))}
+                    </div>
+                  )
                 )}
               </div>
             </div>

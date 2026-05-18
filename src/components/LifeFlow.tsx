@@ -1920,10 +1920,39 @@ const App = () => {
         onClose={() => setShowChat(false)}
         moduleActive={section as SectionKey}
         userName={displayName || user?.email?.split('@')[0] || 'Usuario'}
-        context={{
-          fecha: new Date().toISOString(),
-          seccion: section,
-        }}
+        context={(() => {
+          // Categorías siempre disponibles (se usan en Tiempo, Lista, Objetivos)
+          const cats = sortedCategories.map(c => ({ id: c.id, label: c.label, color: c.color, short: c.short }))
+
+          // Eventos de los próximos 14 días (siempre, para poder agendar desde cualquier sección)
+          const today = new Date()
+          const eventosRango: Record<string, unknown[]> = {}
+          for (let i = -1; i <= 7; i++) {
+            const d = new Date(today); d.setDate(d.getDate() + i)
+            const dId = fmtDateId(d)
+            if (events[dId]?.length) eventosRango[dId] = events[dId]
+          }
+
+          // Calcular los 7 días de la semana actual en zona horaria del usuario
+          const diasSemana: Record<string, string> = {}
+          const NOMBRES_DIA = ['Domingo','Lunes','Martes','Miércoles','Jueves','Viernes','Sábado']
+          getWeekDays(currentDate).forEach(d => {
+            diasSemana[NOMBRES_DIA[d.getDay()]] = fmtDateId(d)
+          })
+
+          return {
+            fecha: new Date().toISOString(),
+            fechaLocal: fmtDateId(new Date()),
+            diasSemana, // mapa exacto { "Lunes": "2026-05-18", "Martes": "2026-05-19", ... }
+            seccion: section,
+            categorias: sortedCategories.map(c => ({
+              id: c.id, label: c.label, color: c.color, short: c.short,
+              presets: (categories[c.id]?.presets ?? []),
+            })),
+            habitos: habits.map(h => ({ id: h.id, name: h.name, target: h.target, color: h.color })),
+            eventos: eventosRango,
+          }
+        })()}
       />
 
       {/* ── BÚSQUEDA GLOBAL ── */}
