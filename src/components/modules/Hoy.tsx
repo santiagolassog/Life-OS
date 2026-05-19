@@ -242,7 +242,7 @@ const Hoy: React.FC<HoyProps> = ({
             <div>
               <p className="font-black text-slate-800 text-lg">Bienvenido a LifeOS</p>
               <p className="text-slate-500 text-sm mt-1 max-w-xs mx-auto leading-relaxed">
-                Tu sistema de vida personal. Elige por dónde empezar.
+                Tu sistema de vida personal.
               </p>
             </div>
             {(() => {
