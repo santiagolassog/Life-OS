@@ -886,11 +886,11 @@ function AcademiaTab({
   const saveCourse = async () => {
     if (!courseForm.title.trim()) return
     setSaving(true)
-    const companyCourses = courses.filter(c => c.companyId === selectedCompany)
     const payload = {
       title: courseForm.title.trim(), description: courseForm.description.trim() || null,
-      published: courseForm.published, company_id: selectedCompany,
-      sort_order: (editingItem as AcademyCourse)?.sortOrder ?? companyCourses.length,
+      published: courseForm.published,
+      // Sin company_id — los cursos son globales
+      sort_order: (editingItem as AcademyCourse)?.sortOrder ?? courses.length,
       updated_at: new Date().toISOString(),
     }
     if (editingItem) await supabase.from('academy_courses').update(payload).eq('id', editingItem.id)
@@ -1041,8 +1041,6 @@ function AcademiaTab({
   }
 
   // ── Datos derivados ───────────────────────────────────────────────────────────
-  const companyCourses = courses.filter(c => c.companyId === selectedCompany)
-
   const companyVideos = exclusiveVideos.filter(v => v.companyId === selectedCompany)
 
   return (
@@ -1159,16 +1157,16 @@ function AcademiaTab({
             <Plus size={16} /> Nuevo curso
           </button>
 
-          {/* ── Lista de cursos ── */}
-          {companyCourses.length === 0 ? (
+          {/* ── Lista de cursos globales ── */}
+          {courses.length === 0 ? (
             <div className="text-center py-12 text-slate-400">
               <BookOpen size={36} className="mx-auto mb-3 opacity-30" />
               <p className="font-semibold">Sin cursos</p>
-              <p className="text-sm mt-1">Crea el primer curso para esta empresa</p>
+              <p className="text-sm mt-1">Crea el primer curso global de la plataforma</p>
             </div>
           ) : (
             <div className="space-y-2">
-              {companyCourses.map(course => {
+              {courses.map(course => {
                 const courseModules = academyModules.filter(m => m.courseId === course.id)
                 const totalLessons  = lessons.filter(l => l.courseId === course.id).length
                 const isCourseOpen  = expandedCourses.has(course.id)
