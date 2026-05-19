@@ -327,7 +327,7 @@ function CompaniesTab({
 
       {/* Form modal */}
       {showForm && (
-        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/50 backdrop-blur-sm" onClick={() => setShowForm(false)}>
+        <div className="fixed inset-0 z-[300] flex items-end sm:items-center justify-center bg-black/50 backdrop-blur-sm" onClick={() => setShowForm(false)}>
           <div className="bg-white w-full max-w-md sm:rounded-3xl rounded-t-3xl shadow-2xl flex flex-col" style={{ maxHeight: 'min(92svh, 680px)' }} onClick={e => e.stopPropagation()}>
             <div className="flex items-center justify-between px-6 pt-5 pb-4 border-b border-slate-100 shrink-0">
               <h2 className="text-lg font-black text-slate-800">{editing ? 'Editar empresa' : 'Nueva empresa'}</h2>
@@ -510,7 +510,7 @@ function UsersTab({
 
       {/* Assign modal */}
       {showAssign && (
-        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/50 backdrop-blur-sm" onClick={() => setShowAssign(null)}>
+        <div className="fixed inset-0 z-[300] flex items-end sm:items-center justify-center bg-black/50 backdrop-blur-sm" onClick={() => setShowAssign(null)}>
           <div className="bg-white w-full max-w-md sm:rounded-3xl rounded-t-3xl shadow-2xl flex flex-col" style={{ maxHeight: 'min(92svh, 560px)' }} onClick={e => e.stopPropagation()}>
             <div className="flex items-center justify-between px-6 pt-5 pb-3 border-b border-slate-100 shrink-0">
               <div>
@@ -769,7 +769,7 @@ function Modal({ title, onClose, onSave, saving, disabled, children }: {
 }) {
   return (
     <div
-      className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/50 backdrop-blur-sm"
+      className="fixed inset-0 z-[300] flex items-end sm:items-center justify-center bg-black/50 backdrop-blur-sm"
       onClick={onClose}
     >
       <div
