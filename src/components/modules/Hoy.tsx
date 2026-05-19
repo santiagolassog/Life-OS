@@ -253,14 +253,16 @@ const Hoy: React.FC<HoyProps> = ({
                 { label: 'Define objetivos', icon: Target, section: 'objetivos' as SectionKey, color: 'bg-violet-500' },
                 { label: 'Añade una tarea', icon: CheckSquare, section: 'lista' as SectionKey, color: 'bg-blue-500' },
               ].filter(({ section }) => modEnabled(section));
-              const cols = quickBtns.length <= 2 ? 'grid-cols-2' : quickBtns.length === 3 ? 'grid-cols-3' : 'grid-cols-2 sm:grid-cols-3';
+              // Ancho de cada ítem: 3 por fila máx. Si hay 4, van 2×2. Si hay 1-3 se reparten igual.
+              const perRow = quickBtns.length === 4 ? 2 : Math.min(quickBtns.length, 3);
+              const itemW = perRow === 1 ? 'w-full max-w-[200px]' : perRow === 2 ? 'w-[calc(50%-6px)]' : 'w-[calc(33.333%-8px)]';
               return (
-            <div className={`grid ${cols} gap-3 w-full max-w-md mx-auto`}>
+            <div className="flex flex-wrap justify-center gap-3 w-full max-w-md mx-auto">
               {quickBtns.map(({ label, icon: Icon, section, color }) => (
                 <button
                   key={section}
                   onClick={() => onNavigate(section)}
-                  className="flex items-center gap-3 bg-white rounded-2xl p-4 border border-slate-100 shadow-sm hover:shadow-md transition-all text-left active:scale-95"
+                  className={`${itemW} flex items-center gap-3 bg-white rounded-2xl p-4 border border-slate-100 shadow-sm hover:shadow-md transition-all text-left active:scale-95`}
                 >
                   <div className={`${color} p-2 rounded-xl shrink-0`}>
                     <Icon size={16} className="text-white" />
