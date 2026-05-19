@@ -278,37 +278,49 @@ export default function Academia() {
           {/* Contenido: Video O Visor PDF */}
           {isDoc ? (
             /* ── Visor de documento PDF (Google Drive embed) ── */
-            <div className="flex flex-col flex-1 min-h-0 bg-slate-100">
+            <div className="bg-slate-100 shrink-0 flex flex-col" style={{ height: 'min(75svh, 800px)' }}>
               {driveEmbed ? (
-                <iframe
-                  className="w-full flex-1 border-0"
-                  src={driveEmbed}
-                  title={selectedLesson.title}
-                  allow="autoplay"
-                  style={{ minHeight: '60vh' }}
-                />
+                <>
+                  <iframe
+                    className="w-full flex-1 border-0 min-h-0"
+                    src={driveEmbed}
+                    title={selectedLesson.title}
+                    allow="autoplay"
+                  />
+                  {/* Barra inferior con botón de fallback */}
+                  <div className="bg-white border-t border-slate-200 px-4 py-2.5 shrink-0 flex items-center justify-between">
+                    <div className="flex items-center gap-2 text-xs text-slate-500">
+                      <FileText size={13} className="text-emerald-500" />
+                      <span className="font-bold">Documento PDF</span>
+                    </div>
+                    <a
+                      href={selectedLesson.documentUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex items-center gap-1.5 text-xs font-black text-indigo-600 hover:text-indigo-800 bg-indigo-50 px-3 py-1.5 rounded-lg transition-colors"
+                    >
+                      <ExternalLink size={12} /> Abrir en Drive
+                    </a>
+                  </div>
+                </>
               ) : (
+                /* URL no válida */
                 <div className="flex-1 flex flex-col items-center justify-center gap-4 p-8 text-center">
                   <div className="w-16 h-16 rounded-2xl bg-slate-200 flex items-center justify-center">
                     <FileText size={28} className="text-slate-400" />
                   </div>
-                  <p className="text-slate-500 font-bold">Link de Drive no válido</p>
+                  <p className="text-slate-600 font-bold">No se puede mostrar el documento</p>
+                  <p className="text-sm text-slate-400">El link de Drive no es válido o el archivo no es público</p>
                   {selectedLesson.documentUrl && (
-                    <a href={selectedLesson.documentUrl} target="_blank" rel="noopener noreferrer"
-                      className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-xl text-sm font-bold hover:bg-indigo-700">
-                      <ExternalLink size={14} /> Abrir en Drive
+                    <a
+                      href={selectedLesson.documentUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex items-center gap-2 px-5 py-2.5 bg-indigo-600 text-white rounded-xl text-sm font-bold hover:bg-indigo-700 transition-colors"
+                    >
+                      <ExternalLink size={14} /> Abrir en Google Drive
                     </a>
                   )}
-                </div>
-              )}
-              {/* Botón fallback siempre visible */}
-              {driveEmbed && selectedLesson.documentUrl && (
-                <div className="bg-white border-t border-slate-200 px-4 py-2 shrink-0 flex items-center justify-between">
-                  <span className="text-xs text-slate-400">Documento PDF</span>
-                  <a href={selectedLesson.documentUrl} target="_blank" rel="noopener noreferrer"
-                    className="flex items-center gap-1.5 text-xs font-bold text-indigo-600 hover:text-indigo-800">
-                    <ExternalLink size={12} /> Abrir en Drive
-                  </a>
                 </div>
               )}
             </div>
