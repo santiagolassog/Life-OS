@@ -9,7 +9,7 @@ import {
   Clock, Save, Zap, ChevronLeft, ChevronRight, X, Plus,
   PieChart as PieChartIcon, Trash2, CalendarDays, Menu, Copy, CheckCircle2, Circle, Edit2, Palette,
   Download, ListPlus, Target, BarChart3, History, DollarSign, Star, ChevronDown, LogOut, CheckSquare,
-  Sparkles, Keyboard, Home, MoreHorizontal, Search, GripVertical, Flame, GraduationCap, Shield, KeyRound,
+  Sparkles, Keyboard, Home, MoreHorizontal, Search, GripVertical, Flame, GraduationCap, Shield, KeyRound, Eye, EyeOff,
 } from 'lucide-react';
 import Dinero from './modules/Dinero';
 import Objetivos from './modules/Objetivos';
@@ -259,6 +259,8 @@ const App = () => {
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [showProfile, setShowProfile]     = useState(false);
   const [showChangePassword, setShowChangePassword] = useState(false);
+  const [showNewPassword, setShowNewPassword]   = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [sidebarMenuOpen, setSidebarMenuOpen] = useState(false);
   const [newPassword, setNewPassword]     = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -273,6 +275,8 @@ const App = () => {
     setPasswordError('');
     setPasswordSuccess(false);
     setPasswordSaving(false);
+    setShowNewPassword(false);
+    setShowConfirmPassword(false);
   };
 
   const handleChangePassword = async () => {
@@ -2377,25 +2381,45 @@ const App = () => {
                 <div className="space-y-4">
                   <div>
                     <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">Nueva contraseña</label>
-                    <input
-                      type="password"
-                      value={newPassword}
-                      onChange={e => { setNewPassword(e.target.value); setPasswordError(''); }}
-                      autoFocus
-                      placeholder="Mínimo 6 caracteres"
-                      className="w-full mt-1.5 px-4 py-3 rounded-xl border border-slate-200 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-indigo-300 bg-white"
-                    />
+                    <div className="relative mt-1.5">
+                      <input
+                        type={showNewPassword ? 'text' : 'password'}
+                        value={newPassword}
+                        onChange={e => { setNewPassword(e.target.value); setPasswordError(''); }}
+                        autoFocus
+                        placeholder="Mínimo 6 caracteres"
+                        className="w-full px-4 py-3 pr-11 rounded-xl border border-slate-200 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-indigo-300 bg-white"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowNewPassword(v => !v)}
+                        className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 transition-colors p-1"
+                        tabIndex={-1}
+                      >
+                        {showNewPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                      </button>
+                    </div>
                   </div>
                   <div>
                     <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">Confirmar contraseña</label>
-                    <input
-                      type="password"
-                      value={confirmPassword}
-                      onChange={e => { setConfirmPassword(e.target.value); setPasswordError(''); }}
-                      onKeyDown={e => { if (e.key === 'Enter') handleChangePassword(); }}
-                      placeholder="Repite la nueva contraseña"
-                      className="w-full mt-1.5 px-4 py-3 rounded-xl border border-slate-200 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-indigo-300 bg-white"
-                    />
+                    <div className="relative mt-1.5">
+                      <input
+                        type={showConfirmPassword ? 'text' : 'password'}
+                        value={confirmPassword}
+                        onChange={e => { setConfirmPassword(e.target.value); setPasswordError(''); }}
+                        onKeyDown={e => { if (e.key === 'Enter') handleChangePassword(); }}
+                        placeholder="Repite la nueva contraseña"
+                        className="w-full px-4 py-3 pr-11 rounded-xl border border-slate-200 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-indigo-300 bg-white"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowConfirmPassword(v => !v)}
+                        className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 transition-colors p-1"
+                        tabIndex={-1}
+                      >
+                        {showConfirmPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                      </button>
+                    </div>
                   </div>
                   {passwordError && (
                     <div className="flex items-start gap-2 text-xs font-bold text-red-600 bg-red-50 border border-red-100 rounded-xl px-3 py-2.5">
