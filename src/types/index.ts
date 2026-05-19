@@ -252,12 +252,16 @@ export interface AcademyModule {
   lessons?: AcademyLesson[]
 }
 
+export type LessonType = 'video' | 'document'
+
 export interface AcademyLesson {
   id: string
   courseId: string
   moduleId?: string      // optional for backward compat
+  lessonType: LessonType // 'video' | 'document'
   title: string
-  youtubeUrl: string
+  youtubeUrl?: string    // solo si lessonType = 'video'
+  documentUrl?: string   // solo si lessonType = 'document' (Google Drive link)
   description?: string
   durationMinutes?: number
   sortOrder: number

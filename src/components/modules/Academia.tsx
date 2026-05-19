@@ -1,10 +1,10 @@
 import React, { useState, useEffect, useCallback } from 'react'
 import {
-  GraduationCap, BookOpen, Video, Play, CheckCircle2, Circle,
-  ChevronLeft, ChevronRight, ChevronDown, Clock, BarChart3, Layers,
+  GraduationCap, BookOpen, Video, FileText, Play, CheckCircle2, Circle,
+  ChevronLeft, ChevronRight, ChevronDown, Clock, BarChart3, Layers, ExternalLink,
 } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
-import type { AcademyCourse, AcademyModule, AcademyLesson, AcademyProgress, ExclusiveVideo, ExclusiveVideoProgress } from '../../types'
+import type { AcademyCourse, AcademyModule, AcademyLesson, AcademyProgress, ExclusiveVideo, ExclusiveVideoProgress, LessonType } from '../../types'
 import { generateId } from '../../lib/utils'
 import { useAuth } from '../../hooks/useAuth'
 
@@ -13,6 +13,14 @@ import { useAuth } from '../../hooks/useAuth'
 function extractYoutubeId(url: string): string | null {
   const match = url.match(/(?:youtube\.com\/(?:watch\?v=|embed\/)|youtu\.be\/)([A-Za-z0-9_-]{11})/)
   return match?.[1] ?? null
+}
+
+/** Convierte cualquier link de Google Drive al endpoint /preview para iframe */
+function getDriveEmbedUrl(url: string): string | null {
+  if (!url) return null
+  const match = url.match(/\/file\/d\/([a-zA-Z0-9_-]+)/)
+  if (!match) return null
+  return `https://drive.google.com/file/d/${match[1]}/preview`
 }
 
 function formatDuration(minutes?: number): string {
@@ -95,7 +103,7 @@ export default function Academia() {
   // ── Row mappers ───────────────────────────────────────────────────────────────
   const rowToCourse  = (r: any): AcademyCourse  => ({ id: r.id, companyId: r.company_id, title: r.title, description: r.description, thumbnailUrl: r.thumbnail_url, sortOrder: r.sort_order, published: r.published, createdAt: r.created_at, updatedAt: r.updated_at })
   const rowToModule  = (r: any): AcademyModule  => ({ id: r.id, courseId: r.course_id, title: r.title, description: r.description, sortOrder: r.sort_order, createdAt: r.created_at })
-  const rowToLesson  = (r: any): AcademyLesson  => ({ id: r.id, courseId: r.course_id, moduleId: r.module_id ?? undefined, title: r.title, youtubeUrl: r.youtube_url, description: r.description, durationMinutes: r.duration_minutes, sortOrder: r.sort_order, createdAt: r.created_at })
+  const rowToLesson  = (r: any): AcademyLesson  => ({ id: r.id, courseId: r.course_id, moduleId: r.module_id ?? undefined, lessonType: (r.lesson_type ?? 'video') as LessonType, title: r.title, youtubeUrl: r.youtube_url ?? undefined, documentUrl: r.document_url ?? undefined, description: r.description, durationMinutes: r.duration_minutes, sortOrder: r.sort_order, createdAt: r.created_at })
   const rowToProgress= (r: any): AcademyProgress=> ({ id: r.id, userId: r.user_id, lessonId: r.lesson_id, completed: r.completed, completedAt: r.completed_at })
 
   // ── Progress helpers ──────────────────────────────────────────────────────────
@@ -169,7 +177,9 @@ export default function Academia() {
 
   // ── PLAYER DE LECCIÓN ─────────────────────────────────────────────────────────
   if (selectedLesson && selectedCourse) {
-    const ytId         = extractYoutubeId(selectedLesson.youtubeUrl)
+    const isDoc        = selectedLesson.lessonType === 'document'
+    const ytId         = !isDoc ? extractYoutubeId(selectedLesson.youtubeUrl ?? '') : null
+    const driveEmbed   = isDoc ? getDriveEmbedUrl(selectedLesson.documentUrl ?? '') : null
     const orderedAll   = getOrderedLessons(selectedCourse.id)
     const currentIndex = orderedAll.findIndex(l => l.id === selectedLesson.id)
     const prevLesson   = currentIndex > 0 ? orderedAll[currentIndex - 1] : null
@@ -179,21 +189,25 @@ export default function Academia() {
 
     // Helper para renderizar lista de lecciones en el outline
     const renderOutlineLesson = (lesson: AcademyLesson, i: number) => {
-      const isCurrent = lesson.id === selectedLesson.id
-      const lDone     = isCompleted(lesson.id)
-      const lYtId     = extractYoutubeId(lesson.youtubeUrl)
+      const isCurrent   = lesson.id === selectedLesson.id
+      const lDone       = isCompleted(lesson.id)
+      const lIsDoc      = lesson.lessonType === 'document'
+      const lYtId       = !lIsDoc ? extractYoutubeId(lesson.youtubeUrl ?? '') : null
       return (
         <button key={lesson.id} onClick={() => setSelectedLesson(lesson)}
           className={`w-full flex items-center gap-3 px-4 py-2.5 text-left transition-all ${isCurrent ? 'bg-indigo-600' : 'hover:bg-slate-800/60'}`}
         >
-          {lYtId
-            ? <img src={`https://img.youtube.com/vi/${lYtId}/default.jpg`} alt="" className="w-12 h-8 rounded-lg object-cover shrink-0 opacity-80" />
-            : <div className="w-12 h-8 rounded-lg bg-slate-700 flex items-center justify-center shrink-0"><Video size={12} className="text-slate-500" /></div>}
+          {lIsDoc
+            ? <div className="w-12 h-8 rounded-lg bg-emerald-900/40 flex items-center justify-center shrink-0"><FileText size={13} className="text-emerald-400" /></div>
+            : lYtId
+              ? <img src={`https://img.youtube.com/vi/${lYtId}/default.jpg`} alt="" className="w-12 h-8 rounded-lg object-cover shrink-0 opacity-80" />
+              : <div className="w-12 h-8 rounded-lg bg-slate-700 flex items-center justify-center shrink-0"><Video size={12} className="text-slate-500" /></div>}
           <div className="min-w-0 flex-1">
             <div className={`text-[11px] font-bold truncate leading-tight ${isCurrent ? 'text-white' : 'text-slate-400'}`}>{i + 1}. {lesson.title}</div>
-            {lesson.durationMinutes && <div className={`text-[10px] mt-0.5 ${isCurrent ? 'text-indigo-200' : 'text-slate-600'}`}>{formatDuration(lesson.durationMinutes)}</div>}
+            {lIsDoc && <div className={`text-[9px] font-black uppercase ${isCurrent ? 'text-emerald-300' : 'text-emerald-500'}`}>PDF</div>}
+            {!lIsDoc && lesson.durationMinutes && <div className={`text-[10px] mt-0.5 ${isCurrent ? 'text-indigo-200' : 'text-slate-600'}`}>{formatDuration(lesson.durationMinutes)}</div>}
           </div>
-          {lDone ? <CheckCircle2 size={14} className={isCurrent ? 'text-indigo-200' : 'text-emerald-500'} /> : isCurrent ? <Play size={12} className="text-indigo-200" fill="currentColor" /> : null}
+          {lDone ? <CheckCircle2 size={14} className={isCurrent ? 'text-indigo-200' : 'text-emerald-500'} /> : isCurrent ? (lIsDoc ? <FileText size={12} className="text-indigo-200" /> : <Play size={12} className="text-indigo-200" fill="currentColor" />) : null}
         </button>
       )
     }
@@ -260,22 +274,61 @@ export default function Academia() {
             </button>
           </div>
 
-          {/* Video — aspect-ratio fijo, nunca colapsa */}
-          <div className="w-full bg-black shrink-0" style={{ aspectRatio: '16/9' }}>
-            {ytId ? (
-              <iframe
-                className="w-full h-full"
-                src={`https://www.youtube.com/embed/${ytId}?rel=0&modestbranding=1`}
-                title={selectedLesson.title}
-                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                allowFullScreen
-              />
-            ) : (
-              <div className="w-full h-full flex items-center justify-center text-slate-500">
-                <Video size={36} />
-              </div>
-            )}
-          </div>
+          {/* Contenido: Video O Visor PDF */}
+          {isDoc ? (
+            /* ── Visor de documento PDF (Google Drive embed) ── */
+            <div className="flex flex-col flex-1 min-h-0 bg-slate-100">
+              {driveEmbed ? (
+                <iframe
+                  className="w-full flex-1 border-0"
+                  src={driveEmbed}
+                  title={selectedLesson.title}
+                  allow="autoplay"
+                  style={{ minHeight: '60vh' }}
+                />
+              ) : (
+                <div className="flex-1 flex flex-col items-center justify-center gap-4 p-8 text-center">
+                  <div className="w-16 h-16 rounded-2xl bg-slate-200 flex items-center justify-center">
+                    <FileText size={28} className="text-slate-400" />
+                  </div>
+                  <p className="text-slate-500 font-bold">Link de Drive no válido</p>
+                  {selectedLesson.documentUrl && (
+                    <a href={selectedLesson.documentUrl} target="_blank" rel="noopener noreferrer"
+                      className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-xl text-sm font-bold hover:bg-indigo-700">
+                      <ExternalLink size={14} /> Abrir en Drive
+                    </a>
+                  )}
+                </div>
+              )}
+              {/* Botón fallback siempre visible */}
+              {driveEmbed && selectedLesson.documentUrl && (
+                <div className="bg-white border-t border-slate-200 px-4 py-2 shrink-0 flex items-center justify-between">
+                  <span className="text-xs text-slate-400">Documento PDF</span>
+                  <a href={selectedLesson.documentUrl} target="_blank" rel="noopener noreferrer"
+                    className="flex items-center gap-1.5 text-xs font-bold text-indigo-600 hover:text-indigo-800">
+                    <ExternalLink size={12} /> Abrir en Drive
+                  </a>
+                </div>
+              )}
+            </div>
+          ) : (
+            /* ── Video YouTube — aspect-ratio fijo ── */
+            <div className="w-full bg-black shrink-0" style={{ aspectRatio: '16/9' }}>
+              {ytId ? (
+                <iframe
+                  className="w-full h-full"
+                  src={`https://www.youtube.com/embed/${ytId}?rel=0&modestbranding=1`}
+                  title={selectedLesson.title}
+                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                  allowFullScreen
+                />
+              ) : (
+                <div className="w-full h-full flex items-center justify-center text-slate-500">
+                  <Video size={36} />
+                </div>
+              )}
+            </div>
+          )}
 
           {/* Info */}
           <div className="bg-white shrink-0">
@@ -420,8 +473,9 @@ export default function Academia() {
                         {modLessons.length === 0 ? (
                           <p className="text-xs text-slate-400 px-5 py-4">Sin lecciones en este módulo</p>
                         ) : modLessons.map((lesson, i) => {
-                          const ytId  = extractYoutubeId(lesson.youtubeUrl)
-                          const lDone = isCompleted(lesson.id)
+                          const lIsDoc = lesson.lessonType === 'document'
+                          const ytId   = !lIsDoc ? extractYoutubeId(lesson.youtubeUrl ?? '') : null
+                          const lDone  = isCompleted(lesson.id)
                           return (
                             <button
                               key={lesson.id}
@@ -432,8 +486,12 @@ export default function Academia() {
                               <div className={`w-6 h-6 rounded-full flex items-center justify-center shrink-0 text-[10px] font-black ${lDone ? 'bg-emerald-100 text-emerald-600' : 'bg-slate-100 text-slate-500'}`}>
                                 {lDone ? <CheckCircle2 size={13} /> : i + 1}
                               </div>
-                              {/* Thumbnail */}
-                              {ytId ? (
+                              {/* Thumbnail o ícono de documento */}
+                              {lIsDoc ? (
+                                <div className="w-14 h-10 rounded-lg bg-emerald-50 border border-emerald-200 flex items-center justify-center shrink-0">
+                                  <FileText size={16} className="text-emerald-500" />
+                                </div>
+                              ) : ytId ? (
                                 <div className="relative w-14 h-10 rounded-lg overflow-hidden shrink-0">
                                   <img src={`https://img.youtube.com/vi/${ytId}/mqdefault.jpg`} alt="" className="w-full h-full object-cover" />
                                   <div className="absolute inset-0 bg-black/30 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">

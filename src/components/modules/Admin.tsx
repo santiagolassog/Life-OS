@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react'
 import {
   Building2, Users, LayoutGrid, GraduationCap, Plus, Edit2, Trash2,
   Check, X, ChevronDown, ChevronRight, ChevronUp, Shield, UserCheck, UserX,
-  BookOpen, Video, ToggleLeft, ToggleRight, Search, Crown, Star,
+  BookOpen, Video, FileText, ToggleLeft, ToggleRight, Search, Crown, Star,
   RefreshCw, Eye, EyeOff, ExternalLink, ArrowUpDown, Link,
 } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
@@ -157,7 +157,9 @@ export default function Admin() {
   })
   const rowToLesson = (r: any): AcademyLesson => ({
     id: r.id, courseId: r.course_id, moduleId: r.module_id ?? undefined,
-    title: r.title, youtubeUrl: r.youtube_url,
+    lessonType: (r.lesson_type ?? 'video') as 'video' | 'document',
+    title: r.title, youtubeUrl: r.youtube_url ?? undefined,
+    documentUrl: r.document_url ?? undefined,
     description: r.description, durationMinutes: r.duration_minutes,
     sortOrder: r.sort_order, createdAt: r.created_at,
   })
@@ -851,7 +853,7 @@ function AcademiaTab({
 
   const [courseForm, setCourseForm] = useState({ title: '', description: '', published: true })
   const [moduleForm, setModuleForm] = useState({ title: '', description: '' })
-  const [lessonForm, setLessonForm] = useState({ title: '', youtubeUrl: '', description: '', durationMinutes: '' })
+  const [lessonForm, setLessonForm] = useState({ title: '', lessonType: 'video' as 'video' | 'document', youtubeUrl: '', documentUrl: '', description: '', durationMinutes: '' })
 
   useEffect(() => {
     if (!selectedCompany && companies.length) setSelectedCompany(companies[0].id)
@@ -875,7 +877,7 @@ function AcademiaTab({
   const openLessonForm = (courseId: string, moduleId: string, editing?: AcademyLesson) => {
     setEditingItem(editing ?? null)
     setFormContext({ courseId, moduleId })
-    setLessonForm({ title: editing?.title ?? '', youtubeUrl: editing?.youtubeUrl ?? '', description: editing?.description ?? '', durationMinutes: editing?.durationMinutes?.toString() ?? '' })
+    setLessonForm({ title: editing?.title ?? '', lessonType: editing?.lessonType ?? 'video', youtubeUrl: editing?.youtubeUrl ?? '', documentUrl: editing?.documentUrl ?? '', description: editing?.description ?? '', durationMinutes: editing?.durationMinutes?.toString() ?? '' })
     setFormType('lesson')
   }
   const closeForm = () => { setFormType(null); setEditingItem(null); setFormContext({}) }
@@ -915,11 +917,19 @@ function AcademiaTab({
   }
 
   const saveLesson = async () => {
-    if (!lessonForm.title.trim() || !lessonForm.youtubeUrl.trim() || !formContext.moduleId) return
+    const isVideo = lessonForm.lessonType === 'video'
+    const isDoc   = lessonForm.lessonType === 'document'
+    if (!lessonForm.title.trim()) return
+    if (isVideo && !lessonForm.youtubeUrl.trim()) return
+    if (isDoc  && !lessonForm.documentUrl.trim()) return
+    if (!formContext.moduleId) return
     setSaving(true)
     const modLessons = lessons.filter(l => l.moduleId === formContext.moduleId)
     const payload = {
-      title: lessonForm.title.trim(), youtube_url: lessonForm.youtubeUrl.trim(),
+      title: lessonForm.title.trim(),
+      lesson_type: lessonForm.lessonType,
+      youtube_url: isVideo ? lessonForm.youtubeUrl.trim() : null,
+      document_url: isDoc ? lessonForm.documentUrl.trim() : null,
       description: lessonForm.description.trim() || null,
       duration_minutes: lessonForm.durationMinutes ? parseInt(lessonForm.durationMinutes) : null,
       course_id: formContext.courseId, module_id: formContext.moduleId,
@@ -1127,22 +1137,68 @@ function AcademiaTab({
       )}
 
       {formType === 'lesson' && (
-        <Modal title={editingItem ? 'Editar lección' : 'Nueva lección'} onClose={closeForm} onSave={saveLesson} saving={saving} disabled={!lessonForm.title.trim() || !lessonForm.youtubeUrl.trim()}>
+        <Modal
+          title={editingItem ? 'Editar lección' : 'Nueva lección'}
+          onClose={closeForm} onSave={saveLesson} saving={saving}
+          disabled={
+            !lessonForm.title.trim() ||
+            (lessonForm.lessonType === 'video' && !lessonForm.youtubeUrl.trim()) ||
+            (lessonForm.lessonType === 'document' && !lessonForm.documentUrl.trim())
+          }
+        >
+          {/* Tipo de lección */}
+          <div>
+            <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">Tipo de lección</label>
+            <div className="flex gap-2 mt-2">
+              {(['video', 'document'] as const).map(type => (
+                <button
+                  key={type}
+                  type="button"
+                  onClick={() => setLessonForm(p => ({ ...p, lessonType: type }))}
+                  className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl border-2 text-sm font-bold transition-all ${
+                    lessonForm.lessonType === type
+                      ? type === 'video' ? 'border-indigo-500 bg-indigo-50 text-indigo-700' : 'border-emerald-500 bg-emerald-50 text-emerald-700'
+                      : 'border-slate-200 text-slate-500 hover:border-slate-300'
+                  }`}
+                >
+                  {type === 'video' ? <Video size={15} /> : <FileText size={15} />}
+                  {type === 'video' ? 'Video' : 'Documento PDF'}
+                </button>
+              ))}
+            </div>
+          </div>
+
           <FormField label="Título *">
-            <input autoFocus value={lessonForm.title} onChange={e => setLessonForm(p => ({ ...p, title: e.target.value }))} className={inputCls} placeholder="Ej. Introducción al liderazgo" />
+            <input autoFocus value={lessonForm.title} onChange={e => setLessonForm(p => ({ ...p, title: e.target.value }))} className={inputCls} placeholder={lessonForm.lessonType === 'video' ? 'Ej. Introducción al liderazgo' : 'Ej. Guía de ejercicios'} />
           </FormField>
-          <FormField label="URL de YouTube *">
-            <input value={lessonForm.youtubeUrl} onChange={e => setLessonForm(p => ({ ...p, youtubeUrl: e.target.value }))} className={inputCls} placeholder="https://youtu.be/..." />
-            {lessonForm.youtubeUrl && extractYoutubeId(lessonForm.youtubeUrl) && (
-              <p className="text-[11px] text-emerald-600 font-semibold mt-1.5">✓ Video detectado: {extractYoutubeId(lessonForm.youtubeUrl)}</p>
-            )}
-          </FormField>
+
+          {lessonForm.lessonType === 'video' ? (
+            <FormField label="URL de YouTube *">
+              <input value={lessonForm.youtubeUrl} onChange={e => setLessonForm(p => ({ ...p, youtubeUrl: e.target.value }))} className={inputCls} placeholder="https://youtu.be/..." />
+              {lessonForm.youtubeUrl && extractYoutubeId(lessonForm.youtubeUrl) && (
+                <p className="text-[11px] text-emerald-600 font-semibold mt-1.5">✓ Video detectado: {extractYoutubeId(lessonForm.youtubeUrl)}</p>
+              )}
+            </FormField>
+          ) : (
+            <FormField label="Link de Google Drive *">
+              <input value={lessonForm.documentUrl} onChange={e => setLessonForm(p => ({ ...p, documentUrl: e.target.value }))} className={inputCls} placeholder="https://drive.google.com/file/d/.../view" />
+              {lessonForm.documentUrl && lessonForm.documentUrl.includes('drive.google.com') && (
+                <p className="text-[11px] text-emerald-600 font-semibold mt-1.5">✓ Link de Drive detectado — asegúrate de que sea público</p>
+              )}
+              <p className="text-[10px] text-slate-400 mt-1.5 leading-relaxed">
+                El archivo debe tener permisos <strong>"Cualquier persona con el enlace puede ver"</strong> en Google Drive.
+              </p>
+            </FormField>
+          )}
+
           <FormField label="Descripción">
             <textarea value={lessonForm.description} onChange={e => setLessonForm(p => ({ ...p, description: e.target.value }))} rows={2} className={`${inputCls} resize-none`} placeholder="Descripción de la lección..." />
           </FormField>
-          <FormField label="Duración (minutos)">
-            <input type="number" value={lessonForm.durationMinutes} onChange={e => setLessonForm(p => ({ ...p, durationMinutes: e.target.value }))} className={inputCls} placeholder="Ej. 12" />
-          </FormField>
+          {lessonForm.lessonType === 'video' && (
+            <FormField label="Duración (minutos)">
+              <input type="number" value={lessonForm.durationMinutes} onChange={e => setLessonForm(p => ({ ...p, durationMinutes: e.target.value }))} className={inputCls} placeholder="Ej. 12" />
+            </FormField>
+          )}
         </Modal>
       )}
 
@@ -1230,10 +1286,15 @@ function AcademiaTab({
                                 {isModOpen && (
                                   <div className="pl-16 pr-3 py-2 space-y-1.5 bg-white">
                                     {modLessons.map((lesson, lessonIdx) => {
-                                      const ytId = extractYoutubeId(lesson.youtubeUrl)
+                                      const isDoc = lesson.lessonType === 'document'
+                                      const ytId  = !isDoc ? extractYoutubeId(lesson.youtubeUrl ?? '') : null
                                       return (
                                         <div key={lesson.id} className="flex items-center gap-2 py-1.5 border-b border-slate-50 last:border-0">
-                                          {ytId ? (
+                                          {isDoc ? (
+                                            <div className="w-12 h-8 rounded-lg bg-emerald-50 border border-emerald-200 flex items-center justify-center shrink-0">
+                                              <FileText size={13} className="text-emerald-600" />
+                                            </div>
+                                          ) : ytId ? (
                                             <img src={`https://img.youtube.com/vi/${ytId}/default.jpg`} alt="" className="w-12 h-8 rounded-lg object-cover shrink-0" />
                                           ) : (
                                             <div className="w-12 h-8 rounded-lg bg-slate-100 flex items-center justify-center shrink-0">
@@ -1241,7 +1302,10 @@ function AcademiaTab({
                                             </div>
                                           )}
                                           <div className="min-w-0 flex-1">
-                                            <div className="text-[11px] font-bold text-slate-700 truncate">{lessonIdx + 1}. {lesson.title}</div>
+                                            <div className="flex items-center gap-1">
+                                              <div className="text-[11px] font-bold text-slate-700 truncate">{lessonIdx + 1}. {lesson.title}</div>
+                                              {isDoc && <span className="text-[8px] font-black text-emerald-600 bg-emerald-50 border border-emerald-200 px-1 rounded shrink-0">PDF</span>}
+                                            </div>
                                             {lesson.durationMinutes && <div className="text-[10px] text-slate-400">{lesson.durationMinutes} min</div>}
                                           </div>
                                           <div className="flex items-center gap-0.5 shrink-0">
@@ -1252,7 +1316,7 @@ function AcademiaTab({
                                             </div>
                                             <button onClick={() => openLessonForm(course.id, mod.id, lesson)} className="p-1 rounded hover:bg-indigo-50 text-indigo-400"><Edit2 size={11} /></button>
                                             <button onClick={() => deleteLesson(lesson.id)} className="p-1 rounded hover:bg-red-50 text-red-400"><Trash2 size={11} /></button>
-                                            {ytId && <a href={lesson.youtubeUrl} target="_blank" rel="noopener noreferrer" className="p-1 rounded hover:bg-slate-100 text-slate-400"><ExternalLink size={11} /></a>}
+                                            {(ytId || isDoc) && <a href={isDoc ? lesson.documentUrl : lesson.youtubeUrl} target="_blank" rel="noopener noreferrer" className="p-1 rounded hover:bg-slate-100 text-slate-400"><ExternalLink size={11} /></a>}
                                           </div>
                                         </div>
                                       )
