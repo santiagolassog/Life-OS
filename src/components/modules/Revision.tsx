@@ -634,7 +634,7 @@ const Revision: React.FC<RevisionProps> = ({
             <div className="space-y-2 mt-1">
               <div className="flex items-center justify-between">
                 <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-1">
-                  <CheckCircle2 size={10} className="text-emerald-500" /> Tareas completadas (Lista)
+                  <CheckCircle2 size={10} className="text-emerald-500" /> Tareas completadas
                 </p>
                 <span className="text-sm font-black text-emerald-600">{taskStats.total}</span>
               </div>
@@ -823,7 +823,7 @@ const Revision: React.FC<RevisionProps> = ({
               <div className="text-5xl mb-3">⚡</div>
               <p className="text-sm font-bold text-slate-600">Sin datos de energía e impacto</p>
               <p className="text-xs text-slate-400 mt-2 leading-relaxed max-w-xs mx-auto">
-                Al completar actividades en <strong>Tiempo</strong>, califícalas con energía e impacto. Así verás qué te drena y qué te impulsa.
+                Al completar actividades en <strong>Agenda</strong>, califícalas con energía e impacto. Así verás qué te drena y qué te impulsa.
               </p>
             </div>
           ) : (

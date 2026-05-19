@@ -369,7 +369,7 @@ const Lista: React.FC<ListaProps> = ({
               <CheckSquare size={20} className="text-white" />
             </div>
             <div>
-              <h2 className="text-xl font-black text-slate-800 uppercase italic">Lista</h2>
+              <h2 className="text-xl font-black text-slate-800 uppercase italic">Tareas</h2>
               <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">Gestión de tareas</p>
             </div>
           </div>

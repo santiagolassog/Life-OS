@@ -28,9 +28,9 @@ const PLAN_COLORS: Record<CompanyPlan, string> = {
 }
 
 const ALL_MODULES: { key: ModuleKey; label: string; icon: string }[] = [
-  { key: 'tiempo',    label: 'Tiempo',    icon: '🕐' },
+  { key: 'tiempo',    label: 'Agenda',    icon: '🕐' },
   { key: 'dinero',    label: 'Dinero',    icon: '💰' },
-  { key: 'lista',     label: 'Lista',     icon: '✅' },
+  { key: 'lista',     label: 'Tareas',    icon: '✅' },
   { key: 'objetivos', label: 'Objetivos', icon: '🎯' },
   { key: 'habitos',   label: 'Hábitos',   icon: '🔥' },
   { key: 'revision',  label: 'Revisión',  icon: '📊' },

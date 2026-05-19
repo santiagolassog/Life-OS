@@ -2063,72 +2063,92 @@ const App = () => {
           )}
 
           {/* Panel "Más" — aparece encima de la nav */}
-          {showMoreMenu && (
-            <div
-              className="fixed left-0 right-0 z-[149] bg-indigo-950 border-t border-indigo-800/60 px-6 py-4 flex gap-4 animate-in slide-in-from-bottom-2 duration-150"
-              style={{ bottom: `calc(64px + env(safe-area-inset-bottom, 0px))` }}
-            >
-              {MORE_SECTIONS.map(({ key, label, Icon }) => (
-                <button
-                  key={key}
-                  onClick={() => { setSection(key as SectionKey); setShowMoreMenu(false); }}
-                  className={`flex-1 flex flex-col items-center justify-center gap-1.5 py-3.5 rounded-2xl transition-all active:scale-95 ${
-                    section === key
-                      ? 'bg-indigo-700/60 text-white'
-                      : 'bg-white/5 text-indigo-300 hover:bg-white/10'
-                  }`}
-                >
-                  <Icon size={22} />
-                  <span className="text-[10px] font-black uppercase tracking-wide">{label}</span>
-                </button>
-              ))}
-              {isSuperAdmin && (
-                <button
-                  onClick={() => { setSection('admin'); setShowMoreMenu(false); }}
-                  className={`flex-1 flex flex-col items-center justify-center gap-1.5 py-3.5 rounded-2xl transition-all active:scale-95 ${
-                    section === 'admin'
-                      ? 'bg-amber-500/40 text-amber-200'
-                      : 'bg-amber-500/10 text-amber-400 hover:bg-amber-500/20'
-                  }`}
-                >
-                  <Shield size={22} />
-                  <span className="text-[10px] font-black uppercase tracking-wide">Admin</span>
-                </button>
-              )}
-            </div>
-          )}
-
-          {/* Barra de nav principal — 4 ítems + Más */}
-          <div
-            className="fixed bottom-0 left-0 right-0 bg-indigo-950 border-t border-indigo-800/60 flex z-[150]"
-            style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}
-          >
-            {MOBILE_NAV.map(({ key, label, Icon }) => (
-              <button
-                key={key}
-                onClick={() => { setSection(key as SectionKey); setShowMoreMenu(false); }}
-                className={`flex-1 flex flex-col items-center justify-center py-3.5 gap-1 transition-all active:scale-95 ${
-                  section === key ? 'text-white' : 'text-indigo-400'
-                }`}
+          {showMoreMenu && (() => {
+            const visibleMore = MORE_SECTIONS.filter(s => isModuleEnabled(s.key))
+            const hasMore = visibleMore.length > 0 || isSuperAdmin
+            if (!hasMore) return null
+            return (
+              <div
+                className="fixed left-0 right-0 z-[149] bg-indigo-950 border-t border-indigo-800/60 px-6 py-4 flex gap-4 animate-in slide-in-from-bottom-2 duration-150"
+                style={{ bottom: `calc(64px + env(safe-area-inset-bottom, 0px))` }}
               >
-                <Icon size={22} strokeWidth={section === key ? 2.5 : 2} />
-                <span className="text-[9px] font-black uppercase tracking-wide">{label}</span>
-              </button>
-            ))}
+                {visibleMore.map(({ key, label, Icon }) => (
+                  <button
+                    key={key}
+                    onClick={() => { setSection(key as SectionKey); setShowMoreMenu(false); }}
+                    className={`flex-1 flex flex-col items-center justify-center gap-1.5 py-3.5 rounded-2xl transition-all active:scale-95 ${
+                      section === key
+                        ? 'bg-indigo-700/60 text-white'
+                        : 'bg-white/5 text-indigo-300 hover:bg-white/10'
+                    }`}
+                  >
+                    <Icon size={22} />
+                    <span className="text-[10px] font-black uppercase tracking-wide">{label}</span>
+                  </button>
+                ))}
+                {isSuperAdmin && (
+                  <button
+                    onClick={() => { setSection('admin'); setShowMoreMenu(false); }}
+                    className={`flex-1 flex flex-col items-center justify-center gap-1.5 py-3.5 rounded-2xl transition-all active:scale-95 ${
+                      section === 'admin'
+                        ? 'bg-amber-500/40 text-amber-200'
+                        : 'bg-amber-500/10 text-amber-400 hover:bg-amber-500/20'
+                    }`}
+                  >
+                    <Shield size={22} />
+                    <span className="text-[10px] font-black uppercase tracking-wide">Admin</span>
+                  </button>
+                )}
+              </div>
+            )
+          })()}
 
-            {/* Botón Más */}
-            <button
-              onClick={() => setShowMoreMenu(v => !v)}
-              className={`flex-1 flex flex-col items-center justify-center py-3.5 gap-1 transition-all active:scale-95 ${
-                showMoreMenu || ['habitos','objetivos','revision','academia','admin'].includes(section)
-                  ? 'text-white'
-                  : 'text-indigo-400'
-              }`}
-            >
-              <MoreHorizontal size={22} strokeWidth={showMoreMenu || ['habitos','objetivos','revision','academia','admin'].includes(section) ? 2.5 : 2} />
-              <span className="text-[9px] font-black uppercase tracking-wide">Más</span>
-            </button>
-          </div>
+          {/* Barra de nav principal — filtrada por módulos habilitados */}
+          {(() => {
+            const visibleMain = MOBILE_NAV.filter(s => isModuleEnabled(s.key))
+            const visibleMore = MORE_SECTIONS.filter(s => isModuleEnabled(s.key))
+            const hasMoreItems = visibleMore.length > 0 || isSuperAdmin
+            const moreActive = showMoreMenu || ['habitos','objetivos','revision','academia','admin'].includes(section)
+            return (
+              <div
+                className="fixed bottom-0 left-0 right-0 bg-indigo-950 border-t border-indigo-800/60 flex z-[150]"
+                style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}
+              >
+                {/* Inicio siempre visible */}
+                {visibleMain.filter(s => s.key === 'hoy').map(({ key, label, Icon }) => (
+                  <button
+                    key={key}
+                    onClick={() => { setSection(key as SectionKey); setShowMoreMenu(false); }}
+                    className={`flex-1 flex flex-col items-center justify-center py-3.5 gap-1 transition-all active:scale-95 ${section === key ? 'text-white' : 'text-indigo-400'}`}
+                  >
+                    <Icon size={22} strokeWidth={section === key ? 2.5 : 2} />
+                    <span className="text-[9px] font-black uppercase tracking-wide">{label}</span>
+                  </button>
+                ))}
+                {/* Resto de secciones principales habilitadas (sin hoy) */}
+                {visibleMain.filter(s => s.key !== 'hoy').map(({ key, label, Icon }) => (
+                  <button
+                    key={key}
+                    onClick={() => { setSection(key as SectionKey); setShowMoreMenu(false); }}
+                    className={`flex-1 flex flex-col items-center justify-center py-3.5 gap-1 transition-all active:scale-95 ${section === key ? 'text-white' : 'text-indigo-400'}`}
+                  >
+                    <Icon size={22} strokeWidth={section === key ? 2.5 : 2} />
+                    <span className="text-[9px] font-black uppercase tracking-wide">{label}</span>
+                  </button>
+                ))}
+                {/* Botón Más — solo si hay secciones habilitadas en el menú más */}
+                {hasMoreItems && (
+                  <button
+                    onClick={() => setShowMoreMenu(v => !v)}
+                    className={`flex-1 flex flex-col items-center justify-center py-3.5 gap-1 transition-all active:scale-95 ${moreActive ? 'text-white' : 'text-indigo-400'}`}
+                  >
+                    <MoreHorizontal size={22} strokeWidth={moreActive ? 2.5 : 2} />
+                    <span className="text-[9px] font-black uppercase tracking-wide">Más</span>
+                  </button>
+                )}
+              </div>
+            )
+          })()}
         </>
       )}
 
