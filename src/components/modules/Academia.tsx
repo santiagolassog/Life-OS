@@ -326,26 +326,20 @@ export default function Academia() {
     const courseMods= modules.filter(m => m.courseId === selectedCourse.id)
     const orphans   = lessons.filter(l => l.courseId === selectedCourse.id && !l.moduleId)
 
-    // Auto-expandir el primer módulo si ninguno está expandido
-    const effectiveExpanded = expandedMods.length === 0 && courseMods.length > 0
-      ? [courseMods[0].id]
-      : expandedMods
-
     const toggleMod = (id: string) =>
       setExpandedMods(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id])
 
     return (
-      <div className="flex flex-col h-full bg-white">
+      <div className="flex flex-col h-full bg-slate-50">
         {/* Header */}
         <div className="bg-indigo-950 px-4 pt-4 pb-6 shrink-0">
           <button onClick={() => { setSelectedCourse(null); setExpandedMods([]) }}
-            className="flex items-center gap-1.5 text-indigo-200 text-sm font-bold mb-4 hover:text-white transition-colors"
+            className="flex items-center gap-1.5 text-indigo-300 text-sm font-bold mb-4 hover:text-white transition-colors"
           >
             <ChevronLeft size={16} /> Cursos
           </button>
           <h1 className="text-xl font-black text-white mb-1">{selectedCourse.title}</h1>
           {selectedCourse.description && <p className="text-indigo-300 text-sm leading-relaxed mb-3">{selectedCourse.description}</p>}
-          {/* Progress */}
           <div className="flex items-center justify-between text-xs text-indigo-300 mb-1.5">
             <span>{done} de {total} lecciones completadas</span>
             <span className="font-black text-white">{pct}%</span>
@@ -353,87 +347,101 @@ export default function Academia() {
           <div className="h-2 rounded-full bg-white/20 overflow-hidden">
             <div className="h-full rounded-full bg-white transition-all duration-500" style={{ width: `${pct}%` }} />
           </div>
-          {/* Stats */}
-          <div className="flex gap-4 mt-3 text-xs text-indigo-400">
+          <div className="flex gap-4 mt-3 text-xs text-indigo-500">
             <div className="flex items-center gap-1"><Layers size={12} /> {courseMods.length} módulo{courseMods.length !== 1 ? 's' : ''}</div>
             <div className="flex items-center gap-1"><Video size={12} /> {total} lección{total !== 1 ? 'es' : ''}</div>
           </div>
         </div>
 
         {/* Módulos */}
-        <div className="flex-1 overflow-y-auto custom-scrollbar">
+        <div className="flex-1 overflow-y-auto custom-scrollbar py-3 px-3 space-y-2">
           {courseMods.length === 0 && orphans.length === 0 ? (
             <div className="text-center py-16 text-slate-400">
               <Video size={36} className="mx-auto mb-3 opacity-30" />
               <p className="font-semibold">Sin lecciones aún</p>
             </div>
           ) : (
-            <div>
+            <>
               {courseMods.map((mod, modIdx) => {
                 const modLessons = lessons.filter(l => l.moduleId === mod.id)
                 const { done: mDone, total: mTotal } = getModuleProgress(mod.id)
-                const mPct      = mTotal > 0 ? Math.round((mDone / mTotal) * 100) : 0
-                const isOpen    = effectiveExpanded.includes(mod.id)
+                const mPct   = mTotal > 0 ? Math.round((mDone / mTotal) * 100) : 0
+                const isOpen = expandedMods.includes(mod.id)
+                const allDone = mTotal > 0 && mDone === mTotal
 
                 return (
-                  <div key={mod.id} className="border-b border-slate-100">
-                    {/* Module header */}
+                  <div
+                    key={mod.id}
+                    className={`rounded-2xl overflow-hidden border transition-all duration-200 ${
+                      isOpen
+                        ? 'bg-white border-indigo-200 shadow-sm shadow-indigo-100'
+                        : 'bg-white border-slate-200 hover:border-slate-300'
+                    }`}
+                  >
+                    {/* Module header — toda el área es clickable */}
                     <button
                       onClick={() => toggleMod(mod.id)}
-                      className="w-full flex items-center gap-4 px-5 py-4 text-left hover:bg-slate-50 transition-colors"
+                      className={`w-full flex items-center gap-3 px-4 py-3.5 text-left transition-colors ${isOpen ? 'bg-indigo-50/70' : 'hover:bg-slate-50'}`}
                     >
-                      {/* Number badge */}
-                      <div className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 font-black text-sm transition-colors ${mPct === 100 ? 'bg-emerald-100 text-emerald-600' : 'bg-indigo-100 text-indigo-600'}`}>
-                        {mPct === 100 ? <CheckCircle2 size={18} /> : modIdx + 1}
+                      {/* Badge */}
+                      <div className={`w-8 h-8 rounded-xl flex items-center justify-center shrink-0 font-black text-sm ${allDone ? 'bg-emerald-100 text-emerald-600' : isOpen ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-600'}`}>
+                        {allDone ? <CheckCircle2 size={16} /> : modIdx + 1}
                       </div>
                       <div className="flex-1 min-w-0">
-                        <div className="font-black text-slate-800 text-sm truncate">{mod.title}</div>
-                        <div className="flex items-center gap-3 mt-1">
-                          <div className="text-[11px] text-slate-400">{mDone}/{mTotal} completadas</div>
-                          <div className="flex-1 h-1 rounded-full bg-slate-200 overflow-hidden">
-                            <div className="h-full rounded-full bg-indigo-400 transition-all" style={{ width: `${mPct}%` }} />
-                          </div>
-                          <span className="text-[10px] font-bold text-slate-400">{mPct}%</span>
+                        <div className={`font-black text-sm leading-tight truncate ${isOpen ? 'text-indigo-900' : 'text-slate-800'}`}>{mod.title}</div>
+                        <div className="flex items-center gap-2 mt-1">
+                          <span className={`text-[11px] font-medium ${allDone ? 'text-emerald-500' : 'text-slate-400'}`}>
+                            {allDone ? '✓ Completado' : `${mDone}/${mTotal} lecciones`}
+                          </span>
+                          {!allDone && mDone > 0 && (
+                            <div className="flex-1 max-w-[80px] h-1 rounded-full bg-slate-200 overflow-hidden">
+                              <div className="h-full rounded-full bg-indigo-400" style={{ width: `${mPct}%` }} />
+                            </div>
+                          )}
                         </div>
                       </div>
-                      <ChevronRight size={16} className={`text-slate-400 shrink-0 transition-transform ${isOpen ? 'rotate-90' : ''}`} />
+                      {/* Chevron — rota 180° cuando está abierto */}
+                      <div className={`shrink-0 w-7 h-7 rounded-lg flex items-center justify-center transition-all duration-200 ${isOpen ? 'bg-indigo-100 text-indigo-600 rotate-180' : 'bg-slate-100 text-slate-400'}`}>
+                        <ChevronDown size={15} />
+                      </div>
                     </button>
 
-                    {/* Lecciones del módulo */}
+                    {/* Lecciones — solo se renderizan cuando está abierto */}
                     {isOpen && (
-                      <div className="pb-2">
+                      <div className="border-t border-indigo-100">
                         {modLessons.length === 0 ? (
-                          <p className="text-xs text-slate-400 px-14 py-3">Sin lecciones en este módulo</p>
+                          <p className="text-xs text-slate-400 px-5 py-4">Sin lecciones en este módulo</p>
                         ) : modLessons.map((lesson, i) => {
-                          const ytId    = extractYoutubeId(lesson.youtubeUrl)
-                          const lDone   = isCompleted(lesson.id)
+                          const ytId  = extractYoutubeId(lesson.youtubeUrl)
+                          const lDone = isCompleted(lesson.id)
                           return (
                             <button
                               key={lesson.id}
                               onClick={() => setSelectedLesson(lesson)}
-                              className="w-full flex items-center gap-4 pl-14 pr-5 py-3 hover:bg-indigo-50/60 transition-all text-left group"
+                              className="w-full flex items-center gap-3 px-4 py-3 hover:bg-indigo-50 transition-colors text-left group border-b border-slate-50 last:border-0"
                             >
+                              {/* Número o check */}
+                              <div className={`w-6 h-6 rounded-full flex items-center justify-center shrink-0 text-[10px] font-black ${lDone ? 'bg-emerald-100 text-emerald-600' : 'bg-slate-100 text-slate-500'}`}>
+                                {lDone ? <CheckCircle2 size={13} /> : i + 1}
+                              </div>
+                              {/* Thumbnail */}
                               {ytId ? (
-                                <div className="relative w-16 h-11 rounded-xl overflow-hidden shrink-0">
+                                <div className="relative w-14 h-10 rounded-lg overflow-hidden shrink-0">
                                   <img src={`https://img.youtube.com/vi/${ytId}/mqdefault.jpg`} alt="" className="w-full h-full object-cover" />
                                   <div className="absolute inset-0 bg-black/30 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
-                                    <Play size={14} className="text-white" fill="white" />
+                                    <Play size={12} className="text-white" fill="white" />
                                   </div>
                                 </div>
                               ) : (
-                                <div className="w-16 h-11 rounded-xl bg-slate-100 flex items-center justify-center shrink-0">
-                                  <Video size={14} className="text-slate-400" />
+                                <div className="w-14 h-10 rounded-lg bg-slate-100 flex items-center justify-center shrink-0">
+                                  <Video size={12} className="text-slate-400" />
                                 </div>
                               )}
                               <div className="min-w-0 flex-1">
-                                <div className="flex items-center gap-1.5 mb-0.5">
-                                  <span className="text-[10px] font-black text-slate-400">{i + 1}</span>
-                                  {lDone && <CheckCircle2 size={11} className="text-emerald-500" />}
-                                </div>
-                                <div className="font-bold text-slate-800 text-sm leading-tight line-clamp-1">{lesson.title}</div>
+                                <div className={`font-bold text-sm leading-tight line-clamp-1 ${lDone ? 'text-slate-500' : 'text-slate-800'}`}>{lesson.title}</div>
                                 {lesson.durationMinutes && (
                                   <div className="flex items-center gap-1 text-[11px] text-slate-400 mt-0.5">
-                                    <Clock size={10} /> {formatDuration(lesson.durationMinutes)}
+                                    <Clock size={9} /> {formatDuration(lesson.durationMinutes)}
                                   </div>
                                 )}
                               </div>
@@ -441,9 +449,7 @@ export default function Academia() {
                                 onClick={e => { e.stopPropagation(); toggleComplete(lesson) }}
                                 className="shrink-0 p-1 opacity-0 group-hover:opacity-100 transition-opacity"
                               >
-                                {lDone
-                                  ? <CheckCircle2 size={18} className="text-emerald-500" />
-                                  : <Circle size={18} className="text-slate-300" />}
+                                {lDone ? <CheckCircle2 size={17} className="text-emerald-400" /> : <Circle size={17} className="text-slate-300" />}
                               </button>
                             </button>
                           )
@@ -456,8 +462,8 @@ export default function Academia() {
 
               {/* Lecciones sin módulo */}
               {orphans.length > 0 && (
-                <div className="border-b border-slate-100">
-                  <div className="px-5 py-3 bg-slate-50">
+                <div className="rounded-2xl overflow-hidden border border-slate-200 bg-white">
+                  <div className="px-4 py-3 bg-slate-50 border-b border-slate-100">
                     <span className="text-xs font-black text-slate-400 uppercase tracking-wider">Otras lecciones</span>
                   </div>
                   {orphans.map((lesson, i) => {
@@ -465,37 +471,36 @@ export default function Academia() {
                     const lDone = isCompleted(lesson.id)
                     return (
                       <button key={lesson.id} onClick={() => setSelectedLesson(lesson)}
-                        className="w-full flex items-center gap-4 px-5 py-3 hover:bg-indigo-50/60 transition-all text-left group"
+                        className="w-full flex items-center gap-3 px-4 py-3 hover:bg-indigo-50 transition-colors text-left group border-b border-slate-50 last:border-0"
                       >
+                        <div className={`w-6 h-6 rounded-full flex items-center justify-center shrink-0 text-[10px] font-black ${lDone ? 'bg-emerald-100 text-emerald-600' : 'bg-slate-100 text-slate-500'}`}>
+                          {lDone ? <CheckCircle2 size={13} /> : i + 1}
+                        </div>
                         {ytId ? (
-                          <div className="relative w-16 h-11 rounded-xl overflow-hidden shrink-0">
+                          <div className="relative w-14 h-10 rounded-lg overflow-hidden shrink-0">
                             <img src={`https://img.youtube.com/vi/${ytId}/mqdefault.jpg`} alt="" className="w-full h-full object-cover" />
                             <div className="absolute inset-0 bg-black/30 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
-                              <Play size={14} className="text-white" fill="white" />
+                              <Play size={12} className="text-white" fill="white" />
                             </div>
                           </div>
                         ) : (
-                          <div className="w-16 h-11 rounded-xl bg-slate-100 flex items-center justify-center shrink-0">
-                            <Video size={14} className="text-slate-400" />
+                          <div className="w-14 h-10 rounded-lg bg-slate-100 flex items-center justify-center shrink-0">
+                            <Video size={12} className="text-slate-400" />
                           </div>
                         )}
                         <div className="min-w-0 flex-1">
-                          <div className="flex items-center gap-1.5 mb-0.5">
-                            <span className="text-[10px] font-black text-slate-400">{i + 1}</span>
-                            {lDone && <CheckCircle2 size={11} className="text-emerald-500" />}
-                          </div>
-                          <div className="font-bold text-slate-800 text-sm leading-tight line-clamp-1">{lesson.title}</div>
-                          {lesson.durationMinutes && <div className="flex items-center gap-1 text-[11px] text-slate-400 mt-0.5"><Clock size={10}/>{formatDuration(lesson.durationMinutes)}</div>}
+                          <div className={`font-bold text-sm leading-tight line-clamp-1 ${lDone ? 'text-slate-400' : 'text-slate-800'}`}>{lesson.title}</div>
+                          {lesson.durationMinutes && <div className="flex items-center gap-1 text-[11px] text-slate-400 mt-0.5"><Clock size={9}/>{formatDuration(lesson.durationMinutes)}</div>}
                         </div>
                         <button onClick={e => { e.stopPropagation(); toggleComplete(lesson) }} className="shrink-0 p-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                          {lDone ? <CheckCircle2 size={18} className="text-emerald-500" /> : <Circle size={18} className="text-slate-300" />}
+                          {lDone ? <CheckCircle2 size={17} className="text-emerald-400" /> : <Circle size={17} className="text-slate-300" />}
                         </button>
                       </button>
                     )
                   })}
                 </div>
               )}
-            </div>
+            </>
           )}
         </div>
       </div>
@@ -551,7 +556,11 @@ export default function Academia() {
             return (
               <button
                 key={course.id}
-                onClick={() => { setSelectedCourse(course); setExpandedMods([]) }}
+                onClick={() => {
+                  const firstMod = modules.find(m => m.courseId === course.id)
+                  setSelectedCourse(course)
+                  setExpandedMods(firstMod ? [firstMod.id] : [])
+                }}
                 className="w-full bg-white rounded-3xl border border-slate-200 overflow-hidden hover:border-indigo-300 hover:shadow-lg hover:shadow-indigo-50 transition-all text-left group"
               >
                 {firstYtId ? (
