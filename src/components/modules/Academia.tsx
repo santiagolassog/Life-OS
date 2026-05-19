@@ -10,7 +10,8 @@ import { useAuth } from '../../hooks/useAuth'
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-function extractYoutubeId(url: string): string | null {
+function extractYoutubeId(url: string | undefined | null): string | null {
+  if (!url) return null
   const match = url.match(/(?:youtube\.com\/(?:watch\?v=|embed\/)|youtu\.be\/)([A-Za-z0-9_-]{11})/)
   return match?.[1] ?? null
 }
@@ -533,8 +534,9 @@ export default function Academia() {
                     <span className="text-xs font-black text-slate-400 uppercase tracking-wider">Otras lecciones</span>
                   </div>
                   {orphans.map((lesson, i) => {
-                    const ytId  = extractYoutubeId(lesson.youtubeUrl)
-                    const lDone = isCompleted(lesson.id)
+                    const lIsDoc = lesson.lessonType === 'document'
+                    const ytId   = !lIsDoc ? extractYoutubeId(lesson.youtubeUrl) : null
+                    const lDone  = isCompleted(lesson.id)
                     return (
                       <button key={lesson.id} onClick={() => setSelectedLesson(lesson)}
                         className="w-full flex items-center gap-3 px-4 py-3 hover:bg-indigo-50 transition-colors text-left group border-b border-slate-50 last:border-0"
@@ -616,7 +618,7 @@ export default function Academia() {
             const pct               = total > 0 ? Math.round((done / total) * 100) : 0
             const courseMods        = modules.filter(m => m.courseId === course.id)
             const courseLessons     = lessons.filter(l => l.courseId === course.id)
-            const firstYtId         = courseLessons.map(l => extractYoutubeId(l.youtubeUrl)).find(Boolean) ?? null
+            const firstYtId         = courseLessons.map(l => l.lessonType !== 'document' ? extractYoutubeId(l.youtubeUrl) : null).find(Boolean) ?? null
             const totalDuration     = courseLessons.reduce((acc, l) => acc + (l.durationMinutes ?? 0), 0)
 
             return (

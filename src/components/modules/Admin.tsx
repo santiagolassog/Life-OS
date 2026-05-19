@@ -37,7 +37,8 @@ const ALL_MODULES: { key: ModuleKey; label: string; icon: string }[] = [
   { key: 'academia',  label: 'Academia',  icon: '🎓' },
 ]
 
-function extractYoutubeId(url: string): string | null {
+function extractYoutubeId(url: string | undefined | null): string | null {
+  if (!url) return null
   const match = url.match(
     /(?:youtube\.com\/(?:watch\?v=|embed\/)|youtu\.be\/)([A-Za-z0-9_-]{11})/
   )
@@ -1343,7 +1344,7 @@ function AcademiaTab({
                                 </span>
                               </div>
                               {unassigned.map(lesson => {
-                                const ytId = extractYoutubeId(lesson.youtubeUrl)
+                                const ytId = lesson.lessonType !== 'document' ? extractYoutubeId(lesson.youtubeUrl ?? '') : null
                                 return (
                                   <div key={lesson.id} className="flex items-center gap-2.5 pl-12 pr-3 py-2 border-t border-amber-100">
                                     {ytId ? (
