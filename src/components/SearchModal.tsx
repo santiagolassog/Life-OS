@@ -34,6 +34,7 @@ interface SearchModalProps {
   habits: Habit[];
   onClose: () => void;
   onSearchSelect: (result: SearchResult) => void;
+  isModuleEnabled?: (key: string) => boolean;
 }
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -52,12 +53,12 @@ const TASK_STATUS_ICON: Record<string, React.FC<{ size?: number; className?: str
   done:       CheckCircle2,
 };
 
-const TYPE_CONFIG: Record<ResultType, { label: string; color: string; Icon: React.FC<any> }> = {
-  task:        { label: 'Tareas',        color: '#8b5cf6', Icon: CheckSquare },
-  goal:        { label: 'Objetivos',     color: '#6366f1', Icon: Target },
-  event:       { label: 'Actividades',   color: '#3b82f6', Icon: CalendarDays },
-  transaction: { label: 'Transacciones', color: '#10b981', Icon: DollarSign },
-  habit:       { label: 'Hábitos',       color: '#6366f1', Icon: Flame },
+const TYPE_CONFIG: Record<ResultType, { label: string; color: string; Icon: React.FC<any>; module: string }> = {
+  task:        { label: 'Tareas',        color: '#8b5cf6', Icon: CheckSquare,  module: 'lista' },
+  goal:        { label: 'Objetivos',     color: '#6366f1', Icon: Target,       module: 'objetivos' },
+  event:       { label: 'Actividades',   color: '#3b82f6', Icon: CalendarDays, module: 'tiempo' },
+  transaction: { label: 'Transacciones', color: '#10b981', Icon: DollarSign,   module: 'dinero' },
+  habit:       { label: 'Hábitos',       color: '#f97316', Icon: Flame,        module: 'habitos' },
 };
 
 function fmtDateId(dateId: string): string {
@@ -69,12 +70,15 @@ function fmtDateId(dateId: string): string {
 
 const SearchModal: React.FC<SearchModalProps> = ({
   tasks, goals, events, transactions, categories, finCategories, habits,
-  onClose, onSearchSelect,
+  onClose, onSearchSelect, isModuleEnabled,
 }) => {
   const [query, setQuery]         = useState('');
   const [selectedIdx, setSelectedIdx] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
   const listRef  = useRef<HTMLDivElement>(null);
+
+  // Por defecto todo habilitado (usuario general)
+  const modEnabled = (key: string) => isModuleEnabled ? isModuleEnabled(key) : true;
 
   useEffect(() => { inputRef.current?.focus(); }, []);
 
@@ -86,7 +90,7 @@ const SearchModal: React.FC<SearchModalProps> = ({
     const all: SearchResult[] = [];
 
     // Tasks
-    tasks
+    if (modEnabled('lista')) tasks
       .filter(t => t.title.toLowerCase().includes(q) || t.description?.toLowerCase().includes(q))
       .slice(0, 5)
       .forEach(t => {
@@ -105,7 +109,7 @@ const SearchModal: React.FC<SearchModalProps> = ({
       });
 
     // Goals
-    goals
+    if (modEnabled('objetivos')) goals
       .filter(g => g.title.toLowerCase().includes(q) || g.description?.toLowerCase().includes(q))
       .slice(0, 4)
       .forEach(g => {
@@ -124,7 +128,7 @@ const SearchModal: React.FC<SearchModalProps> = ({
 
     // Events
     const eventResults: SearchResult[] = [];
-    Object.entries(events).forEach(([dateId, evs]) => {
+    if (modEnabled('tiempo')) Object.entries(events).forEach(([dateId, evs]) => {
       if (eventResults.length >= 4) return;
       evs.forEach(ev => {
         if (eventResults.length >= 4) return;
@@ -145,7 +149,7 @@ const SearchModal: React.FC<SearchModalProps> = ({
     all.push(...eventResults);
 
     // Transactions
-    transactions
+    if (modEnabled('dinero')) transactions
       .filter(t => t.description.toLowerCase().includes(q))
       .slice(0, 4)
       .forEach(t => {
@@ -162,7 +166,7 @@ const SearchModal: React.FC<SearchModalProps> = ({
       });
 
     // Habits
-    habits
+    if (modEnabled('habitos')) habits
       .filter(h => h.name.toLowerCase().includes(q))
       .slice(0, 4)
       .forEach(h => {
@@ -262,7 +266,7 @@ const SearchModal: React.FC<SearchModalProps> = ({
               </div>
               <p className="text-sm font-bold text-slate-500">Busca en toda tu plataforma</p>
               <div className="flex flex-wrap justify-center gap-2 mt-4">
-                {Object.values(TYPE_CONFIG).map(({ label, color, Icon }) => (
+                {Object.values(TYPE_CONFIG).filter(({ module }) => modEnabled(module)).map(({ label, color, Icon }) => (
                   <span key={label} className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[11px] font-black border"
                     style={{ color, borderColor: color + '30', backgroundColor: color + '0d' }}>
                     <Icon size={11} /> {label}

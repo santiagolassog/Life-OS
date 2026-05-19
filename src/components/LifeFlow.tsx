@@ -2169,6 +2169,7 @@ const App = () => {
           habits={habits}
           onClose={() => setShowSearch(false)}
           onSearchSelect={(result) => { handleSearchSelect(result); setShowSearch(false); }}
+          isModuleEnabled={isModuleEnabled}
         />
       )}
 
