@@ -371,34 +371,51 @@ const Hoy: React.FC<HoyProps> = ({
                     </div>
                   ) : (
                     <div className="space-y-1">
-                      {todayEvents.all.slice(0, 5).map((ev) => {
-                        const cat = categories[ev.category] ?? { color: '#94a3b8', short: '??' };
-                        const isNext = !ev.completed && todayEvents.upcoming[0]?.id === ev.id;
-                        return (
-                          <div
-                            key={ev.id}
-                            className={`flex items-center gap-3 p-2.5 rounded-xl transition-all ${
-                              isNext ? 'bg-indigo-50/60 ring-1 ring-indigo-100' : ''
-                            }`}
-                          >
-                            <span className="text-[10px] font-bold text-slate-400 w-10 shrink-0 text-right tabular-nums">
-                              {eventTime(ev.startHour)}
-                            </span>
-                            <div className="w-1 h-8 rounded-full shrink-0" style={{ backgroundColor: cat.color }} />
-                            <p className={`text-sm font-bold truncate flex-1 ${
-                              ev.completed ? 'line-through text-slate-400' : 'text-slate-700'
-                            }`}>
-                              {ev.task}
-                            </p>
-                            {ev.completed && <CheckCircle2 size={14} className="text-emerald-500 shrink-0" />}
-                            {isNext && (
-                              <span className="text-[8px] font-black text-indigo-500 bg-indigo-100 rounded-full px-1.5 py-0.5 uppercase shrink-0">
-                                Ahora
+                      {(() => {
+                        const allEvs = todayEvents.all;
+                        const nowMin = new Date().getHours() * 60 + new Date().getMinutes();
+                        // Índice del primer evento que aún no ha terminado
+                        const firstUpIdx = allEvs.findIndex(e => {
+                          const [h, m] = e.endHour.split(':').map(Number);
+                          return h * 60 + m > nowMin;
+                        });
+                        let start: number;
+                        if (firstUpIdx === -1) {
+                          // Todos terminados → mostrar los últimos 5
+                          start = Math.max(0, allEvs.length - 5);
+                        } else {
+                          // Mostrar hasta 2 pasados como contexto + los próximos
+                          start = Math.max(0, firstUpIdx - 2);
+                        }
+                        return allEvs.slice(start, start + 5).map((ev) => {
+                          const cat = categories[ev.category] ?? { color: '#94a3b8', short: '??' };
+                          const isNext = !ev.completed && todayEvents.upcoming[0]?.id === ev.id;
+                          return (
+                            <div
+                              key={ev.id}
+                              className={`flex items-center gap-3 p-2.5 rounded-xl transition-all ${
+                                isNext ? 'bg-indigo-50/60 ring-1 ring-indigo-100' : ''
+                              }`}
+                            >
+                              <span className="text-[10px] font-bold text-slate-400 w-10 shrink-0 text-right tabular-nums">
+                                {eventTime(ev.startHour)}
                               </span>
-                            )}
-                          </div>
-                        );
-                      })}
+                              <div className="w-1 h-8 rounded-full shrink-0" style={{ backgroundColor: cat.color }} />
+                              <p className={`text-sm font-bold truncate flex-1 ${
+                                ev.completed ? 'line-through text-slate-400' : 'text-slate-700'
+                              }`}>
+                                {ev.task}
+                              </p>
+                              {ev.completed && <CheckCircle2 size={14} className="text-emerald-500 shrink-0" />}
+                              {isNext && (
+                                <span className="text-[8px] font-black text-indigo-500 bg-indigo-100 rounded-full px-1.5 py-0.5 uppercase shrink-0">
+                                  Ahora
+                                </span>
+                              )}
+                            </div>
+                          );
+                        });
+                      })()}
                       {todayEvents.all.length > 5 && (
                         <button
                           onClick={() => onNavigate('tiempo')}
