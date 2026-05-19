@@ -262,12 +262,12 @@ const Hoy: React.FC<HoyProps> = ({
                 <button
                   key={section}
                   onClick={() => onNavigate(section)}
-                  className={`${itemW} flex items-center gap-3 bg-white rounded-2xl p-4 border border-slate-100 shadow-sm hover:shadow-md transition-all text-left active:scale-95`}
+                  className={`${itemW} min-h-[96px] flex flex-col items-center justify-center gap-2.5 bg-white rounded-2xl p-4 border border-slate-100 shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all text-center active:scale-95`}
                 >
-                  <div className={`${color} p-2 rounded-xl shrink-0`}>
-                    <Icon size={16} className="text-white" />
+                  <div className={`${color} p-2.5 rounded-xl shadow-sm`}>
+                    <Icon size={18} className="text-white" />
                   </div>
-                  <span className="text-xs font-black text-slate-700">{label}</span>
+                  <span className="text-[11px] font-black text-slate-700 leading-tight">{label}</span>
                 </button>
               ))}
             </div>
