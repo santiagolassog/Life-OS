@@ -1198,7 +1198,7 @@ const App = () => {
     dinero: 'finanzas',
     revision: 'reflexion',
   };
-  const [expandedGroups, setExpandedGroups] = useState<string[]>(['planificacion', 'crecimiento', 'finanzas', 'reflexion']);
+  const [expandedGroups, setExpandedGroups] = useState<string[]>(['planificacion', 'crecimiento']);
   const toggleGroup = (key: string) =>
     setExpandedGroups(prev => prev.includes(key) ? prev.filter(k => k !== key) : [...prev, key]);
 
