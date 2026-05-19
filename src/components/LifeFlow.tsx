@@ -9,7 +9,7 @@ import {
   Clock, Save, Zap, ChevronLeft, ChevronRight, X, Plus,
   PieChart as PieChartIcon, Trash2, CalendarDays, Menu, Copy, CheckCircle2, Circle, Edit2, Palette,
   Download, ListPlus, Target, BarChart3, History, DollarSign, Star, ChevronDown, LogOut, CheckSquare,
-  Sparkles, Keyboard, Home, MoreHorizontal, Search, GripVertical, Flame, GraduationCap, Shield,
+  Sparkles, Keyboard, Home, MoreHorizontal, Search, GripVertical, Flame, GraduationCap, Shield, KeyRound,
 } from 'lucide-react';
 import Dinero from './modules/Dinero';
 import Objetivos from './modules/Objetivos';
@@ -258,6 +258,24 @@ const App = () => {
   const [showSearch, setShowSearch]         = useState(false);
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [showProfile, setShowProfile]     = useState(false);
+  const [showChangePassword, setShowChangePassword] = useState(false);
+  const [newPassword, setNewPassword]     = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [passwordSaving, setPasswordSaving] = useState(false);
+  const [passwordError, setPasswordError]  = useState('');
+  const [passwordSuccess, setPasswordSuccess] = useState(false);
+
+  const handleChangePassword = async () => {
+    setPasswordError('');
+    if (newPassword.length < 6) { setPasswordError('La contraseña debe tener al menos 6 caracteres.'); return; }
+    if (newPassword !== confirmPassword) { setPasswordError('Las contraseñas no coinciden.'); return; }
+    setPasswordSaving(true);
+    const { error } = await supabase.auth.updateUser({ password: newPassword });
+    setPasswordSaving(false);
+    if (error) { setPasswordError(error.message); }
+    else { setPasswordSuccess(true); setNewPassword(''); setConfirmPassword(''); setTimeout(() => { setPasswordSuccess(false); setShowChangePassword(false); }, 2000); }
+  };
+
   const [showMoreMenu, setShowMoreMenu]   = useState(false);
   const [profileName, setProfileName]     = useState('');
   const [profileSaving, setProfileSaving] = useState(false);
@@ -1377,6 +1395,13 @@ const App = () => {
             </div>
           </button>
           <button
+            onClick={() => { setShowChangePassword(true); setPasswordError(''); setPasswordSuccess(false); setNewPassword(''); setConfirmPassword(''); }}
+            className="w-full flex items-center gap-3 px-3 py-2 rounded-xl text-indigo-500 hover:bg-white/5 hover:text-indigo-300 transition-all text-xs font-bold"
+          >
+            <KeyRound size={14} />
+            Cambiar contraseña
+          </button>
+          <button
             onClick={signOut}
             className="w-full flex items-center gap-3 px-3 py-2 rounded-xl text-indigo-600 hover:bg-red-500/10 hover:text-red-400 transition-all text-xs font-bold"
           >
@@ -1504,6 +1529,14 @@ const App = () => {
                     <Edit2 size={14} />
                     Mi perfil
                   </button>
+                  <button
+                    onClick={() => { setShowChangePassword(true); setPasswordError(''); setPasswordSuccess(false); setNewPassword(''); setConfirmPassword(''); setUserMenuOpen(false); }}
+                    className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-indigo-300 hover:bg-white/5 hover:text-white text-[11px] font-black uppercase tracking-widest transition-all active:scale-[0.98]"
+                  >
+                    <KeyRound size={14} />
+                    Cambiar contraseña
+                  </button>
+                  <div className="h-px bg-indigo-800/40 my-1" />
                   <button
                     onClick={() => { signOut(); setUserMenuOpen(false); }}
                     className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-red-400 hover:bg-red-500/10 hover:text-red-300 text-[11px] font-black uppercase tracking-widest transition-all active:scale-[0.98]"
@@ -2269,6 +2302,89 @@ const App = () => {
       )}
 
       {/* MODAL ATAJOS DE TECLADO */}
+      {/* MODAL CAMBIAR CONTRASEÑA */}
+      {showChangePassword && (
+        <div
+          className="fixed inset-0 z-[400] flex items-end sm:items-center justify-center bg-slate-900/70 backdrop-blur-sm animate-in fade-in p-4 sm:p-6"
+          onClick={() => setShowChangePassword(false)}
+        >
+          <div
+            className="bg-white w-full max-w-sm sm:rounded-3xl rounded-t-3xl shadow-2xl animate-in zoom-in-95 duration-200"
+            onClick={e => e.stopPropagation()}
+          >
+            {/* Header */}
+            <div className="flex items-center justify-between px-6 pt-5 pb-4 border-b border-slate-100">
+              <div className="flex items-center gap-3">
+                <div className="w-9 h-9 rounded-xl bg-indigo-100 flex items-center justify-center">
+                  <KeyRound size={16} className="text-indigo-600" />
+                </div>
+                <h2 className="text-base font-black text-slate-800">Cambiar contraseña</h2>
+              </div>
+              <button onClick={() => setShowChangePassword(false)} className="w-8 h-8 flex items-center justify-center rounded-full bg-slate-100 hover:bg-slate-200 text-slate-500 transition-colors">
+                <X size={15} />
+              </button>
+            </div>
+
+            {/* Body */}
+            <div className="px-6 py-5 space-y-4">
+              {passwordSuccess ? (
+                <div className="flex flex-col items-center gap-3 py-4 text-center">
+                  <div className="w-14 h-14 rounded-full bg-emerald-100 flex items-center justify-center">
+                    <CheckCircle2 size={28} className="text-emerald-500" />
+                  </div>
+                  <p className="text-base font-black text-slate-800">¡Contraseña actualizada!</p>
+                  <p className="text-sm text-slate-400">Tu contraseña se cambió correctamente.</p>
+                </div>
+              ) : (
+                <>
+                  <div>
+                    <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">Nueva contraseña</label>
+                    <input
+                      type="password"
+                      value={newPassword}
+                      onChange={e => setNewPassword(e.target.value)}
+                      autoFocus
+                      placeholder="Mínimo 6 caracteres"
+                      className="w-full mt-1.5 px-4 py-3 rounded-xl border border-slate-200 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-indigo-300"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">Confirmar contraseña</label>
+                    <input
+                      type="password"
+                      value={confirmPassword}
+                      onChange={e => setConfirmPassword(e.target.value)}
+                      onKeyDown={e => e.key === 'Enter' && handleChangePassword()}
+                      placeholder="Repite la nueva contraseña"
+                      className="w-full mt-1.5 px-4 py-3 rounded-xl border border-slate-200 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-indigo-300"
+                    />
+                  </div>
+                  {passwordError && (
+                    <p className="text-xs font-bold text-red-500 bg-red-50 rounded-xl px-3 py-2">{passwordError}</p>
+                  )}
+                </>
+              )}
+            </div>
+
+            {/* Footer */}
+            {!passwordSuccess && (
+              <div className="flex gap-3 px-6 pb-6 pt-2" style={{ paddingBottom: 'max(1.5rem, env(safe-area-inset-bottom, 1.5rem))' }}>
+                <button onClick={() => setShowChangePassword(false)} className="flex-1 py-3 rounded-xl border border-slate-200 text-sm font-bold text-slate-600 hover:bg-slate-50 active:scale-95 transition-all">
+                  Cancelar
+                </button>
+                <button
+                  onClick={handleChangePassword}
+                  disabled={passwordSaving || !newPassword || !confirmPassword}
+                  className="flex-1 py-3 rounded-xl bg-indigo-600 text-white text-sm font-bold hover:bg-indigo-700 disabled:opacity-50 active:scale-95 transition-all"
+                >
+                  {passwordSaving ? 'Guardando...' : 'Guardar'}
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
       {showShortcuts && (
         <div
           className="fixed inset-0 z-[300] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm animate-in fade-in hidden md:flex"
