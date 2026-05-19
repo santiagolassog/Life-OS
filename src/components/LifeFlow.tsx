@@ -1284,7 +1284,7 @@ const App = () => {
         </div>
 
         {/* Nav groups — scrollable */}
-        <div className="flex-1 overflow-y-auto custom-scrollbar py-2">
+        <div className="flex-1 overflow-y-auto custom-scrollbar py-2 px-2">
 
           {/* INICIO — acceso directo */}
           <button
