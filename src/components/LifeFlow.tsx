@@ -1415,22 +1415,25 @@ const App = () => {
                   <div className="p-1.5 space-y-0.5">
                     <button
                       onClick={() => { setProfileName(displayName); setShowProfile(true); setSidebarMenuOpen(false); }}
-                      className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-indigo-300 hover:bg-white/5 hover:text-white text-[11px] font-black uppercase tracking-widest transition-all"
+                      className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-indigo-300 hover:bg-white/5 hover:text-white text-xs font-bold text-left transition-all"
                     >
-                      <Edit2 size={13} /> Mi perfil
+                      <Edit2 size={14} className="shrink-0" />
+                      <span>Mi perfil</span>
                     </button>
                     <button
                       onClick={() => { setShowChangePassword(true); setSidebarMenuOpen(false); }}
-                      className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-indigo-300 hover:bg-white/5 hover:text-white text-[11px] font-black uppercase tracking-widest transition-all"
+                      className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-indigo-300 hover:bg-white/5 hover:text-white text-xs font-bold text-left transition-all"
                     >
-                      <KeyRound size={13} /> Cambiar contraseña
+                      <KeyRound size={14} className="shrink-0" />
+                      <span>Cambiar contraseña</span>
                     </button>
                     <div className="h-px bg-indigo-800/40 mx-2" />
                     <button
                       onClick={() => { signOut(); setSidebarMenuOpen(false); }}
-                      className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-red-400 hover:bg-red-500/10 hover:text-red-300 text-[11px] font-black uppercase tracking-widest transition-all"
+                      className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-red-400 hover:bg-red-500/10 hover:text-red-300 text-xs font-bold text-left transition-all"
                     >
-                      <LogOut size={13} /> Cerrar sesión
+                      <LogOut size={14} className="shrink-0" />
+                      <span>Cerrar sesión</span>
                     </button>
                   </div>
                 </div>
