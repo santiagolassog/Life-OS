@@ -245,13 +245,18 @@ const Hoy: React.FC<HoyProps> = ({
                 Tu sistema de vida personal. Elige por dónde empezar.
               </p>
             </div>
-            <div className="grid grid-cols-2 gap-3 max-w-sm mx-auto">
-              {[
+            {(() => {
+              const quickBtns = [
                 { label: 'Agenda tu día', icon: CalendarDays, section: 'tiempo' as SectionKey, color: 'bg-indigo-500' },
                 { label: 'Registra un gasto', icon: DollarSign, section: 'dinero' as SectionKey, color: 'bg-emerald-500' },
+                { label: 'Mis hábitos', icon: Flame, section: 'habitos' as SectionKey, color: 'bg-orange-500' },
                 { label: 'Define objetivos', icon: Target, section: 'objetivos' as SectionKey, color: 'bg-violet-500' },
                 { label: 'Añade una tarea', icon: CheckSquare, section: 'lista' as SectionKey, color: 'bg-blue-500' },
-              ].filter(({ section }) => modEnabled(section)).map(({ label, icon: Icon, section, color }) => (
+              ].filter(({ section }) => modEnabled(section));
+              const cols = quickBtns.length <= 2 ? 'grid-cols-2' : quickBtns.length === 3 ? 'grid-cols-3' : 'grid-cols-2 sm:grid-cols-3';
+              return (
+            <div className={`grid ${cols} gap-3 w-full max-w-md mx-auto`}>
+              {quickBtns.map(({ label, icon: Icon, section, color }) => (
                 <button
                   key={section}
                   onClick={() => onNavigate(section)}
@@ -264,6 +269,7 @@ const Hoy: React.FC<HoyProps> = ({
                 </button>
               ))}
             </div>
+              )})()}
           </div>
         )}
 
