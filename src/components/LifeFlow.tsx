@@ -252,7 +252,8 @@ const App = () => {
   }, [user, isSuperAdmin]);
 
   // Helper: ¿está habilitado este módulo para el usuario actual?
-  const isModuleEnabled = (key: string) => isSuperAdmin || enabledModules === null || enabledModules.includes(key);
+  // 'hoy' y 'admin' siempre están habilitados (no son módulos configurables)
+  const isModuleEnabled = (key: string) => key === 'hoy' || key === 'admin' || isSuperAdmin || enabledModules === null || enabledModules.includes(key);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const [showSearch, setShowSearch]         = useState(false);
   const [showOnboarding, setShowOnboarding] = useState(false);
