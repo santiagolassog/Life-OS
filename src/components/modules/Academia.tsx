@@ -177,57 +177,117 @@ export default function Academia() {
     const done         = isCompleted(selectedLesson.id)
     const courseMods   = modules.filter(m => m.courseId === selectedCourse.id)
 
-    return (
-      <div className="flex flex-col lg:flex-row h-full bg-slate-900 overflow-hidden">
+    // Helper para renderizar lista de lecciones en el outline
+    const renderOutlineLesson = (lesson: AcademyLesson, i: number) => {
+      const isCurrent = lesson.id === selectedLesson.id
+      const lDone     = isCompleted(lesson.id)
+      const lYtId     = extractYoutubeId(lesson.youtubeUrl)
+      return (
+        <button key={lesson.id} onClick={() => setSelectedLesson(lesson)}
+          className={`w-full flex items-center gap-3 px-4 py-2.5 text-left transition-all ${isCurrent ? 'bg-indigo-600' : 'hover:bg-slate-800/60'}`}
+        >
+          {lYtId
+            ? <img src={`https://img.youtube.com/vi/${lYtId}/default.jpg`} alt="" className="w-12 h-8 rounded-lg object-cover shrink-0 opacity-80" />
+            : <div className="w-12 h-8 rounded-lg bg-slate-700 flex items-center justify-center shrink-0"><Video size={12} className="text-slate-500" /></div>}
+          <div className="min-w-0 flex-1">
+            <div className={`text-[11px] font-bold truncate leading-tight ${isCurrent ? 'text-white' : 'text-slate-400'}`}>{i + 1}. {lesson.title}</div>
+            {lesson.durationMinutes && <div className={`text-[10px] mt-0.5 ${isCurrent ? 'text-indigo-200' : 'text-slate-600'}`}>{formatDuration(lesson.durationMinutes)}</div>}
+          </div>
+          {lDone ? <CheckCircle2 size={14} className={isCurrent ? 'text-indigo-200' : 'text-emerald-500'} /> : isCurrent ? <Play size={12} className="text-indigo-200" fill="currentColor" /> : null}
+        </button>
+      )
+    }
 
-        {/* ── Columna izquierda: video + info ── */}
-        <div className="flex flex-col flex-1 min-w-0 overflow-hidden">
-          {/* Top bar */}
-          <div className="flex items-center gap-3 px-4 py-3 bg-slate-900 border-b border-slate-800 shrink-0">
-            <button onClick={() => setSelectedLesson(null)} className="p-2 rounded-xl hover:bg-slate-800 text-slate-400 transition-colors">
-              <ChevronLeft size={20} />
+    const renderOutline = () => (
+      <>
+        {courseMods.map(mod => {
+          const modLessons = lessons.filter(l => l.moduleId === mod.id)
+          const { done: mDone, total: mTotal } = getModuleProgress(mod.id)
+          const hasActive = modLessons.some(l => l.id === selectedLesson.id)
+          return (
+            <div key={mod.id} className="border-b border-slate-800/60">
+              <div className={`px-4 py-3 ${hasActive ? 'bg-indigo-900/30' : ''}`}>
+                <div className="flex items-center justify-between gap-2 mb-1">
+                  <span className="text-[11px] font-black text-slate-300 leading-tight">{mod.title}</span>
+                  <span className="text-[10px] text-slate-500 shrink-0">{mDone}/{mTotal}</span>
+                </div>
+                <div className="h-1 rounded-full bg-slate-700 overflow-hidden">
+                  <div className="h-full rounded-full bg-indigo-500 transition-all" style={{ width: mTotal > 0 ? `${Math.round((mDone/mTotal)*100)}%` : '0%' }} />
+                </div>
+              </div>
+              {modLessons.map((l, i) => renderOutlineLesson(l, i))}
+            </div>
+          )
+        })}
+        {(() => {
+          const orphans = lessons.filter(l => l.courseId === selectedCourse.id && !l.moduleId)
+          if (!orphans.length) return null
+          return (
+            <div className="border-b border-slate-800/60">
+              <div className="px-4 py-3"><span className="text-[11px] font-black text-slate-400">Otras lecciones</span></div>
+              {orphans.map((l, i) => renderOutlineLesson(l, i))}
+            </div>
+          )
+        })()}
+      </>
+    )
+
+    return (
+      <div className="flex flex-col lg:flex-row h-full bg-slate-900">
+
+        {/* ── Columna principal (video + info + outline en mobile) ── */}
+        <div className="flex flex-col flex-1 min-w-0 overflow-y-auto lg:overflow-hidden custom-scrollbar">
+
+          {/* Top bar — SIEMPRE VISIBLE, pegado arriba */}
+          <div className="flex items-center gap-3 px-4 py-3 bg-slate-900 border-b border-slate-800 shrink-0 sticky top-0 z-10">
+            <button
+              onClick={() => setSelectedLesson(null)}
+              className="flex items-center gap-1.5 text-indigo-300 hover:text-white transition-colors font-bold text-sm"
+            >
+              <ChevronLeft size={20} strokeWidth={2.5} />
+              <span className="hidden sm:inline">Volver</span>
             </button>
             <div className="min-w-0 flex-1">
               <div className="text-sm font-black text-white truncate">{selectedLesson.title}</div>
-              <div className="text-xs text-slate-500 truncate">{selectedCourse.title}</div>
+              <div className="text-[11px] text-slate-500 truncate">{selectedCourse.title}</div>
             </div>
             <button
               onClick={() => toggleComplete(selectedLesson)}
               className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all shrink-0 ${done ? 'bg-emerald-500/20 text-emerald-400' : 'bg-slate-800 text-slate-400 hover:bg-slate-700'}`}
             >
               {done ? <CheckCircle2 size={13} /> : <Circle size={13} />}
-              <span className="hidden sm:inline">{done ? 'Completado' : 'Marcar'}</span>
+              <span className="hidden sm:inline">{done ? 'Listo' : 'Marcar'}</span>
             </button>
           </div>
 
-          {/* Video */}
-          <div className="relative w-full shrink-0" style={{ paddingBottom: '56.25%' }}>
+          {/* Video — aspect-ratio fijo, nunca colapsa */}
+          <div className="w-full bg-black shrink-0" style={{ aspectRatio: '16/9' }}>
             {ytId ? (
               <iframe
-                className="absolute inset-0 w-full h-full"
+                className="w-full h-full"
                 src={`https://www.youtube.com/embed/${ytId}?rel=0&modestbranding=1`}
                 title={selectedLesson.title}
                 allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
                 allowFullScreen
               />
             ) : (
-              <div className="absolute inset-0 flex items-center justify-center bg-slate-800 text-slate-500">
+              <div className="w-full h-full flex items-center justify-center text-slate-500">
                 <Video size={36} />
               </div>
             )}
           </div>
 
-          {/* Info + navegación */}
-          <div className="flex-1 overflow-y-auto custom-scrollbar bg-white">
+          {/* Info */}
+          <div className="bg-white shrink-0">
             <div className="p-4 border-b border-slate-100">
-              <h2 className="text-lg font-black text-slate-800">{selectedLesson.title}</h2>
+              <h2 className="text-base font-black text-slate-800">{selectedLesson.title}</h2>
               {selectedLesson.durationMinutes && (
                 <div className="flex items-center gap-1.5 text-sm text-slate-400 mt-1">
-                  <Clock size={14} /> {formatDuration(selectedLesson.durationMinutes)}
+                  <Clock size={13} /> {formatDuration(selectedLesson.durationMinutes)}
                 </div>
               )}
               {selectedLesson.description && (
-                <p className="text-sm text-slate-600 mt-3 leading-relaxed">{selectedLesson.description}</p>
+                <p className="text-sm text-slate-600 mt-2 leading-relaxed">{selectedLesson.description}</p>
               )}
             </div>
             {/* Prev / Next */}
@@ -244,93 +304,23 @@ export default function Academia() {
               </button>
             </div>
           </div>
+
+          {/* Outline del curso — visible en mobile DEBAJO del video, oculto en desktop */}
+          <div className="lg:hidden bg-slate-950">
+            <div className="px-4 py-3 border-b border-slate-800">
+              <p className="text-xs font-black text-slate-400 uppercase tracking-wider">Contenido del curso</p>
+            </div>
+            {renderOutline()}
+          </div>
         </div>
 
-        {/* ── Columna derecha: outline del curso ── */}
-        <div className="lg:w-80 lg:shrink-0 bg-slate-950 border-t lg:border-t-0 lg:border-l border-slate-800 flex flex-col overflow-hidden">
+        {/* ── Columna derecha: outline — solo desktop ── */}
+        <div className="hidden lg:flex lg:w-80 lg:shrink-0 bg-slate-950 border-l border-slate-800 flex-col overflow-hidden">
           <div className="px-4 py-3 border-b border-slate-800 shrink-0">
             <p className="text-xs font-black text-slate-400 uppercase tracking-wider">Contenido del curso</p>
           </div>
           <div className="flex-1 overflow-y-auto custom-scrollbar">
-            {courseMods.map(mod => {
-              const modLessons = lessons.filter(l => l.moduleId === mod.id)
-              const { done: mDone, total: mTotal } = getModuleProgress(mod.id)
-              const hasActive = modLessons.some(l => l.id === selectedLesson.id)
-
-              return (
-                <div key={mod.id} className="border-b border-slate-800/60">
-                  {/* Module header */}
-                  <div className={`px-4 py-3 ${hasActive ? 'bg-indigo-900/30' : ''}`}>
-                    <div className="flex items-center justify-between gap-2 mb-1">
-                      <span className="text-[11px] font-black text-slate-300 leading-tight">{mod.title}</span>
-                      <span className="text-[10px] text-slate-500 shrink-0">{mDone}/{mTotal}</span>
-                    </div>
-                    <div className="h-1 rounded-full bg-slate-700 overflow-hidden">
-                      <div className="h-full rounded-full bg-indigo-500 transition-all" style={{ width: mTotal > 0 ? `${Math.round((mDone/mTotal)*100)}%` : '0%' }} />
-                    </div>
-                  </div>
-                  {/* Lessons */}
-                  {modLessons.map((lesson, i) => {
-                    const isCurrent = lesson.id === selectedLesson.id
-                    const lDone     = isCompleted(lesson.id)
-                    const lYtId     = extractYoutubeId(lesson.youtubeUrl)
-                    return (
-                      <button
-                        key={lesson.id}
-                        onClick={() => setSelectedLesson(lesson)}
-                        className={`w-full flex items-center gap-3 px-4 py-2.5 text-left transition-all ${isCurrent ? 'bg-indigo-600' : 'hover:bg-slate-800/60'}`}
-                      >
-                        {lYtId ? (
-                          <img src={`https://img.youtube.com/vi/${lYtId}/default.jpg`} alt="" className="w-12 h-8 rounded-lg object-cover shrink-0 opacity-80" />
-                        ) : (
-                          <div className="w-12 h-8 rounded-lg bg-slate-700 flex items-center justify-center shrink-0">
-                            <Video size={12} className="text-slate-500" />
-                          </div>
-                        )}
-                        <div className="min-w-0 flex-1">
-                          <div className={`text-[11px] font-bold truncate leading-tight ${isCurrent ? 'text-white' : 'text-slate-400'}`}>
-                            {i + 1}. {lesson.title}
-                          </div>
-                          {lesson.durationMinutes && (
-                            <div className={`text-[10px] mt-0.5 ${isCurrent ? 'text-indigo-200' : 'text-slate-600'}`}>{formatDuration(lesson.durationMinutes)}</div>
-                          )}
-                        </div>
-                        {lDone ? <CheckCircle2 size={14} className={isCurrent ? 'text-indigo-200' : 'text-emerald-500'} /> : isCurrent ? <Play size={12} className="text-indigo-200" fill="currentColor" /> : null}
-                      </button>
-                    )
-                  })}
-                </div>
-              )
-            })}
-
-            {/* Lecciones sin módulo */}
-            {(() => {
-              const orphans = lessons.filter(l => l.courseId === selectedCourse.id && !l.moduleId)
-              if (!orphans.length) return null
-              return (
-                <div className="border-b border-slate-800/60">
-                  <div className="px-4 py-3">
-                    <span className="text-[11px] font-black text-slate-400">Otras lecciones</span>
-                  </div>
-                  {orphans.map((lesson, i) => {
-                    const isCurrent = lesson.id === selectedLesson.id
-                    const lDone     = isCompleted(lesson.id)
-                    const lYtId     = extractYoutubeId(lesson.youtubeUrl)
-                    return (
-                      <button key={lesson.id} onClick={() => setSelectedLesson(lesson)}
-                        className={`w-full flex items-center gap-3 px-4 py-2.5 text-left transition-all ${isCurrent ? 'bg-indigo-600' : 'hover:bg-slate-800/60'}`}
-                      >
-                        {lYtId ? <img src={`https://img.youtube.com/vi/${lYtId}/default.jpg`} alt="" className="w-12 h-8 rounded-lg object-cover shrink-0 opacity-80" /> : <div className="w-12 h-8 rounded-lg bg-slate-700 flex items-center justify-center shrink-0"><Video size={12} className="text-slate-500" /></div>}
-                        <div className="min-w-0 flex-1">
-                          <div className={`text-[11px] font-bold truncate ${isCurrent ? 'text-white' : 'text-slate-400'}`}>{i + 1}. {lesson.title}</div>
-                        </div>
-                        {lDone ? <CheckCircle2 size={14} className={isCurrent ? 'text-indigo-200' : 'text-emerald-500'} /> : null}
-                      </button>
-                    )
-                  })}
-                </div>
-              )
-            })()}
+            {renderOutline()}
           </div>
         </div>
       </div>
