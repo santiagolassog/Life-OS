@@ -1289,7 +1289,7 @@ const App = () => {
           {/* INICIO — acceso directo */}
           <button
             onClick={() => setSection('hoy')}
-            className={`w-full flex items-center gap-3 px-4 py-2.5 text-sm font-bold transition-all ${
+            className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-bold transition-all ${
               section === 'hoy'
                 ? 'bg-indigo-500/25 text-white'
                 : 'text-indigo-300 hover:bg-white/5 hover:text-white'
@@ -1329,11 +1329,11 @@ const App = () => {
                 {/* Group header */}
                 <button
                   onClick={() => toggleGroup(group.key)}
-                  className={`w-full flex items-center gap-3 px-4 py-2.5 text-sm font-bold transition-all ${
+                  className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-bold transition-all ${
                     isGroupActive && !isExpanded
                       ? 'text-white'
                       : isGroupActive
-                        ? 'text-indigo-200'
+                        ? 'text-indigo-200 hover:bg-white/5'
                         : 'text-indigo-400 hover:bg-white/5 hover:text-indigo-200'
                   }`}
                 >
