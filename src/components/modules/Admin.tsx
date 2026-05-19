@@ -327,75 +327,43 @@ function CompaniesTab({
 
       {/* Form modal */}
       {showForm && (
-        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/40 backdrop-blur-sm p-4">
-          <div className="bg-white rounded-3xl w-full max-w-md p-6 shadow-2xl">
-            <h2 className="text-lg font-black text-slate-800 mb-5">
-              {editing ? 'Editar empresa' : 'Nueva empresa'}
-            </h2>
-            <div className="space-y-3">
+        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/50 backdrop-blur-sm" onClick={() => setShowForm(false)}>
+          <div className="bg-white w-full max-w-md sm:rounded-3xl rounded-t-3xl shadow-2xl flex flex-col" style={{ maxHeight: 'min(92svh, 680px)' }} onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between px-6 pt-5 pb-4 border-b border-slate-100 shrink-0">
+              <h2 className="text-lg font-black text-slate-800">{editing ? 'Editar empresa' : 'Nueva empresa'}</h2>
+              <button onClick={() => setShowForm(false)} className="w-8 h-8 flex items-center justify-center rounded-full bg-slate-100 hover:bg-slate-200 text-slate-500"><X size={16} /></button>
+            </div>
+            <div className="flex-1 overflow-y-auto custom-scrollbar px-6 py-4 space-y-4">
               <div>
                 <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">Nombre *</label>
-                <input
-                  autoFocus
-                  value={form.name}
-                  onChange={e => setForm(p => ({ ...p, name: e.target.value }))}
-                  className="w-full mt-1 px-4 py-3 rounded-xl border border-slate-200 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-indigo-300"
-                  placeholder="Ej. Acme Corp"
-                />
+                <input autoFocus value={form.name} onChange={e => setForm(p => ({ ...p, name: e.target.value }))} className="w-full mt-1 px-4 py-3 rounded-xl border border-slate-200 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-indigo-300" placeholder="Ej. Acme Corp" />
               </div>
               <div>
                 <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">Slug (URL)</label>
-                <input
-                  value={form.slug}
-                  onChange={e => setForm(p => ({ ...p, slug: e.target.value }))}
-                  className="w-full mt-1 px-4 py-3 rounded-xl border border-slate-200 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-indigo-300"
-                  placeholder="acme-corp (auto si se deja vacío)"
-                />
+                <input value={form.slug} onChange={e => setForm(p => ({ ...p, slug: e.target.value }))} className="w-full mt-1 px-4 py-3 rounded-xl border border-slate-200 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-indigo-300" placeholder="acme-corp (auto si se deja vacío)" />
               </div>
               <div>
                 <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">Descripción</label>
-                <textarea
-                  value={form.description}
-                  onChange={e => setForm(p => ({ ...p, description: e.target.value }))}
-                  rows={2}
-                  className="w-full mt-1 px-4 py-3 rounded-xl border border-slate-200 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-indigo-300 resize-none"
-                  placeholder="Descripción de la empresa..."
-                />
+                <textarea value={form.description} onChange={e => setForm(p => ({ ...p, description: e.target.value }))} rows={2} className="w-full mt-1 px-4 py-3 rounded-xl border border-slate-200 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-indigo-300 resize-none" placeholder="Descripción de la empresa..." />
               </div>
               <div>
                 <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">Plan</label>
-                <select
-                  value={form.plan}
-                  onChange={e => setForm(p => ({ ...p, plan: e.target.value as CompanyPlan }))}
-                  className="w-full mt-1 px-4 py-3 rounded-xl border border-slate-200 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-indigo-300 bg-white"
-                >
+                <select value={form.plan} onChange={e => setForm(p => ({ ...p, plan: e.target.value as CompanyPlan }))} className="w-full mt-1 px-4 py-3 rounded-xl border border-slate-200 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-indigo-300 bg-white">
                   <option value="basic">Básico</option>
                   <option value="pro">Pro</option>
                   <option value="enterprise">Enterprise</option>
                 </select>
               </div>
               <label className="flex items-center gap-3 cursor-pointer">
-                <div
-                  onClick={() => setForm(p => ({ ...p, active: !p.active }))}
-                  className={`w-10 h-6 rounded-full transition-colors flex items-center px-0.5 ${form.active ? 'bg-emerald-500' : 'bg-slate-300'}`}
-                >
+                <div onClick={() => setForm(p => ({ ...p, active: !p.active }))} className={`w-10 h-6 rounded-full transition-colors flex items-center px-0.5 ${form.active ? 'bg-emerald-500' : 'bg-slate-300'}`}>
                   <div className={`w-5 h-5 rounded-full bg-white shadow transition-transform ${form.active ? 'translate-x-4' : 'translate-x-0'}`} />
                 </div>
                 <span className="text-sm font-semibold text-slate-700">Empresa activa</span>
               </label>
             </div>
-            <div className="flex gap-3 mt-6">
-              <button
-                onClick={() => setShowForm(false)}
-                className="flex-1 py-3 rounded-xl border border-slate-200 text-sm font-bold text-slate-600 hover:bg-slate-50 transition-colors"
-              >
-                Cancelar
-              </button>
-              <button
-                onClick={handleSave}
-                disabled={saving || !form.name.trim()}
-                className="flex-1 py-3 rounded-xl bg-indigo-600 text-white text-sm font-bold hover:bg-indigo-700 disabled:opacity-50 transition-colors"
-              >
+            <div className="flex gap-3 px-6 py-4 border-t border-slate-100 shrink-0" style={{ paddingBottom: 'max(1rem, env(safe-area-inset-bottom, 1rem))' }}>
+              <button onClick={() => setShowForm(false)} className="flex-1 py-3 rounded-xl border border-slate-200 text-sm font-bold text-slate-600 hover:bg-slate-50 active:scale-95 transition-all">Cancelar</button>
+              <button onClick={handleSave} disabled={saving || !form.name.trim()} className="flex-1 py-3 rounded-xl bg-indigo-600 text-white text-sm font-bold hover:bg-indigo-700 disabled:opacity-50 active:scale-95 transition-all">
                 {saving ? 'Guardando...' : editing ? 'Guardar cambios' : 'Crear empresa'}
               </button>
             </div>
@@ -542,11 +510,16 @@ function UsersTab({
 
       {/* Assign modal */}
       {showAssign && (
-        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/40 backdrop-blur-sm p-4">
-          <div className="bg-white rounded-3xl w-full max-w-md p-6 shadow-2xl">
-            <h2 className="text-lg font-black text-slate-800 mb-1">Asociar a empresa</h2>
-            <p className="text-sm text-slate-500 mb-5">{showAssign.displayName || showAssign.email}</p>
-            <div className="space-y-3">
+        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/50 backdrop-blur-sm" onClick={() => setShowAssign(null)}>
+          <div className="bg-white w-full max-w-md sm:rounded-3xl rounded-t-3xl shadow-2xl flex flex-col" style={{ maxHeight: 'min(92svh, 560px)' }} onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between px-6 pt-5 pb-3 border-b border-slate-100 shrink-0">
+              <div>
+                <h2 className="text-lg font-black text-slate-800">Asociar a empresa</h2>
+                <p className="text-sm text-slate-400 mt-0.5">{showAssign.displayName || showAssign.email}</p>
+              </div>
+              <button onClick={() => setShowAssign(null)} className="w-8 h-8 flex items-center justify-center rounded-full bg-slate-100 hover:bg-slate-200 text-slate-500"><X size={16} /></button>
+            </div>
+            <div className="flex-1 overflow-y-auto custom-scrollbar px-6 py-4 space-y-4">
               <div>
                 <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">Empresa</label>
                 <select
@@ -573,15 +546,9 @@ function UsersTab({
                 </select>
               </div>
             </div>
-            <div className="flex gap-3 mt-6">
-              <button onClick={() => setShowAssign(null)} className="flex-1 py-3 rounded-xl border border-slate-200 text-sm font-bold text-slate-600 hover:bg-slate-50">
-                Cancelar
-              </button>
-              <button
-                onClick={handleAssign}
-                disabled={saving || !assignCompany}
-                className="flex-1 py-3 rounded-xl bg-indigo-600 text-white text-sm font-bold hover:bg-indigo-700 disabled:opacity-50"
-              >
+            <div className="flex gap-3 px-6 py-4 border-t border-slate-100 shrink-0" style={{ paddingBottom: 'max(1rem, env(safe-area-inset-bottom, 1rem))' }}>
+              <button onClick={() => setShowAssign(null)} className="flex-1 py-3 rounded-xl border border-slate-200 text-sm font-bold text-slate-600 hover:bg-slate-50 active:scale-95 transition-all">Cancelar</button>
+              <button onClick={handleAssign} disabled={saving || !assignCompany} className="flex-1 py-3 rounded-xl bg-indigo-600 text-white text-sm font-bold hover:bg-indigo-700 disabled:opacity-50 active:scale-95 transition-all">
                 {saving ? 'Guardando...' : 'Asociar'}
               </button>
             </div>
@@ -801,13 +768,44 @@ function Modal({ title, onClose, onSave, saving, disabled, children }: {
   saving: boolean; disabled: boolean; children: React.ReactNode
 }) {
   return (
-    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/40 backdrop-blur-sm p-4">
-      <div className="bg-white rounded-3xl w-full max-w-md p-6 shadow-2xl">
-        <h2 className="text-lg font-black text-slate-800 mb-5">{title}</h2>
-        <div className="space-y-3">{children}</div>
-        <div className="flex gap-3 mt-6">
-          <button onClick={onClose} className="flex-1 py-3 rounded-xl border border-slate-200 text-sm font-bold text-slate-600 hover:bg-slate-50">Cancelar</button>
-          <button onClick={onSave} disabled={saving || disabled} className="flex-1 py-3 rounded-xl bg-indigo-600 text-white text-sm font-bold hover:bg-indigo-700 disabled:opacity-50">
+    <div
+      className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/50 backdrop-blur-sm"
+      onClick={onClose}
+    >
+      <div
+        className="bg-white w-full max-w-md sm:rounded-3xl rounded-t-3xl shadow-2xl flex flex-col"
+        style={{ maxHeight: 'min(92svh, 680px)' }}
+        onClick={e => e.stopPropagation()}
+      >
+        {/* Header fijo */}
+        <div className="flex items-center justify-between px-6 pt-5 pb-4 border-b border-slate-100 shrink-0">
+          <h2 className="text-lg font-black text-slate-800">{title}</h2>
+          <button
+            onClick={onClose}
+            className="w-8 h-8 flex items-center justify-center rounded-full bg-slate-100 hover:bg-slate-200 text-slate-500 transition-colors"
+          >
+            <X size={16} />
+          </button>
+        </div>
+
+        {/* Contenido scrollable */}
+        <div className="flex-1 overflow-y-auto custom-scrollbar px-6 py-4 space-y-4">
+          {children}
+        </div>
+
+        {/* Botones fijos al fondo */}
+        <div className="flex gap-3 px-6 py-4 border-t border-slate-100 shrink-0" style={{ paddingBottom: 'max(1rem, env(safe-area-inset-bottom, 1rem))' }}>
+          <button
+            onClick={onClose}
+            className="flex-1 py-3 rounded-xl border border-slate-200 text-sm font-bold text-slate-600 hover:bg-slate-50 active:scale-95 transition-all"
+          >
+            Cancelar
+          </button>
+          <button
+            onClick={onSave}
+            disabled={saving || disabled}
+            className="flex-1 py-3 rounded-xl bg-indigo-600 text-white text-sm font-bold hover:bg-indigo-700 disabled:opacity-50 active:scale-95 transition-all"
+          >
             {saving ? 'Guardando...' : 'Guardar'}
           </button>
         </div>
