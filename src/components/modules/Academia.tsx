@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react'
 import {
   GraduationCap, BookOpen, Video, Play, CheckCircle2, Circle,
-  ChevronLeft, ChevronRight, Clock, BarChart3, Layers,
+  ChevronLeft, ChevronRight, ChevronDown, Clock, BarChart3, Layers,
 } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
 import type { AcademyCourse, AcademyModule, AcademyLesson, AcademyProgress } from '../../types'
