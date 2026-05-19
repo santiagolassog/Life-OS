@@ -179,3 +179,128 @@ export interface HabitLog {
   habitId: string
   date: string            // "YYYY-MM-DD"
 }
+
+// ────────────────────────────────────────────────────────
+// ENTERPRISE
+// ────────────────────────────────────────────────────────
+
+export type UserRole = 'super_admin' | 'user'
+export type CompanyPlan = 'basic' | 'pro' | 'enterprise'
+export type CompanyMemberRole = 'owner' | 'admin' | 'member'
+
+export interface UserProfile {
+  id: string
+  displayName: string
+  email: string
+  role: UserRole
+  createdAt: string
+}
+
+export interface Company {
+  id: string
+  name: string
+  slug?: string
+  description?: string
+  logoUrl?: string
+  plan: CompanyPlan
+  active: boolean
+  createdAt: string
+  updatedAt: string
+}
+
+export interface CompanyMember {
+  id: string
+  companyId: string
+  userId: string
+  role: CompanyMemberRole
+  joinedAt: string
+  // joined fields (populated on fetch)
+  userProfile?: UserProfile
+}
+
+export type ModuleKey = 'tiempo' | 'dinero' | 'lista' | 'objetivos' | 'habitos' | 'revision' | 'academia'
+
+export interface CompanyModule {
+  id: string
+  companyId: string
+  moduleKey: ModuleKey
+  enabled: boolean
+}
+
+export interface AcademyCourse {
+  id: string
+  companyId: string
+  title: string
+  description?: string
+  thumbnailUrl?: string
+  sortOrder: number
+  published: boolean
+  createdAt: string
+  updatedAt: string
+  // joined
+  modules?: AcademyModule[]
+}
+
+export interface AcademyModule {
+  id: string
+  courseId: string
+  title: string
+  description?: string
+  sortOrder: number
+  createdAt: string
+  // joined
+  lessons?: AcademyLesson[]
+}
+
+export type LessonType = 'video' | 'document'
+
+export interface AcademyLesson {
+  id: string
+  courseId: string
+  moduleId?: string      // optional for backward compat
+  lessonType: LessonType // 'video' | 'document'
+  title: string
+  youtubeUrl?: string    // solo si lessonType = 'video'
+  documentUrl?: string   // solo si lessonType = 'document' (Google Drive link)
+  description?: string
+  durationMinutes?: number
+  sortOrder: number
+  createdAt: string
+  // joined
+  completed?: boolean
+}
+
+export interface AcademyProgress {
+  id: string
+  userId: string
+  lessonId: string
+  completed: boolean
+  completedAt?: string
+}
+
+export interface CompanyCourseAccess {
+  id: string
+  companyId: string
+  courseId: string
+  grantedAt: string
+}
+
+export interface ExclusiveVideo {
+  id: string
+  companyId: string
+  title: string
+  youtubeUrl: string
+  description?: string
+  durationMinutes?: number
+  sortOrder: number
+  published: boolean
+  createdAt: string
+}
+
+export interface ExclusiveVideoProgress {
+  id: string
+  userId: string
+  videoId: string
+  completed: boolean
+  completedAt?: string
+}

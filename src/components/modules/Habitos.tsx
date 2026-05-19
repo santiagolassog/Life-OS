@@ -309,7 +309,7 @@ export default function Habitos({ habits, setHabits, habitLogs, setHabitLogs }: 
   // ─── Render ─────────────────────────────────────────────────────────────────
   return (
     <div className="flex-1 overflow-y-auto custom-scrollbar">
-      <div className="max-w-5xl mx-auto p-4 md:p-8 space-y-6 pb-28 md:pb-12">
+      <div className="w-full p-4 md:p-8 space-y-6 pb-28 md:pb-12">
 
         {/* ═══ HEADER ═══ */}
         <div className="flex items-center justify-between flex-wrap gap-3">

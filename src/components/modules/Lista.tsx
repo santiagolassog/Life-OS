@@ -360,7 +360,7 @@ const Lista: React.FC<ListaProps> = ({
 
   return (
     <div className="flex-1 overflow-y-auto custom-scrollbar">
-      <div className="max-w-5xl mx-auto p-4 md:p-8 space-y-5 pb-28 md:pb-12">
+      <div className="w-full p-4 md:p-8 space-y-5 pb-28 md:pb-12">
 
         {/* ── Header ── */}
         <div className="flex items-center justify-between flex-wrap gap-3">
@@ -369,7 +369,7 @@ const Lista: React.FC<ListaProps> = ({
               <CheckSquare size={20} className="text-white" />
             </div>
             <div>
-              <h2 className="text-xl font-black text-slate-800 uppercase italic">Lista</h2>
+              <h2 className="text-xl font-black text-slate-800 uppercase italic">Tareas</h2>
               <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">Gestión de tareas</p>
             </div>
           </div>

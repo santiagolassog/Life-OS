@@ -9,7 +9,7 @@ import {
   Clock, Save, Zap, ChevronLeft, ChevronRight, X, Plus,
   PieChart as PieChartIcon, Trash2, CalendarDays, Menu, Copy, CheckCircle2, Circle, Edit2, Palette,
   Download, ListPlus, Target, BarChart3, History, DollarSign, Star, ChevronDown, LogOut, CheckSquare,
-  Sparkles, Keyboard, Home, MoreHorizontal, Search, GripVertical, Flame,
+  Sparkles, Keyboard, Home, MoreHorizontal, Search, GripVertical, Flame, GraduationCap, Shield, KeyRound, Eye, EyeOff,
 } from 'lucide-react';
 import Dinero from './modules/Dinero';
 import Objetivos from './modules/Objetivos';
@@ -17,6 +17,8 @@ import Revision from './modules/Revision';
 import Lista from './modules/Lista';
 import Hoy from './modules/Hoy';
 import Habitos from './modules/Habitos';
+import Admin from './modules/Admin';
+import Academia from './modules/Academia';
 import SearchModal, { type SearchResult } from './SearchModal';
 import type { Transaction, FinCategory, Goal, Savings, MonthBalance, SavingsWithdrawal, SavingsPocket, PocketFunding, SavingsYearBalance, Loan, LoanPayment, Budget, Task, ChecklistItem, EventEntry, Habit, HabitLog } from '../types';
 import { LOAN_OUT_CAT_ID, LOAN_IN_CAT_ID } from '../types';
@@ -197,29 +199,97 @@ const CustomTimePicker = ({ label, hour, minute, onTimeChange, minTime = "00:00"
 };
 
 
-type SectionKey = 'hoy' | 'tiempo' | 'dinero' | 'objetivos' | 'lista' | 'revision' | 'habitos';
+type SectionKey = 'hoy' | 'tiempo' | 'dinero' | 'objetivos' | 'lista' | 'revision' | 'habitos' | 'academia' | 'admin';
 
 const SECTIONS: Array<{ key: SectionKey; label: string; Icon: React.FC<{ size?: number }> }> = [
   { key: 'hoy',      label: 'Inicio',   Icon: Home },
   { key: 'dinero',   label: 'Dinero',   Icon: DollarSign },
-  { key: 'tiempo',   label: 'Tiempo',   Icon: CalendarDays },
-  { key: 'lista',    label: 'Lista',    Icon: CheckSquare },
+  { key: 'tiempo',   label: 'Agenda',   Icon: CalendarDays },
+  { key: 'lista',    label: 'Tareas',   Icon: CheckSquare },
   { key: 'habitos',  label: 'Hábitos',  Icon: Flame },
   { key: 'objetivos',label: 'Objetivos',Icon: Target },
   { key: 'revision', label: 'Revisión', Icon: BarChart3 },
+  { key: 'academia', label: 'Academia', Icon: GraduationCap },
 ];
 
 // Secciones en el nav mobile principal (sin Hábitos/Objetivos/Revisión — van en "Más")
 const MOBILE_NAV = SECTIONS.filter(s => ['hoy','dinero','tiempo','lista'].includes(s.key));
-const MORE_SECTIONS = SECTIONS.filter(s => ['habitos','objetivos','revision'].includes(s.key));
+const MORE_SECTIONS = SECTIONS.filter(s => ['habitos','objetivos','revision','academia'].includes(s.key));
 
 const App = () => {
-  const { user, signOut, displayName, updateDisplayName } = useAuth();
+  const { user, signOut, displayName, updateDisplayName, isSuperAdmin } = useAuth();
   const userId = user?.id ?? '';
+
+  // ── Módulos habilitados por empresa ───────────────────────────────────────────
+  // null = sin restricción (usuario personal o super_admin) → se muestran todos
+  // string[] = lista de moduleKeys habilitados para la empresa del usuario
+  const [enabledModules, setEnabledModules] = useState<string[] | null>(null);
+
+  useEffect(() => {
+    if (!user || isSuperAdmin) { setEnabledModules(null); return; }
+    const fetchModules = async () => {
+      // Empresa del usuario
+      const { data: membership } = await supabase
+        .from('company_members')
+        .select('company_id')
+        .eq('user_id', user.id)
+        .maybeSingle();
+
+      if (!membership) { setEnabledModules(null); return; } // sin empresa → todo habilitado
+
+      // Módulos configurados para esa empresa
+      const { data: mods } = await supabase
+        .from('company_modules')
+        .select('module_key, enabled')
+        .eq('company_id', membership.company_id);
+
+      if (!mods || mods.length === 0) { setEnabledModules(null); return; } // sin config → todo habilitado
+
+      const enabled = mods.filter(m => m.enabled).map(m => m.module_key as string);
+      setEnabledModules(enabled);
+    };
+    fetchModules();
+  }, [user, isSuperAdmin]);
+
+  // Helper: ¿está habilitado este módulo para el usuario actual?
+  // 'hoy' y 'admin' siempre están habilitados (no son módulos configurables)
+  const isModuleEnabled = (key: string) => key === 'hoy' || key === 'admin' || isSuperAdmin || enabledModules === null || enabledModules.includes(key);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const [showSearch, setShowSearch]         = useState(false);
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [showProfile, setShowProfile]     = useState(false);
+  const [showChangePassword, setShowChangePassword] = useState(false);
+  const [showNewPassword, setShowNewPassword]   = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const [sidebarMenuOpen, setSidebarMenuOpen] = useState(false);
+  const [newPassword, setNewPassword]     = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [passwordSaving, setPasswordSaving] = useState(false);
+  const [passwordError, setPasswordError]  = useState('');
+  const [passwordSuccess, setPasswordSuccess] = useState(false);
+
+  const closePasswordModal = () => {
+    setShowChangePassword(false);
+    setNewPassword('');
+    setConfirmPassword('');
+    setPasswordError('');
+    setPasswordSuccess(false);
+    setPasswordSaving(false);
+    setShowNewPassword(false);
+    setShowConfirmPassword(false);
+  };
+
+  const handleChangePassword = async () => {
+    setPasswordError('');
+    if (newPassword.length < 6) { setPasswordError('La contraseña debe tener al menos 6 caracteres.'); return; }
+    if (newPassword !== confirmPassword) { setPasswordError('Las contraseñas no coinciden.'); return; }
+    setPasswordSaving(true);
+    const { error } = await supabase.auth.updateUser({ password: newPassword });
+    setPasswordSaving(false);
+    if (error) { setPasswordError(error.message); }
+    else { setPasswordSuccess(true); setTimeout(() => { closePasswordModal(); }, 2000); }
+  };
+
   const [showMoreMenu, setShowMoreMenu]   = useState(false);
   const [profileName, setProfileName]     = useState('');
   const [profileSaving, setProfileSaving] = useState(false);
@@ -254,7 +324,7 @@ const App = () => {
   const [categories, setCategories] = useState(INITIAL_CATEGORIES);
   const [modalData, setModalData] = useState(null);
   const [catModal, setCatModal] = useState(null);
-  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [sidebarOpen, setSidebarOpen] = useState(true);
   const [draggedItem, setDraggedItem] = useState(null);
   const [mobileDayOffset, setMobileDayOffset] = useState(() => {
     const day = new Date().getDay();
@@ -796,6 +866,19 @@ const App = () => {
     }
   }, [section, loading]);
 
+  // Auto-expandir el grupo correcto al cambiar de sección
+  useEffect(() => {
+    const g = SECTION_TO_GROUP[section as SectionKey];
+    if (g) setExpandedGroups(prev => prev.includes(g) ? prev : [...prev, g]);
+  }, [section]);
+
+  // Redirigir a 'hoy' si la sección activa queda deshabilitada para este usuario
+  useEffect(() => {
+    if (enabledModules !== null && section !== 'hoy' && section !== 'admin' && !enabledModules.includes(section)) {
+      setSection('hoy');
+    }
+  }, [enabledModules, section]);
+
   useEffect(() => {
     const handler = (e: MouseEvent) => {
       if (userMenuRef.current && !userMenuRef.current.contains(e.target as Node)) {
@@ -1140,6 +1223,38 @@ const App = () => {
     }, 100);
   };
 
+  // ── Grupos colapsables del sidebar ───────────────────────────────────────────
+  const SECTION_TO_GROUP: Partial<Record<SectionKey, string>> = {
+    tiempo: 'planificacion', lista: 'planificacion',
+    habitos: 'crecimiento', objetivos: 'crecimiento', academia: 'crecimiento',
+    dinero: 'finanzas',
+    revision: 'reflexion',
+  };
+  const [expandedGroups, setExpandedGroups] = useState<string[]>(['planificacion', 'crecimiento']);
+  const toggleGroup = (key: string) =>
+    setExpandedGroups(prev => prev.includes(key) ? prev.filter(k => k !== key) : [...prev, key]);
+
+  // ── Desktop sidebar nav item ─────────────────────────────────────────────────
+  const NavItem = ({ navKey, label, Icon, amber = false }: {
+    navKey: SectionKey; label: string; Icon: React.FC<{ size?: number; strokeWidth?: number }>; amber?: boolean
+  }) => {
+    const isActive = section === navKey;
+    return (
+      <button
+        onClick={() => setSection(navKey)}
+        className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-bold transition-all group ${
+          isActive
+            ? amber ? 'bg-amber-500/20 text-amber-300' : 'bg-indigo-500/25 text-white'
+            : amber ? 'text-amber-500/60 hover:bg-amber-500/10 hover:text-amber-400' : 'text-indigo-400 hover:bg-white/5 hover:text-indigo-200'
+        }`}
+      >
+        <Icon size={16} strokeWidth={isActive ? 2.5 : 2} />
+        <span className="truncate">{label}</span>
+        {isActive && <div className={`ml-auto w-1.5 h-1.5 rounded-full shrink-0 ${amber ? 'bg-amber-400' : 'bg-indigo-400'}`} />}
+      </button>
+    );
+  };
+
   if (loading) {
     return (
       <div className="flex flex-col h-screen bg-indigo-950 items-center justify-center gap-4">
@@ -1174,34 +1289,193 @@ const App = () => {
   }
 
   return (
-    <div className="flex flex-col h-screen [height:100dvh] bg-slate-50 text-slate-900 overflow-hidden font-sans">
+    <div className="flex h-screen [height:100dvh] bg-slate-50 text-slate-900 overflow-hidden font-sans">
 
-      {/* ---- HEADER LIFEOS ---- */}
-      <header className="bg-indigo-950 border-b border-indigo-900/50 px-4 md:px-6 py-3 flex justify-between items-center z-[100] shrink-0 shadow-lg">
-        <div className="flex items-center gap-3 text-white">
-          {section === 'tiempo' && (
-            <button onClick={() => setSidebarOpen(true)} className="p-2 hover:bg-white/10 rounded-xl lg:hidden">
-              <Menu size={20} />
-            </button>
-          )}
-          <div className="flex items-center gap-2">
-            <div className="bg-indigo-500 p-1.5 rounded-lg shadow-inner"><Zap size={18} fill="white" /></div>
-            <h1 className="text-lg font-black tracking-tight uppercase italic leading-none hidden sm:block">LifeOS</h1>
+      {/* ══ DESKTOP SIDEBAR ══════════════════════════════════════════════════════ */}
+      <nav className="hidden lg:flex flex-col w-[220px] shrink-0 bg-indigo-950 border-r border-indigo-900/50 z-[100] overflow-hidden">
+        {/* Logo */}
+        <div className="px-4 py-5 border-b border-indigo-900/50 shrink-0">
+          <div className="flex items-center gap-2.5">
+            <div className="bg-indigo-500 p-1.5 rounded-lg shadow-inner shrink-0">
+              <Zap size={18} fill="white" className="text-white" />
+            </div>
+            <span className="text-lg font-black tracking-tight uppercase italic text-white leading-none">LifeOS</span>
           </div>
         </div>
 
-        {/* Section tabs — desktop */}
-        <div className="hidden md:flex items-center bg-white/5 rounded-full p-1 border border-white/10 gap-0.5">
-          {SECTIONS.map(({ key, label, Icon }) => (
+        {/* Búsqueda — fija, no hace scroll */}
+        <div className="px-3 py-3 border-b border-indigo-900/50 shrink-0">
+          <button
+            onClick={() => setShowSearch(true)}
+            className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl bg-white/5 border border-indigo-900/80 text-indigo-400 hover:bg-white/10 hover:text-indigo-200 transition-all text-sm font-bold"
+          >
+            <Search size={14} strokeWidth={2} />
+            <span className="flex-1 text-left text-[13px]">Buscar</span>
+            <kbd className="text-[9px] font-black text-indigo-600 bg-black/20 border border-indigo-900 px-1.5 py-0.5 rounded-md">⌘K</kbd>
+          </button>
+        </div>
+
+        {/* Nav groups — scrollable */}
+        <div className="flex-1 overflow-y-auto custom-scrollbar py-2 px-2">
+
+          {/* INICIO — acceso directo */}
+          <button
+            onClick={() => setSection('hoy')}
+            className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-bold transition-all ${
+              section === 'hoy'
+                ? 'bg-indigo-500/25 text-white'
+                : 'text-indigo-300 hover:bg-white/5 hover:text-white'
+            }`}
+          >
+            <Home size={16} strokeWidth={section === 'hoy' ? 2.5 : 2} />
+            <span className="flex-1 text-left">Inicio</span>
+            {section === 'hoy' && <div className="w-1.5 h-1.5 rounded-full bg-indigo-400 shrink-0" />}
+          </button>
+
+          {/* GRUPOS COLAPSABLES */}
+          {([
+            { key: 'planificacion', label: 'Planificación', items: [
+              { navKey: 'tiempo' as SectionKey, label: 'Agenda', Icon: CalendarDays },
+              { navKey: 'lista'  as SectionKey, label: 'Tareas', Icon: CheckSquare },
+            ]},
+            { key: 'crecimiento', label: 'Crecimiento', items: [
+              { navKey: 'habitos'   as SectionKey, label: 'Hábitos',   Icon: Flame },
+              { navKey: 'objetivos' as SectionKey, label: 'Objetivos', Icon: Target },
+              { navKey: 'academia'  as SectionKey, label: 'Academia',  Icon: GraduationCap },
+            ]},
+            { key: 'finanzas', label: 'Finanzas', items: [
+              { navKey: 'dinero' as SectionKey, label: 'Dinero', Icon: DollarSign },
+            ]},
+            { key: 'reflexion', label: 'Reflexión', items: [
+              { navKey: 'revision' as SectionKey, label: 'Revisión', Icon: BarChart3 },
+            ]},
+          ] as const).map(group => {
+            // Filtrar items por módulos habilitados para la empresa del usuario
+            const visibleItems = group.items.filter(i => isModuleEnabled(i.navKey));
+            if (visibleItems.length === 0) return null; // ocultar grupo completo si no hay items
+
+            const isExpanded = expandedGroups.includes(group.key);
+            const isGroupActive = visibleItems.some(i => i.navKey === section);
+            return (
+              <div key={group.key}>
+                {/* Group header */}
+                <button
+                  onClick={() => toggleGroup(group.key)}
+                  className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-bold transition-all ${
+                    isGroupActive && !isExpanded
+                      ? 'text-white'
+                      : isGroupActive
+                        ? 'text-indigo-200 hover:bg-white/5'
+                        : 'text-indigo-400 hover:bg-white/5 hover:text-indigo-200'
+                  }`}
+                >
+                  <span className="flex-1 text-left">{group.label}</span>
+                  {isGroupActive && !isExpanded && <div className="w-1.5 h-1.5 rounded-full bg-indigo-400 shrink-0" />}
+                  <ChevronRight size={13} className={`shrink-0 transition-transform duration-200 text-indigo-600 ${isExpanded ? 'rotate-90' : ''}`} />
+                </button>
+                {/* Sub-items */}
+                {isExpanded && (
+                  <div className="pb-1">
+                    {visibleItems.map(item => (
+                      <NavItem key={item.navKey} navKey={item.navKey} label={item.label} Icon={item.Icon} />
+                    ))}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+
+        {/* Bottom: admin + profile */}
+        <div className="border-t border-indigo-900/50 p-3 space-y-1 shrink-0">
+          {/* Admin — solo super_admin */}
+          {isSuperAdmin && (
+            <NavItem navKey="admin" label="Admin" Icon={Shield} amber />
+          )}
+
+          <div className="h-px bg-indigo-900/50 my-1" />
+
+          {/* Perfil — botón con dropdown */}
+          <div className="relative">
             <button
-              key={key}
-              onClick={() => setSection(key)}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[11px] font-black uppercase tracking-wide transition-all ${section === key ? 'bg-indigo-500 text-white shadow-lg' : 'text-indigo-300 hover:text-white hover:bg-white/10'}`}
+              onClick={() => setSidebarMenuOpen(v => !v)}
+              className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all ${sidebarMenuOpen ? 'bg-white/10 text-white' : 'text-indigo-300 hover:bg-white/5 hover:text-white'}`}
             >
-              <Icon size={12} />
-              <span className="hidden lg:inline">{label}</span>
+              <div className="w-7 h-7 rounded-full bg-gradient-to-br from-indigo-400 to-violet-500 flex items-center justify-center text-white text-[11px] font-black shrink-0">
+                {(displayName || user?.email)?.[0]?.toUpperCase()}
+              </div>
+              <div className="min-w-0 flex-1 text-left">
+                <p className="text-xs font-black text-indigo-200 truncate leading-none">{displayName || user?.email?.split('@')[0]}</p>
+                <p className="text-[10px] text-indigo-500 truncate mt-0.5 leading-none">{user?.email}</p>
+              </div>
+              <ChevronDown size={13} className={`text-indigo-500 shrink-0 transition-transform ${sidebarMenuOpen ? 'rotate-180' : ''}`} />
             </button>
-          ))}
+
+            {/* Dropdown del perfil */}
+            {sidebarMenuOpen && (
+              <>
+                <div className="fixed inset-0 z-[90]" onClick={() => setSidebarMenuOpen(false)} />
+                <div className="absolute bottom-full left-0 right-0 mb-2 z-[91] bg-[#1a1d2e] border border-indigo-800/60 rounded-2xl shadow-2xl overflow-hidden animate-in fade-in slide-in-from-bottom-1 duration-150">
+                  <div className="p-1.5 space-y-0.5">
+                    <button
+                      onClick={() => { setProfileName(displayName); setShowProfile(true); setSidebarMenuOpen(false); }}
+                      className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-indigo-300 hover:bg-white/5 hover:text-white text-xs font-bold text-left transition-all"
+                    >
+                      <Edit2 size={14} className="shrink-0" />
+                      <span>Mi perfil</span>
+                    </button>
+                    <button
+                      onClick={() => { setShowChangePassword(true); setSidebarMenuOpen(false); }}
+                      className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-indigo-300 hover:bg-white/5 hover:text-white text-xs font-bold text-left transition-all"
+                    >
+                      <KeyRound size={14} className="shrink-0" />
+                      <span>Cambiar contraseña</span>
+                    </button>
+                    <div className="h-px bg-indigo-800/40 mx-2" />
+                    <button
+                      onClick={() => { signOut(); setSidebarMenuOpen(false); }}
+                      className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-red-400 hover:bg-red-500/10 hover:text-red-300 text-xs font-bold text-left transition-all"
+                    >
+                      <LogOut size={14} className="shrink-0" />
+                      <span>Cerrar sesión</span>
+                    </button>
+                  </div>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      </nav>
+
+      {/* ══ RIGHT COLUMN (header + content + mobile nav) ═════════════════════ */}
+      <div className="flex flex-col flex-1 overflow-hidden min-w-0">
+
+      {/* ---- HEADER LIFEOS — solo mobile/tablet, desktop usa sidebar ---- */}
+      <header className="lg:hidden bg-indigo-950 border-b border-indigo-900/50 px-4 md:px-6 py-3 flex justify-between items-center z-[100] shrink-0 shadow-lg">
+        <div className="flex items-center gap-3 text-white">
+          {/* Mobile: logo + menú tiempo */}
+          <div className="lg:hidden flex items-center gap-2">
+            {section === 'tiempo' && (
+              <button onClick={() => setSidebarOpen(true)} className="p-2 hover:bg-white/10 rounded-xl">
+                <Menu size={20} />
+              </button>
+            )}
+            <div className="flex items-center gap-2">
+              <div className="bg-indigo-500 p-1.5 rounded-lg shadow-inner"><Zap size={18} fill="white" /></div>
+              <h1 className="text-lg font-black tracking-tight uppercase italic leading-none hidden sm:block">LifeOS</h1>
+            </div>
+          </div>
+          {/* Desktop: título de la sección actual + menú tiempo */}
+          <div className="hidden lg:flex items-center gap-3">
+            {section === 'tiempo' && (
+              <button onClick={() => setSidebarOpen(true)} className="p-2 hover:bg-white/10 rounded-xl">
+                <Menu size={20} />
+              </button>
+            )}
+            <span className="text-white font-black text-base">
+              {section === 'admin' ? 'Admin' : SECTIONS.find(s => s.key === section)?.label ?? ''}
+            </span>
+          </div>
         </div>
 
         <div className="flex items-center gap-2 md:gap-3 text-white">
@@ -1215,8 +1489,8 @@ const App = () => {
             <kbd className="hidden lg:inline-flex items-center text-[9px] font-black text-indigo-500 bg-white/5 border border-white/10 px-1.5 py-0.5 rounded-md">⌘K</kbd>
           </button>
 
-          {/* Indicador de guardado — espacio siempre reservado para no mover layout */}
-          <div className={`hidden lg:flex items-center gap-1.5 text-[10px] font-bold min-w-[90px] justify-center transition-all duration-300 ${
+          {/* Indicador de guardado — visible en desktop y tablet */}
+          <div className={`hidden sm:flex items-center gap-1.5 text-[10px] font-bold min-w-[90px] justify-center transition-all duration-300 ${
             saveStatus === 'idle' ? 'opacity-0 pointer-events-none' : 'opacity-100'
           } ${saveStatus === 'saving' ? 'text-indigo-400' : 'text-emerald-400'}`}>
             {saveStatus === 'saving' ? (
@@ -1244,8 +1518,8 @@ const App = () => {
             <Search size={16} />
           </button>
 
-          {/* Menú de usuario */}
-          <div className="relative" ref={userMenuRef}>
+          {/* Menú de usuario — solo mobile/tablet (desktop lo tiene en sidebar) */}
+          <div className="lg:hidden relative" ref={userMenuRef}>
             <button
               onClick={() => setUserMenuOpen(v => !v)}
               className={`flex items-center gap-2 border rounded-full pl-1 pr-2.5 py-1 transition-all ${userMenuOpen ? 'bg-white/10 border-white/20' : 'bg-white/5 border-white/10 hover:bg-white/10'}`}
@@ -1292,6 +1566,14 @@ const App = () => {
                     Mi perfil
                   </button>
                   <button
+                    onClick={() => { setShowChangePassword(true); setUserMenuOpen(false); }}
+                    className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-indigo-300 hover:bg-white/5 hover:text-white text-[11px] font-black uppercase tracking-widest transition-all active:scale-[0.98]"
+                  >
+                    <KeyRound size={14} />
+                    Cambiar contraseña
+                  </button>
+                  <div className="h-px bg-indigo-800/40 my-1" />
+                  <button
                     onClick={() => { signOut(); setUserMenuOpen(false); }}
                     className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-red-400 hover:bg-red-500/10 hover:text-red-300 text-[11px] font-black uppercase tracking-widest transition-all active:scale-[0.98]"
                   >
@@ -1321,7 +1603,7 @@ const App = () => {
 
         {/* Sidebar — only in tiempo section */}
         {section === 'tiempo' && (
-          <aside className={`fixed inset-y-0 left-0 z-[120] w-80 bg-white border-r transform transition-transform lg:relative lg:translate-x-0 ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'} flex flex-col shrink-0 overflow-y-auto custom-scrollbar`}>
+          <aside className={`fixed inset-y-0 left-0 z-[120] w-80 bg-white border-r transform transition-transform lg:relative lg:inset-y-auto lg:left-auto ${sidebarOpen ? 'translate-x-0' : '-translate-x-full lg:-translate-x-full lg:w-0 lg:opacity-0 lg:overflow-hidden'} flex flex-col shrink-0 overflow-y-auto custom-scrollbar`}>
             <div className="p-6 space-y-8 pb-24 lg:pb-6">
               <section>
                 <div className="flex items-center justify-between mb-4 px-1">
@@ -1626,6 +1908,10 @@ const App = () => {
               {!isMobile && (
                 <div className="hidden md:flex items-center justify-between px-6 py-2.5 bg-slate-100 border-b border-slate-200 shrink-0">
                   <div className="flex items-center gap-3">
+                    {/* Botón abrir sidebar categorías */}
+                    <button onClick={() => setSidebarOpen(v => !v)} className="p-1.5 hover:bg-slate-200 rounded-lg transition-all text-slate-500 hover:text-slate-700">
+                      <Menu size={16} />
+                    </button>
                     <div className="flex items-center bg-white rounded-full p-0.5 border border-slate-200 shadow-sm">
                       <button onClick={() => { const d = new Date(currentDate); d.setDate(d.getDate() - 7); setCurrentDate(d); }} className="p-1.5 hover:bg-slate-100 rounded-full transition-all"><ChevronLeft size={14} className="text-slate-500"/></button>
                       <span className="px-3 text-xs font-black min-w-[180px] text-center text-slate-700">
@@ -1748,6 +2034,7 @@ const App = () => {
               setHabitLogs={setHabitLogs}
               currentDate={currentDate}
               onNavigate={setSection}
+              isModuleEnabled={isModuleEnabled}
             />
           )}
 
@@ -1828,78 +2115,126 @@ const App = () => {
               currentDate={currentDate}
               onDownloadReport={downloadReport}
               isExporting={isExporting}
+              isModuleEnabled={isModuleEnabled}
             />
           )}
+          {section === 'academia' && <Academia />}
+          {section === 'admin' && isSuperAdmin && <Admin />}
         </main>
       </div>
 
       {/* Mobile bottom nav */}
       {isMobile && (
         <>
-          {/* Overlay que cierra el menú "Más" */}
-          {showMoreMenu && (
-            <div
-              className="fixed inset-0 z-[148]"
-              onClick={() => setShowMoreMenu(false)}
-            />
-          )}
 
-          {/* Panel "Más" — aparece encima de la nav */}
-          {showMoreMenu && (
-            <div
-              className="fixed left-0 right-0 z-[149] bg-indigo-950 border-t border-indigo-800/60 px-6 py-4 flex gap-4 animate-in slide-in-from-bottom-2 duration-150"
-              style={{ bottom: `calc(64px + env(safe-area-inset-bottom, 0px))` }}
-            >
-              {MORE_SECTIONS.map(({ key, label, Icon }) => (
-                <button
-                  key={key}
-                  onClick={() => { setSection(key as SectionKey); setShowMoreMenu(false); }}
-                  className={`flex-1 flex flex-col items-center justify-center gap-1.5 py-3.5 rounded-2xl transition-all active:scale-95 ${
-                    section === key
-                      ? 'bg-indigo-700/60 text-white'
-                      : 'bg-white/5 text-indigo-300 hover:bg-white/10'
-                  }`}
+          {/* Panel "Más" — bottom sheet rediseñado */}
+          {showMoreMenu && (() => {
+            const visibleMore = MORE_SECTIONS.filter(s => isModuleEnabled(s.key))
+            const allItems = [
+              ...visibleMore.map(s => ({ ...s, amber: false })),
+              ...(isSuperAdmin ? [{ key: 'admin' as SectionKey, label: 'Admin', Icon: Shield, amber: true }] : []),
+            ]
+            if (!allItems.length) return null
+
+            return (
+              <>
+                {/* Overlay para cerrar */}
+                <div className="fixed inset-0 z-[148]" onClick={() => setShowMoreMenu(false)} />
+
+                {/* Sheet */}
+                <div
+                  className="fixed left-0 right-0 z-[149] bg-[#0f1221] border-t border-white/10 animate-in slide-in-from-bottom-2 duration-200"
+                  style={{ bottom: `calc(64px + env(safe-area-inset-bottom, 0px))` }}
                 >
-                  <Icon size={22} />
-                  <span className="text-[10px] font-black uppercase tracking-wide">{label}</span>
-                </button>
-              ))}
-            </div>
-          )}
+                  {/* Handle indicator */}
+                  <div className="flex justify-center pt-3 pb-1">
+                    <div className="w-8 h-1 rounded-full bg-white/20" />
+                  </div>
 
-          {/* Barra de nav principal — 4 ítems + Más */}
-          <div
-            className="fixed bottom-0 left-0 right-0 bg-indigo-950 border-t border-indigo-800/60 flex z-[150]"
-            style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}
-          >
-            {MOBILE_NAV.map(({ key, label, Icon }) => (
-              <button
-                key={key}
-                onClick={() => { setSection(key as SectionKey); setShowMoreMenu(false); }}
-                className={`flex-1 flex flex-col items-center justify-center py-3.5 gap-1 transition-all active:scale-95 ${
-                  section === key ? 'text-white' : 'text-indigo-400'
-                }`}
+                  {/* Grid de ítems — 3 por fila máx */}
+                  <div className={`grid gap-1 px-4 pt-2 pb-4 ${
+                    allItems.length <= 3 ? 'grid-cols-3' : 'grid-cols-3 sm:grid-cols-4'
+                  }`}>
+                    {allItems.map(({ key, label, Icon, amber }) => {
+                      const isActive = section === key
+                      return (
+                        <button
+                          key={key}
+                          onClick={() => { setSection(key); setShowMoreMenu(false); }}
+                          className={`flex flex-col items-center justify-center gap-2 py-4 px-2 rounded-2xl transition-all active:scale-95 ${
+                            isActive
+                              ? amber ? 'bg-amber-500/20 text-amber-300' : 'bg-indigo-500/25 text-white'
+                              : amber ? 'text-amber-400/70 hover:bg-amber-500/10 hover:text-amber-300' : 'text-indigo-300 hover:bg-white/5 hover:text-white'
+                          }`}
+                        >
+                          <div className={`w-11 h-11 rounded-2xl flex items-center justify-center ${
+                            isActive
+                              ? amber ? 'bg-amber-500/30' : 'bg-indigo-500/40'
+                              : 'bg-white/5'
+                          }`}>
+                            <Icon size={20} strokeWidth={isActive ? 2.5 : 2} />
+                          </div>
+                          <span className="text-[10px] font-black tracking-wide">{label}</span>
+                          {isActive && <div className={`w-1 h-1 rounded-full ${amber ? 'bg-amber-400' : 'bg-indigo-400'}`} />}
+                        </button>
+                      )
+                    })}
+                  </div>
+                </div>
+              </>
+            )
+          })()}
+
+          {/* Barra de nav principal — filtrada por módulos habilitados */}
+          {(() => {
+            const visibleMain = MOBILE_NAV.filter(s => isModuleEnabled(s.key))
+            const visibleMore = MORE_SECTIONS.filter(s => isModuleEnabled(s.key))
+            const hasMoreItems = visibleMore.length > 0 || isSuperAdmin
+            const moreActive = showMoreMenu || ['habitos','objetivos','revision','academia','admin'].includes(section)
+            return (
+              <div
+                className="fixed bottom-0 left-0 right-0 bg-indigo-950 border-t border-indigo-800/60 flex z-[150]"
+                style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}
               >
-                <Icon size={22} strokeWidth={section === key ? 2.5 : 2} />
-                <span className="text-[9px] font-black uppercase tracking-wide">{label}</span>
-              </button>
-            ))}
-
-            {/* Botón Más */}
-            <button
-              onClick={() => setShowMoreMenu(v => !v)}
-              className={`flex-1 flex flex-col items-center justify-center py-3.5 gap-1 transition-all active:scale-95 ${
-                showMoreMenu || ['habitos','objetivos','revision'].includes(section)
-                  ? 'text-white'
-                  : 'text-indigo-400'
-              }`}
-            >
-              <MoreHorizontal size={22} strokeWidth={showMoreMenu || ['habitos','objetivos','revision'].includes(section) ? 2.5 : 2} />
-              <span className="text-[9px] font-black uppercase tracking-wide">Más</span>
-            </button>
-          </div>
+                {/* Inicio siempre visible */}
+                {visibleMain.filter(s => s.key === 'hoy').map(({ key, label, Icon }) => (
+                  <button
+                    key={key}
+                    onClick={() => { setSection(key as SectionKey); setShowMoreMenu(false); }}
+                    className={`flex-1 flex flex-col items-center justify-center py-3.5 gap-1 transition-all active:scale-95 ${section === key ? 'text-white' : 'text-indigo-400'}`}
+                  >
+                    <Icon size={22} strokeWidth={section === key ? 2.5 : 2} />
+                    <span className="text-[9px] font-black uppercase tracking-wide">{label}</span>
+                  </button>
+                ))}
+                {/* Resto de secciones principales habilitadas (sin hoy) */}
+                {visibleMain.filter(s => s.key !== 'hoy').map(({ key, label, Icon }) => (
+                  <button
+                    key={key}
+                    onClick={() => { setSection(key as SectionKey); setShowMoreMenu(false); }}
+                    className={`flex-1 flex flex-col items-center justify-center py-3.5 gap-1 transition-all active:scale-95 ${section === key ? 'text-white' : 'text-indigo-400'}`}
+                  >
+                    <Icon size={22} strokeWidth={section === key ? 2.5 : 2} />
+                    <span className="text-[9px] font-black uppercase tracking-wide">{label}</span>
+                  </button>
+                ))}
+                {/* Botón Más — solo si hay secciones habilitadas en el menú más */}
+                {hasMoreItems && (
+                  <button
+                    onClick={() => setShowMoreMenu(v => !v)}
+                    className={`flex-1 flex flex-col items-center justify-center py-3.5 gap-1 transition-all active:scale-95 ${moreActive ? 'text-white' : 'text-indigo-400'}`}
+                  >
+                    <MoreHorizontal size={22} strokeWidth={moreActive ? 2.5 : 2} />
+                    <span className="text-[9px] font-black uppercase tracking-wide">Más</span>
+                  </button>
+                )}
+              </div>
+            )
+          })()}
         </>
       )}
+
+      </div>{/* ── end right column ── */}
 
       {/* ── BÚSQUEDA GLOBAL ── */}
       {showSearch && (
@@ -1913,6 +2248,7 @@ const App = () => {
           habits={habits}
           onClose={() => setShowSearch(false)}
           onSearchSelect={(result) => { handleSearchSelect(result); setShowSearch(false); }}
+          isModuleEnabled={isModuleEnabled}
         />
       )}
 
@@ -2002,6 +2338,124 @@ const App = () => {
       )}
 
       {/* MODAL ATAJOS DE TECLADO */}
+      {/* MODAL CAMBIAR CONTRASEÑA */}
+      {showChangePassword && (
+        <div
+          className="fixed inset-0 z-[500] flex items-end sm:items-center justify-center bg-black/60 backdrop-blur-sm animate-in fade-in"
+          onClick={closePasswordModal}
+          onKeyDown={e => e.key === 'Escape' && closePasswordModal()}
+          tabIndex={-1}
+        >
+          <div
+            className="bg-white w-full sm:max-w-sm sm:rounded-3xl rounded-t-3xl shadow-2xl animate-in slide-in-from-bottom-4 sm:zoom-in-95 duration-200 flex flex-col"
+            style={{ maxHeight: 'min(90svh, 520px)' }}
+            onClick={e => e.stopPropagation()}
+          >
+            {/* Header fijo */}
+            <div className="flex items-center justify-between px-6 pt-5 pb-4 border-b border-slate-100 shrink-0">
+              <div className="flex items-center gap-3">
+                <div className="w-9 h-9 rounded-xl bg-indigo-100 flex items-center justify-center shrink-0">
+                  <KeyRound size={16} className="text-indigo-600" />
+                </div>
+                <h2 className="text-base font-black text-slate-800">Cambiar contraseña</h2>
+              </div>
+              <button
+                onClick={closePasswordModal}
+                className="w-8 h-8 flex items-center justify-center rounded-full bg-slate-100 hover:bg-slate-200 text-slate-500 transition-colors shrink-0"
+              >
+                <X size={15} />
+              </button>
+            </div>
+
+            {/* Body scrollable */}
+            <div className="flex-1 overflow-y-auto px-6 py-5">
+              {passwordSuccess ? (
+                <div className="flex flex-col items-center gap-3 py-6 text-center">
+                  <div className="w-16 h-16 rounded-full bg-emerald-100 flex items-center justify-center">
+                    <CheckCircle2 size={30} className="text-emerald-500" />
+                  </div>
+                  <p className="text-base font-black text-slate-800">¡Contraseña actualizada!</p>
+                  <p className="text-sm text-slate-400">El cambio se realizó correctamente.</p>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  <div>
+                    <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">Nueva contraseña</label>
+                    <div className="relative mt-1.5">
+                      <input
+                        type={showNewPassword ? 'text' : 'password'}
+                        value={newPassword}
+                        onChange={e => { setNewPassword(e.target.value); setPasswordError(''); }}
+                        autoFocus
+                        placeholder="Mínimo 6 caracteres"
+                        className="w-full px-4 py-3 pr-11 rounded-xl border border-slate-200 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-indigo-300 bg-white"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowNewPassword(v => !v)}
+                        className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 transition-colors p-1"
+                        tabIndex={-1}
+                      >
+                        {showNewPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                      </button>
+                    </div>
+                  </div>
+                  <div>
+                    <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">Confirmar contraseña</label>
+                    <div className="relative mt-1.5">
+                      <input
+                        type={showConfirmPassword ? 'text' : 'password'}
+                        value={confirmPassword}
+                        onChange={e => { setConfirmPassword(e.target.value); setPasswordError(''); }}
+                        onKeyDown={e => { if (e.key === 'Enter') handleChangePassword(); }}
+                        placeholder="Repite la nueva contraseña"
+                        className="w-full px-4 py-3 pr-11 rounded-xl border border-slate-200 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-indigo-300 bg-white"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowConfirmPassword(v => !v)}
+                        className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 transition-colors p-1"
+                        tabIndex={-1}
+                      >
+                        {showConfirmPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                      </button>
+                    </div>
+                  </div>
+                  {passwordError && (
+                    <div className="flex items-start gap-2 text-xs font-bold text-red-600 bg-red-50 border border-red-100 rounded-xl px-3 py-2.5">
+                      <span className="shrink-0 mt-0.5">⚠️</span>
+                      <span>{passwordError}</span>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {/* Footer fijo */}
+            {!passwordSuccess && (
+              <div
+                className="flex gap-3 px-6 py-4 border-t border-slate-100 shrink-0"
+                style={{ paddingBottom: 'max(1rem, env(safe-area-inset-bottom, 1rem))' }}
+              >
+                <button
+                  onClick={closePasswordModal}
+                  className="flex-1 py-3 rounded-xl border border-slate-200 text-sm font-bold text-slate-600 hover:bg-slate-50 active:scale-95 transition-all"
+                >
+                  Cancelar
+                </button>
+                <button
+                  onClick={handleChangePassword}
+                  disabled={passwordSaving || !newPassword.trim() || !confirmPassword.trim()}
+                  className="flex-1 py-3 rounded-xl bg-indigo-600 text-white text-sm font-bold hover:bg-indigo-700 disabled:opacity-50 active:scale-95 transition-all"
+                >
+                  {passwordSaving ? 'Guardando...' : 'Guardar cambios'}
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
       {showShortcuts && (
         <div
           className="fixed inset-0 z-[300] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm animate-in fade-in hidden md:flex"
@@ -2022,8 +2476,8 @@ const App = () => {
               {[
                 { key: 'H', desc: 'Dashboard Hoy' },
                 { key: 'D', desc: 'Dinero' },
-                { key: 'T', desc: 'Tiempo' },
-                { key: 'L', desc: 'Lista' },
+                { key: 'T', desc: 'Agenda' },
+                { key: 'L', desc: 'Tareas' },
                 { key: 'O', desc: 'Objetivos' },
                 { key: 'R', desc: 'Revisión' },
                 { key: '?', desc: 'Mostrar atajos' },
