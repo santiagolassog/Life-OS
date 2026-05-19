@@ -2057,52 +2057,62 @@ const App = () => {
       {/* Mobile bottom nav */}
       {isMobile && (
         <>
-          {/* Overlay que cierra el menú "Más" */}
-          {showMoreMenu && (
-            <div
-              className="fixed inset-0 z-[148]"
-              onClick={() => setShowMoreMenu(false)}
-            />
-          )}
 
-          {/* Panel "Más" — aparece encima de la nav */}
+          {/* Panel "Más" — bottom sheet rediseñado */}
           {showMoreMenu && (() => {
             const visibleMore = MORE_SECTIONS.filter(s => isModuleEnabled(s.key))
-            const hasMore = visibleMore.length > 0 || isSuperAdmin
-            if (!hasMore) return null
+            const allItems = [
+              ...visibleMore.map(s => ({ ...s, amber: false })),
+              ...(isSuperAdmin ? [{ key: 'admin' as SectionKey, label: 'Admin', Icon: Shield, amber: true }] : []),
+            ]
+            if (!allItems.length) return null
+
             return (
-              <div
-                className="fixed left-0 right-0 z-[149] bg-indigo-950 border-t border-indigo-800/60 px-6 py-4 flex gap-4 animate-in slide-in-from-bottom-2 duration-150"
-                style={{ bottom: `calc(64px + env(safe-area-inset-bottom, 0px))` }}
-              >
-                {visibleMore.map(({ key, label, Icon }) => (
-                  <button
-                    key={key}
-                    onClick={() => { setSection(key as SectionKey); setShowMoreMenu(false); }}
-                    className={`flex-1 flex flex-col items-center justify-center gap-1.5 py-3.5 rounded-2xl transition-all active:scale-95 ${
-                      section === key
-                        ? 'bg-indigo-700/60 text-white'
-                        : 'bg-white/5 text-indigo-300 hover:bg-white/10'
-                    }`}
-                  >
-                    <Icon size={22} />
-                    <span className="text-[10px] font-black uppercase tracking-wide">{label}</span>
-                  </button>
-                ))}
-                {isSuperAdmin && (
-                  <button
-                    onClick={() => { setSection('admin'); setShowMoreMenu(false); }}
-                    className={`flex-1 flex flex-col items-center justify-center gap-1.5 py-3.5 rounded-2xl transition-all active:scale-95 ${
-                      section === 'admin'
-                        ? 'bg-amber-500/40 text-amber-200'
-                        : 'bg-amber-500/10 text-amber-400 hover:bg-amber-500/20'
-                    }`}
-                  >
-                    <Shield size={22} />
-                    <span className="text-[10px] font-black uppercase tracking-wide">Admin</span>
-                  </button>
-                )}
-              </div>
+              <>
+                {/* Overlay para cerrar */}
+                <div className="fixed inset-0 z-[148]" onClick={() => setShowMoreMenu(false)} />
+
+                {/* Sheet */}
+                <div
+                  className="fixed left-0 right-0 z-[149] bg-[#0f1221] border-t border-white/10 animate-in slide-in-from-bottom-2 duration-200"
+                  style={{ bottom: `calc(64px + env(safe-area-inset-bottom, 0px))` }}
+                >
+                  {/* Handle indicator */}
+                  <div className="flex justify-center pt-3 pb-1">
+                    <div className="w-8 h-1 rounded-full bg-white/20" />
+                  </div>
+
+                  {/* Grid de ítems — 3 por fila máx */}
+                  <div className={`grid gap-1 px-4 pt-2 pb-4 ${
+                    allItems.length <= 3 ? 'grid-cols-3' : 'grid-cols-3 sm:grid-cols-4'
+                  }`}>
+                    {allItems.map(({ key, label, Icon, amber }) => {
+                      const isActive = section === key
+                      return (
+                        <button
+                          key={key}
+                          onClick={() => { setSection(key); setShowMoreMenu(false); }}
+                          className={`flex flex-col items-center justify-center gap-2 py-4 px-2 rounded-2xl transition-all active:scale-95 ${
+                            isActive
+                              ? amber ? 'bg-amber-500/20 text-amber-300' : 'bg-indigo-500/25 text-white'
+                              : amber ? 'text-amber-400/70 hover:bg-amber-500/10 hover:text-amber-300' : 'text-indigo-300 hover:bg-white/5 hover:text-white'
+                          }`}
+                        >
+                          <div className={`w-11 h-11 rounded-2xl flex items-center justify-center ${
+                            isActive
+                              ? amber ? 'bg-amber-500/30' : 'bg-indigo-500/40'
+                              : 'bg-white/5'
+                          }`}>
+                            <Icon size={20} strokeWidth={isActive ? 2.5 : 2} />
+                          </div>
+                          <span className="text-[10px] font-black tracking-wide">{label}</span>
+                          {isActive && <div className={`w-1 h-1 rounded-full ${amber ? 'bg-amber-400' : 'bg-indigo-400'}`} />}
+                        </button>
+                      )
+                    })}
+                  </div>
+                </div>
+              </>
             )
           })()}
 
