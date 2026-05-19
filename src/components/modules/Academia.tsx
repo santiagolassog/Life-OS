@@ -649,16 +649,19 @@ export default function Academia() {
           })}
         </div>
 
-        {/* ── Videos exclusivos ── */}
+        {/* ── Videos exclusivos — carrusel horizontal ── */}
         {exclusiveVideos.length > 0 && (
           <div className="mt-6">
-            <div className="flex items-center gap-2 mb-3">
+            {/* Header */}
+            <div className="flex items-center gap-2 mb-3 px-1">
               <div className="w-6 h-6 rounded-lg bg-amber-500 flex items-center justify-center shrink-0">
                 <span className="text-white text-[11px] font-black">⭐</span>
               </div>
-              <h2 className="text-sm font-black text-slate-700 uppercase tracking-wide">Contenido exclusivo</h2>
+              <h2 className="text-sm font-black text-slate-700 uppercase tracking-wide flex-1">Contenido exclusivo</h2>
+              <span className="text-[11px] text-slate-400 font-medium">{exclusiveVideos.length} video{exclusiveVideos.length !== 1 ? 's' : ''}</span>
             </div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+            {/* Carrusel */}
+            <div className="flex gap-3 overflow-x-auto scrollbar-hide pb-2 -mx-5 px-5">
               {exclusiveVideos.map(vid => {
                 const ytId = extractYoutubeId(vid.youtubeUrl)
                 const done = exclusiveProgress.some(p => p.videoId === vid.id && p.completed)
@@ -666,27 +669,37 @@ export default function Academia() {
                   <button
                     key={vid.id}
                     onClick={() => setSelectedExclusive(vid)}
-                    className="bg-white rounded-2xl border border-amber-200 overflow-hidden hover:border-amber-300 hover:shadow-md hover:shadow-amber-50 transition-all text-left group flex flex-col"
+                    className="shrink-0 w-52 bg-white rounded-2xl border border-amber-200 overflow-hidden hover:border-amber-400 hover:shadow-md hover:shadow-amber-50 transition-all text-left group flex flex-col"
                   >
+                    {/* Thumbnail */}
                     {ytId ? (
-                      <div className="relative h-32 overflow-hidden shrink-0">
+                      <div className="relative h-[116px] overflow-hidden shrink-0">
                         <img src={`https://img.youtube.com/vi/${ytId}/mqdefault.jpg`} alt="" className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />
-                        <div className="absolute inset-0 bg-gradient-to-t from-black/40 to-transparent" />
-                        <div className="absolute top-2 left-2 bg-amber-500 text-white text-[9px] font-black px-1.5 py-0.5 rounded-full">EXCLUSIVO</div>
-                        {done && <div className="absolute top-2 right-2 bg-emerald-500 text-white text-[9px] font-black px-1.5 py-0.5 rounded-full flex items-center gap-0.5"><CheckCircle2 size={9}/> Visto</div>}
+                        <div className="absolute inset-0 bg-gradient-to-t from-black/50 to-transparent" />
+                        <div className="absolute top-1.5 left-1.5 bg-amber-500 text-white text-[8px] font-black px-1.5 py-0.5 rounded-full tracking-wide">EXCLUSIVO</div>
+                        {done && (
+                          <div className="absolute top-1.5 right-1.5 bg-emerald-500 text-white text-[8px] font-black px-1.5 py-0.5 rounded-full flex items-center gap-0.5">
+                            <CheckCircle2 size={8} /> Visto
+                          </div>
+                        )}
                         <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
-                          <div className="bg-white/20 backdrop-blur-sm rounded-full p-3"><Play size={20} className="text-white" fill="white" /></div>
+                          <div className="bg-black/30 backdrop-blur-sm rounded-full p-2.5">
+                            <Play size={16} className="text-white" fill="white" />
+                          </div>
                         </div>
                       </div>
                     ) : (
-                      <div className="h-32 bg-amber-50 flex items-center justify-center shrink-0">
-                        <Video size={32} className="text-amber-300" />
+                      <div className="h-[116px] bg-amber-50 flex items-center justify-center shrink-0">
+                        <Video size={28} className="text-amber-300" />
                       </div>
                     )}
-                    <div className="p-3 flex-1">
-                      <div className="text-sm font-black text-slate-800 leading-tight line-clamp-2">{vid.title}</div>
+                    {/* Info */}
+                    <div className="p-2.5 flex-1">
+                      <div className="text-xs font-black text-slate-800 leading-tight line-clamp-2">{vid.title}</div>
                       {vid.durationMinutes && (
-                        <div className="flex items-center gap-1 text-[11px] text-slate-400 mt-1"><Clock size={10}/>{formatDuration(vid.durationMinutes)}</div>
+                        <div className="flex items-center gap-1 text-[10px] text-slate-400 mt-1">
+                          <Clock size={9} /> {formatDuration(vid.durationMinutes)}
+                        </div>
                       )}
                     </div>
                   </button>
