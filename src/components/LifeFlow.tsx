@@ -1965,6 +1965,7 @@ const App = () => {
               setHabitLogs={setHabitLogs}
               currentDate={currentDate}
               onNavigate={setSection}
+              isModuleEnabled={isModuleEnabled}
             />
           )}
 
@@ -2045,6 +2046,7 @@ const App = () => {
               currentDate={currentDate}
               onDownloadReport={downloadReport}
               isExporting={isExporting}
+              isModuleEnabled={isModuleEnabled}
             />
           )}
           {section === 'academia' && <Academia />}

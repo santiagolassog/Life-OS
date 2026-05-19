@@ -30,6 +30,7 @@ interface HoyProps {
   setHabitLogs: React.Dispatch<React.SetStateAction<HabitLog[]>>;
   currentDate: Date;
   onNavigate: (s: SectionKey) => void;
+  isModuleEnabled?: (key: string) => boolean;
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -111,8 +112,10 @@ const MiniRing: React.FC<{
 const Hoy: React.FC<HoyProps> = ({
   userName, streak, events, categories, tasks, goals,
   transactions, finCategories, monthBalances, habits, habitLogs, setHabitLogs,
-  currentDate, onNavigate,
+  currentDate, onNavigate, isModuleEnabled,
 }) => {
+  // Por defecto todos los módulos habilitados (usuarios personales sin empresa)
+  const modEnabled = (key: string) => isModuleEnabled ? isModuleEnabled(key) : true;
   const { text: greetText, Icon: GreetIcon } = greeting();
   const todayStr = formatDateId(new Date());
   const weekId   = useMemo(() => getWeekId(currentDate), [currentDate]);
@@ -248,7 +251,7 @@ const Hoy: React.FC<HoyProps> = ({
                 { label: 'Registra un gasto', icon: DollarSign, section: 'dinero' as SectionKey, color: 'bg-emerald-500' },
                 { label: 'Define objetivos', icon: Target, section: 'objetivos' as SectionKey, color: 'bg-violet-500' },
                 { label: 'Añade una tarea', icon: CheckSquare, section: 'lista' as SectionKey, color: 'bg-blue-500' },
-              ].map(({ label, icon: Icon, section, color }) => (
+              ].filter(({ section }) => modEnabled(section)).map(({ label, icon: Icon, section, color }) => (
                 <button
                   key={section}
                   onClick={() => onNavigate(section)}
@@ -325,10 +328,11 @@ const Hoy: React.FC<HoyProps> = ({
             {/* ═══════════════════════════════════════════════════════════════
                 FILA 2: AGENDA + HÁBITOS
             ═══════════════════════════════════════════════════════════════ */}
+            {(modEnabled('tiempo') || modEnabled('habitos')) && (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
 
               {/* ── Agenda de hoy (timeline) ── */}
-              <div className="bg-white rounded-3xl border border-slate-100 shadow-sm overflow-hidden flex flex-col">
+              {modEnabled('tiempo') && <div className="bg-white rounded-3xl border border-slate-100 shadow-sm overflow-hidden flex flex-col">
                 <button
                   className="w-full flex items-center justify-between px-5 pt-5 pb-3"
                   onClick={() => onNavigate('tiempo')}
@@ -398,10 +402,10 @@ const Hoy: React.FC<HoyProps> = ({
                     </div>
                   )}
                 </div>
-              </div>
+              </div>}
 
               {/* ── Hábitos del día ── */}
-              <div className="bg-white rounded-3xl border border-slate-100 shadow-sm overflow-hidden flex flex-col">
+              {modEnabled('habitos') && <div className="bg-white rounded-3xl border border-slate-100 shadow-sm overflow-hidden flex flex-col">
                 <button
                   className="w-full flex items-center justify-between px-5 pt-5 pb-3"
                   onClick={() => onNavigate('habitos')}
@@ -465,15 +469,18 @@ const Hoy: React.FC<HoyProps> = ({
                     </div>
                   )}
                 </div>
-              </div>
+              </div>}
             </div>
+            )}
 
             {/* ═══════════════════════════════════════════════════════════════
                 FILA 3: TAREAS + OBJETIVOS
             ═══════════════════════════════════════════════════════════════ */}
+            {(modEnabled('lista') || modEnabled('objetivos')) && (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
 
               {/* ── Tareas activas ── */}
+              {modEnabled('lista') &&
               <div className="bg-white rounded-3xl border border-slate-100 shadow-sm overflow-hidden flex flex-col">
                 <button
                   className="w-full flex items-center justify-between px-5 pt-5 pb-3"
@@ -528,10 +535,10 @@ const Hoy: React.FC<HoyProps> = ({
                     </div>
                   )}
                 </div>
-              </div>
+              </div>}
 
               {/* ── Objetivos semanales (con anillo) ── */}
-              <div className="bg-white rounded-3xl border border-slate-100 shadow-sm overflow-hidden flex flex-col">
+              {modEnabled('objetivos') && <div className="bg-white rounded-3xl border border-slate-100 shadow-sm overflow-hidden flex flex-col">
                 <button
                   className="w-full flex items-center justify-between px-5 pt-5 pb-3"
                   onClick={() => onNavigate('objetivos')}
@@ -588,13 +595,14 @@ const Hoy: React.FC<HoyProps> = ({
                     </div>
                   )}
                 </div>
-              </div>
+              </div>}
             </div>
+            )}
 
             {/* ═══════════════════════════════════════════════════════════════
                 FILA 4: FINANZAS (horizontal)
             ═══════════════════════════════════════════════════════════════ */}
-            <button
+            {modEnabled('dinero') && <button
               onClick={() => onNavigate('dinero')}
               className="w-full bg-white rounded-3xl border border-slate-100 shadow-sm p-5 hover:shadow-md transition-all active:scale-[0.995] text-left"
             >
@@ -663,12 +671,12 @@ const Hoy: React.FC<HoyProps> = ({
                   </div>
                 </div>
               )}
-            </button>
+            </button>}
 
             {/* ═══════════════════════════════════════════════════════════════
                 FILA 5: RESUMEN SEMANAL
             ═══════════════════════════════════════════════════════════════ */}
-            {hasWeekData && (
+            {hasWeekData && modEnabled('revision') && (
               <button
                 onClick={() => onNavigate('revision')}
                 className="w-full bg-gradient-to-br from-indigo-50 to-violet-50 border border-indigo-100 rounded-3xl p-5 text-left hover:shadow-md transition-all active:scale-[0.995]"

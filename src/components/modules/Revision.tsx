@@ -32,14 +32,16 @@ interface RevisionProps {
   currentDate: Date;
   onDownloadReport: () => void;
   isExporting: boolean;
+  isModuleEnabled?: (key: string) => boolean;
 }
 
 type Range = 'week' | 'month' | 'year';
 
 const Revision: React.FC<RevisionProps> = ({
   events, categories, transactions, finCategories, goals, tasks, habits, habitLogs, currentDate,
-  onDownloadReport, isExporting
+  onDownloadReport, isExporting, isModuleEnabled,
 }) => {
+  const modEnabled = (key: string) => isModuleEnabled ? isModuleEnabled(key) : true;
   const [range, setRange] = useState<Range>('week');
   const [viewDate, setViewDate] = useState(new Date(currentDate));
 
@@ -631,7 +633,7 @@ const Revision: React.FC<RevisionProps> = ({
               ))}
             </div>
             {/* Tasks completadas por área en el período */}
-            <div className="space-y-2 mt-1">
+            {modEnabled('lista') && <div className="space-y-2 mt-1">
               <div className="flex items-center justify-between">
                 <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-1">
                   <CheckCircle2 size={10} className="text-emerald-500" /> Tareas completadas
@@ -657,10 +659,10 @@ const Revision: React.FC<RevisionProps> = ({
               {taskStats.inProgress > 0 && (
                 <p className="text-[9px] text-blue-400 font-bold">{taskStats.inProgress} en progreso</p>
               )}
-            </div>
+            </div>}
 
             {/* Hábitos */}
-            <div className="space-y-2 mt-1">
+            {modEnabled('habitos') && <div className="space-y-2 mt-1">
               <div className="flex items-center justify-between">
                 <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-1">
                   <Flame size={10} className="text-indigo-500" /> Hábitos
@@ -703,7 +705,7 @@ const Revision: React.FC<RevisionProps> = ({
               ) : (
                 <p className="text-[10px] text-emerald-400 italic font-bold">Sin hábitos activos en este período</p>
               )}
-            </div>
+            </div>}
           </div>
 
           {/* R — REVISAR */}
@@ -747,7 +749,7 @@ const Revision: React.FC<RevisionProps> = ({
               )}
 
               {/* Financial summary */}
-              <div className="bg-white/60 rounded-2xl p-3 space-y-2">
+              {modEnabled('dinero') && <div className="bg-white/60 rounded-2xl p-3 space-y-2">
                 <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-1">
                   <DollarSign size={10} /> Finanzas del período
                 </p>
@@ -765,7 +767,7 @@ const Revision: React.FC<RevisionProps> = ({
                     <p className={`text-sm font-black ${financialStats.balance >= 0 ? 'text-blue-600' : 'text-orange-500'}`}>${fmt(financialStats.balance)}</p>
                   </div>
                 </div>
-              </div>
+              </div>}
             </div>
           </div>
 
