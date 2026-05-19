@@ -8,7 +8,8 @@ import {
 import { supabase } from '../../lib/supabase'
 import type {
   Company, CompanyMember, CompanyModule, UserProfile,
-  AcademyCourse, AcademyModule, AcademyLesson, CompanyPlan, ModuleKey, CompanyMemberRole,
+  AcademyCourse, AcademyModule, AcademyLesson, CompanyCourseAccess, ExclusiveVideo,
+  CompanyPlan, ModuleKey, CompanyMemberRole,
 } from '../../types'
 import { generateId } from '../../lib/utils'
 
@@ -76,9 +77,11 @@ export default function Admin() {
   const [users, setUsers]           = useState<UserProfile[]>([])
   const [members, setMembers]       = useState<CompanyMember[]>([])
   const [modules, setModules]       = useState<CompanyModule[]>([])
-  const [courses, setCourses]             = useState<AcademyCourse[]>([])
-  const [academyModules, setAcademyModules] = useState<AcademyModule[]>([])
-  const [lessons, setLessons]             = useState<AcademyLesson[]>([])
+  const [courses, setCourses]                   = useState<AcademyCourse[]>([])
+  const [academyModules, setAcademyModules]     = useState<AcademyModule[]>([])
+  const [lessons, setLessons]                   = useState<AcademyLesson[]>([])
+  const [courseAccess, setCourseAccess]         = useState<CompanyCourseAccess[]>([])
+  const [exclusiveVideos, setExclusiveVideos]   = useState<ExclusiveVideo[]>([])
 
   // ── Selection ────────────────────────────────────────────────────────────────
   const [selectedCompany, setSelectedCompany] = useState<string | null>(null)
@@ -94,6 +97,8 @@ export default function Admin() {
         { data: cors },
         amodsResult,
         { data: less },
+        { data: access },
+        { data: excl },
       ] = await Promise.all([
         supabase.from('companies').select('*').order('created_at', { ascending: false }),
         supabase.from('user_profiles').select('*').order('created_at', { ascending: false }),
@@ -102,6 +107,8 @@ export default function Admin() {
         supabase.from('academy_courses').select('*').order('sort_order'),
         supabase.from('academy_modules').select('*').order('sort_order'),
         supabase.from('academy_lessons').select('*').order('sort_order'),
+        supabase.from('company_course_access').select('*'),
+        supabase.from('company_exclusive_videos').select('*').order('sort_order'),
       ])
 
       setCompanies((comp ?? []).map(rowToCompany))
@@ -109,9 +116,10 @@ export default function Admin() {
       setMembers((memb ?? []).map(rowToMember))
       setModules((mods ?? []).map(rowToModule))
       setCourses((cors ?? []).map(rowToCourse))
-      // academy_modules puede no existir si la migración no se ha ejecutado
       setAcademyModules(((amodsResult?.data) ?? []).map(rowToAcademyModule))
       setLessons((less ?? []).map(rowToLesson))
+      setCourseAccess((access ?? []).map((r: any): CompanyCourseAccess => ({ id: r.id, companyId: r.company_id, courseId: r.course_id, grantedAt: r.granted_at })))
+      setExclusiveVideos((excl ?? []).map((r: any): ExclusiveVideo => ({ id: r.id, companyId: r.company_id, title: r.title, youtubeUrl: r.youtube_url, description: r.description, durationMinutes: r.duration_minutes, sortOrder: r.sort_order, published: r.published, createdAt: r.created_at })))
     } catch (e) {
       console.error('Admin fetchAll error:', e)
     } finally {
@@ -217,6 +225,8 @@ export default function Admin() {
             courses={courses}
             academyModules={academyModules}
             lessons={lessons}
+            courseAccess={courseAccess}
+            exclusiveVideos={exclusiveVideos}
             onRefresh={fetchAll}
           />
         )}
@@ -818,14 +828,18 @@ function FormField({ label, children }: { label: string; children: React.ReactNo
 const inputCls = "w-full px-4 py-3 rounded-xl border border-slate-200 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-indigo-300 bg-white"
 
 function AcademiaTab({
-  companies, courses, academyModules, lessons, onRefresh,
+  companies, courses, academyModules, lessons, courseAccess, exclusiveVideos, onRefresh,
 }: {
   companies: Company[]
   courses: AcademyCourse[]
   academyModules: AcademyModule[]
   lessons: AcademyLesson[]
+  courseAccess: CompanyCourseAccess[]
+  exclusiveVideos: ExclusiveVideo[]
   onRefresh: () => void
 }) {
+  // Sub-tabs: 'cursos' | 'acceso' | 'exclusivo'
+  const [academiaTab, setAcademiaTab] = useState<'cursos' | 'acceso' | 'exclusivo'>('cursos')
   const [selectedCompany, setSelectedCompany] = useState(companies[0]?.id ?? '')
   const [expandedCourses, setExpandedCourses] = useState<Set<string>>(new Set())
   const [expandedModules, setExpandedModules] = useState<Set<string>>(new Set())
@@ -960,13 +974,134 @@ function AcademiaTab({
     onRefresh()
   }
 
+  // ── Acceso empresa-curso ─────────────────────────────────────────────────────
+  const hasAccess = (companyId: string, courseId: string) =>
+    courseAccess.some(a => a.companyId === companyId && a.courseId === courseId)
+
+  const toggleAccess = async (companyId: string, courseId: string) => {
+    const existing = courseAccess.find(a => a.companyId === companyId && a.courseId === courseId)
+    if (existing) {
+      await supabase.from('company_course_access').delete().eq('id', existing.id)
+    } else {
+      await supabase.from('company_course_access').insert({ id: generateId(), company_id: companyId, course_id: courseId })
+    }
+    onRefresh()
+  }
+
+  const grantAll = async (companyId: string) => {
+    const ops = courses
+      .filter(c => !hasAccess(companyId, c.id))
+      .map(c => supabase.from('company_course_access').insert({ id: generateId(), company_id: companyId, course_id: c.id }))
+    await Promise.all(ops); onRefresh()
+  }
+
+  const revokeAll = async (companyId: string) => {
+    await supabase.from('company_course_access').delete().eq('company_id', companyId); onRefresh()
+  }
+
+  // ── Videos exclusivos ────────────────────────────────────────────────────────
+  const [showVideoForm, setShowVideoForm] = useState(false)
+  const [editingVideo, setEditingVideo] = useState<ExclusiveVideo | null>(null)
+  const [videoForm, setVideoForm] = useState({ title: '', youtubeUrl: '', description: '', durationMinutes: '', published: true })
+
+  const openVideoForm = (v?: ExclusiveVideo) => {
+    setEditingVideo(v ?? null)
+    setVideoForm({ title: v?.title ?? '', youtubeUrl: v?.youtubeUrl ?? '', description: v?.description ?? '', durationMinutes: v?.durationMinutes?.toString() ?? '', published: v?.published ?? true })
+    setShowVideoForm(true)
+  }
+
+  const saveVideo = async () => {
+    if (!videoForm.title.trim() || !videoForm.youtubeUrl.trim()) return
+    setSaving(true)
+    const companyVideos = exclusiveVideos.filter(v => v.companyId === selectedCompany)
+    const payload = {
+      title: videoForm.title.trim(), youtube_url: videoForm.youtubeUrl.trim(),
+      description: videoForm.description.trim() || null,
+      duration_minutes: videoForm.durationMinutes ? parseInt(videoForm.durationMinutes) : null,
+      published: videoForm.published, company_id: selectedCompany,
+      sort_order: editingVideo?.sortOrder ?? companyVideos.length,
+    }
+    if (editingVideo) await supabase.from('company_exclusive_videos').update(payload).eq('id', editingVideo.id)
+    else await supabase.from('company_exclusive_videos').insert({ ...payload, id: generateId() })
+    setSaving(false); setShowVideoForm(false); setEditingVideo(null); onRefresh()
+  }
+
+  const deleteVideo = async (id: string) => {
+    if (!confirm('¿Eliminar este video exclusivo?')) return
+    await supabase.from('company_exclusive_videos').delete().eq('id', id); onRefresh()
+  }
+
+  const moveVideo = async (vids: ExclusiveVideo[], idx: number, dir: -1 | 1) => {
+    const target = vids[idx + dir]; if (!target) return
+    const current = vids[idx]
+    await Promise.all([
+      supabase.from('company_exclusive_videos').update({ sort_order: target.sortOrder }).eq('id', current.id),
+      supabase.from('company_exclusive_videos').update({ sort_order: current.sortOrder }).eq('id', target.id),
+    ]); onRefresh()
+  }
+
   // ── Datos derivados ───────────────────────────────────────────────────────────
   const companyCourses = courses.filter(c => c.companyId === selectedCompany)
 
+  const companyVideos = exclusiveVideos.filter(v => v.companyId === selectedCompany)
+
   return (
-    <div className="p-4 space-y-4">
+    <div className="flex flex-col h-full">
+
+      {/* Sub-tabs de Academia */}
+      <div className="bg-white border-b border-slate-200 px-4 py-3 shrink-0">
+        <div className="flex gap-1">
+          {([
+            { key: 'cursos',   label: '📚 Cursos',   desc: 'Gestionar catálogo global' },
+            { key: 'acceso',   label: '🔑 Acceso',   desc: 'Asignar cursos a empresas' },
+            { key: 'exclusivo',label: '⭐ Exclusivo', desc: 'Contenido privado por empresa' },
+          ] as const).map(t => (
+            <button
+              key={t.key}
+              onClick={() => setAcademiaTab(t.key)}
+              className={`px-3 py-2 rounded-xl text-xs font-bold transition-all ${
+                academiaTab === t.key
+                  ? 'bg-indigo-600 text-white'
+                  : 'text-slate-500 hover:bg-slate-100'
+              }`}
+            >
+              {t.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div className="flex-1 overflow-y-auto custom-scrollbar">
+      <div className="p-4 space-y-4">
 
       {/* ── Modals ── */}
+      {/* Video exclusivo form */}
+      {showVideoForm && (
+        <Modal title={editingVideo ? 'Editar video' : 'Nuevo video exclusivo'} onClose={() => { setShowVideoForm(false); setEditingVideo(null) }} onSave={saveVideo} saving={saving} disabled={!videoForm.title.trim() || !videoForm.youtubeUrl.trim()}>
+          <FormField label="Título *">
+            <input autoFocus value={videoForm.title} onChange={e => setVideoForm(p => ({ ...p, title: e.target.value }))} className={inputCls} placeholder="Ej. Sesión especial de liderazgo" />
+          </FormField>
+          <FormField label="URL de YouTube *">
+            <input value={videoForm.youtubeUrl} onChange={e => setVideoForm(p => ({ ...p, youtubeUrl: e.target.value }))} className={inputCls} placeholder="https://youtu.be/..." />
+            {videoForm.youtubeUrl && extractYoutubeId(videoForm.youtubeUrl) && (
+              <p className="text-[11px] text-emerald-600 font-semibold mt-1">✓ ID: {extractYoutubeId(videoForm.youtubeUrl)}</p>
+            )}
+          </FormField>
+          <FormField label="Descripción">
+            <textarea value={videoForm.description} onChange={e => setVideoForm(p => ({ ...p, description: e.target.value }))} rows={2} className={`${inputCls} resize-none`} placeholder="Descripción del video..." />
+          </FormField>
+          <FormField label="Duración (minutos)">
+            <input type="number" value={videoForm.durationMinutes} onChange={e => setVideoForm(p => ({ ...p, durationMinutes: e.target.value }))} className={inputCls} placeholder="Ej. 15" />
+          </FormField>
+          <label className="flex items-center gap-3 cursor-pointer pt-1">
+            <div onClick={() => setVideoForm(p => ({ ...p, published: !p.published }))} className={`w-10 h-6 rounded-full flex items-center px-0.5 transition-colors ${videoForm.published ? 'bg-emerald-500' : 'bg-slate-300'}`}>
+              <div className={`w-5 h-5 rounded-full bg-white shadow transition-transform ${videoForm.published ? 'translate-x-4' : 'translate-x-0'}`} />
+            </div>
+            <span className="text-sm font-semibold text-slate-700">Publicado</span>
+          </label>
+        </Modal>
+      )}
+
       {formType === 'course' && (
         <Modal title={editingItem ? 'Editar curso' : 'Nuevo curso'} onClose={closeForm} onSave={saveCourse} saving={saving} disabled={!courseForm.title.trim()}>
           <FormField label="Título *">
@@ -1015,21 +1150,9 @@ function AcademiaTab({
         </Modal>
       )}
 
-      {companies.length === 0 ? (
-        <div className="text-center py-16 text-slate-400">
-          <GraduationCap size={40} className="mx-auto mb-3 opacity-30" />
-          <p className="font-semibold">No hay empresas</p>
-          <p className="text-sm mt-1">Crea una empresa primero</p>
-        </div>
-      ) : (
+      {/* ── SUB-TAB: CURSOS (global) ── */}
+      {academiaTab === 'cursos' && (
         <>
-          {/* Empresa selector */}
-          <div>
-            <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">Empresa</label>
-            <select value={selectedCompany} onChange={e => setSelectedCompany(e.target.value)} className={`${inputCls} mt-1`}>
-              {companies.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-            </select>
-          </div>
 
           {/* Nuevo curso */}
           <button onClick={() => openCourseForm()} className="w-full flex items-center justify-center gap-2 py-3 rounded-2xl bg-indigo-600 text-white font-bold text-sm shadow-md shadow-indigo-100 hover:bg-indigo-700 transition-colors">
@@ -1212,6 +1335,118 @@ function AcademiaTab({
           )}
         </>
       )}
+
+      {/* ── SUB-TAB: ACCESO empresa-curso ── */}
+      {academiaTab === 'acceso' && (
+        <div className="space-y-4">
+          {companies.length === 0 ? (
+            <div className="text-center py-12 text-slate-400">
+              <GraduationCap size={36} className="mx-auto mb-3 opacity-30" />
+              <p className="font-semibold">No hay empresas</p>
+            </div>
+          ) : courses.length === 0 ? (
+            <div className="text-center py-12 text-slate-400">
+              <BookOpen size={36} className="mx-auto mb-3 opacity-30" />
+              <p className="font-semibold">No hay cursos</p>
+              <p className="text-sm mt-1">Crea cursos en la pestaña "Cursos" primero</p>
+            </div>
+          ) : (
+            <>
+              <div>
+                <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">Empresa</label>
+                <select value={selectedCompany} onChange={e => setSelectedCompany(e.target.value)} className={`${inputCls} mt-1`}>
+                  {companies.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                </select>
+              </div>
+              <div className="flex gap-2">
+                <button onClick={() => grantAll(selectedCompany)} className="flex-1 py-2 rounded-xl bg-emerald-50 text-emerald-700 text-sm font-bold hover:bg-emerald-100 transition-colors">Dar acceso a todos</button>
+                <button onClick={() => revokeAll(selectedCompany)} className="flex-1 py-2 rounded-xl bg-slate-100 text-slate-600 text-sm font-bold hover:bg-slate-200 transition-colors">Quitar todo acceso</button>
+              </div>
+              <div className="space-y-2">
+                {courses.map(course => {
+                  const granted = hasAccess(selectedCompany, course.id)
+                  const mods = academyModules.filter(m => m.courseId === course.id)
+                  const lecs = lessons.filter(l => l.courseId === course.id)
+                  return (
+                    <div key={course.id} className={`flex items-center gap-3 p-4 rounded-2xl border transition-all ${granted ? 'bg-emerald-50 border-emerald-200' : 'bg-white border-slate-200'}`}>
+                      <div className="min-w-0 flex-1">
+                        <div className="font-bold text-slate-800 text-sm">{course.title}</div>
+                        <div className="text-[11px] text-slate-400 mt-0.5">{mods.length} módulo{mods.length !== 1 ? 's' : ''} · {lecs.length} lección{lecs.length !== 1 ? 'es' : ''}</div>
+                      </div>
+                      <button onClick={() => toggleAccess(selectedCompany, course.id)}
+                        className={`w-12 h-6 rounded-full transition-colors flex items-center px-0.5 shrink-0 ${granted ? 'bg-emerald-500' : 'bg-slate-300'}`}
+                      >
+                        <div className={`w-5 h-5 rounded-full bg-white shadow transition-transform ${granted ? 'translate-x-6' : 'translate-x-0'}`} />
+                      </button>
+                    </div>
+                  )
+                })}
+              </div>
+            </>
+          )}
+        </div>
+      )}
+
+      {/* ── SUB-TAB: EXCLUSIVO por empresa ── */}
+      {academiaTab === 'exclusivo' && (
+        <div className="space-y-4">
+          {companies.length === 0 ? (
+            <div className="text-center py-12 text-slate-400">
+              <GraduationCap size={36} className="mx-auto mb-3 opacity-30" />
+              <p className="font-semibold">No hay empresas</p>
+            </div>
+          ) : (
+            <>
+              <div>
+                <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">Empresa</label>
+                <select value={selectedCompany} onChange={e => setSelectedCompany(e.target.value)} className={`${inputCls} mt-1`}>
+                  {companies.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                </select>
+              </div>
+              <button onClick={() => openVideoForm()} className="w-full flex items-center justify-center gap-2 py-3 rounded-2xl bg-indigo-600 text-white font-bold text-sm hover:bg-indigo-700 transition-colors">
+                <Plus size={16} /> Nuevo video exclusivo
+              </button>
+              {companyVideos.length === 0 ? (
+                <div className="text-center py-10 text-slate-400">
+                  <Video size={32} className="mx-auto mb-3 opacity-30" />
+                  <p className="font-semibold text-sm">Sin contenido exclusivo</p>
+                  <p className="text-xs mt-1">Agrega videos exclusivos para esta empresa</p>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {companyVideos.map((vid, idx) => {
+                    const ytId = extractYoutubeId(vid.youtubeUrl)
+                    return (
+                      <div key={vid.id} className="flex items-center gap-3 bg-white rounded-2xl border border-slate-200 p-3">
+                        {ytId ? (
+                          <img src={`https://img.youtube.com/vi/${ytId}/default.jpg`} alt="" className="w-14 h-10 rounded-lg object-cover shrink-0" />
+                        ) : (
+                          <div className="w-14 h-10 rounded-lg bg-slate-100 flex items-center justify-center shrink-0">
+                            <Video size={14} className="text-slate-400" />
+                          </div>
+                        )}
+                        <div className="min-w-0 flex-1">
+                          <div className="font-bold text-slate-800 text-sm truncate">{vid.title}</div>
+                          <div className="text-[10px] text-slate-400">{vid.durationMinutes ? `${vid.durationMinutes} min · ` : ''}{!vid.published ? 'Borrador' : 'Publicado'}</div>
+                        </div>
+                        <div className="flex flex-col gap-0.5 shrink-0">
+                          <button onClick={() => moveVideo(companyVideos, idx, -1)} disabled={idx === 0} className="p-0.5 rounded hover:bg-slate-200 text-slate-400 disabled:opacity-20"><ChevronUp size={11} /></button>
+                          <button onClick={() => moveVideo(companyVideos, idx, 1)} disabled={idx === companyVideos.length - 1} className="p-0.5 rounded hover:bg-slate-200 text-slate-400 disabled:opacity-20"><ChevronDown size={11} /></button>
+                        </div>
+                        <button onClick={() => openVideoForm(vid)} className="p-1.5 rounded-lg hover:bg-indigo-50 text-indigo-400 shrink-0"><Edit2 size={13} /></button>
+                        <button onClick={() => deleteVideo(vid.id)} className="p-1.5 rounded-lg hover:bg-red-50 text-red-400 shrink-0"><Trash2 size={13} /></button>
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
+            </>
+          )}
+        </div>
+      )}
+
+    </div>
+    </div>
     </div>
   )
 }

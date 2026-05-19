@@ -4,7 +4,7 @@ import {
   ChevronLeft, ChevronRight, ChevronDown, Clock, BarChart3, Layers,
 } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
-import type { AcademyCourse, AcademyModule, AcademyLesson, AcademyProgress } from '../../types'
+import type { AcademyCourse, AcademyModule, AcademyLesson, AcademyProgress, ExclusiveVideo, ExclusiveVideoProgress } from '../../types'
 import { generateId } from '../../lib/utils'
 import { useAuth } from '../../hooks/useAuth'
 
@@ -28,11 +28,15 @@ function formatDuration(minutes?: number): string {
 export default function Academia() {
   const { user } = useAuth()
 
-  const [courses, setCourses]   = useState<AcademyCourse[]>([])
-  const [modules, setModules]   = useState<AcademyModule[]>([])
-  const [lessons, setLessons]   = useState<AcademyLesson[]>([])
-  const [progress, setProgress] = useState<AcademyProgress[]>([])
-  const [loading, setLoading]   = useState(true)
+  const [courses, setCourses]         = useState<AcademyCourse[]>([])
+  const [modules, setModules]         = useState<AcademyModule[]>([])
+  const [lessons, setLessons]         = useState<AcademyLesson[]>([])
+  const [progress, setProgress]       = useState<AcademyProgress[]>([])
+  const [exclusiveVideos, setExclusiveVideos] = useState<ExclusiveVideo[]>([])
+  const [exclusiveProgress, setExclusiveProgress] = useState<ExclusiveVideoProgress[]>([])
+  const [companyId, setCompanyId]     = useState<string | null>(null)
+  const [loading, setLoading]         = useState(true)
+  const [selectedExclusive, setSelectedExclusive] = useState<ExclusiveVideo | null>(null)
 
   // Navigation
   const [selectedCourse, setSelectedCourse] = useState<AcademyCourse | null>(null)
@@ -47,14 +51,24 @@ export default function Academia() {
     try {
       const { data: memberRows } = await supabase
         .from('company_members').select('company_id').eq('user_id', user.id)
-      const companyIds = (memberRows ?? []).map((r: any) => r.company_id)
+      const companyIds = (memberRows ?? []).map((r: any) => r.company_id as string)
       if (!companyIds.length) { setLoading(false); return }
+      setCompanyId(companyIds[0])
 
-      const [{ data: cors }, { data: mods }, { data: less }, { data: prog }] = await Promise.all([
-        supabase.from('academy_courses').select('*').in('company_id', companyIds).eq('published', true).order('sort_order'),
+      // Cursos accesibles via company_course_access
+      const { data: accessRows } = await supabase
+        .from('company_course_access').select('course_id').in('company_id', companyIds)
+      const accessibleCourseIds = (accessRows ?? []).map((r: any) => r.course_id as string)
+
+      const [{ data: cors }, { data: mods }, { data: less }, { data: prog }, { data: excl }, { data: exprog }] = await Promise.all([
+        accessibleCourseIds.length
+          ? supabase.from('academy_courses').select('*').in('id', accessibleCourseIds).eq('published', true).order('sort_order')
+          : Promise.resolve({ data: [] as any[] }),
         supabase.from('academy_modules').select('*').order('sort_order'),
         supabase.from('academy_lessons').select('*').order('sort_order'),
         supabase.from('academy_progress').select('*').eq('user_id', user.id),
+        supabase.from('company_exclusive_videos').select('*').in('company_id', companyIds).eq('published', true).order('sort_order'),
+        supabase.from('exclusive_video_progress').select('*').eq('user_id', user.id),
       ])
 
       const mappedCourses  = (cors ?? []).map(rowToCourse)
@@ -62,11 +76,15 @@ export default function Academia() {
       const mappedModules  = (mods ?? []).map(rowToModule).filter(m => courseIds.includes(m.courseId))
       const mappedLessons  = (less ?? []).map(rowToLesson).filter(l => courseIds.includes(l.courseId))
       const mappedProgress = (prog ?? []).map(rowToProgress)
+      const mappedExcl     = (excl ?? []).map((r: any): ExclusiveVideo => ({ id: r.id, companyId: r.company_id, title: r.title, youtubeUrl: r.youtube_url, description: r.description, durationMinutes: r.duration_minutes, sortOrder: r.sort_order, published: r.published, createdAt: r.created_at }))
+      const mappedExProg   = (exprog ?? []).map((r: any): ExclusiveVideoProgress => ({ id: r.id, userId: r.user_id, videoId: r.video_id, completed: r.completed, completedAt: r.completed_at }))
 
       setCourses(mappedCourses)
       setModules(mappedModules)
       setLessons(mappedLessons)
       setProgress(mappedProgress)
+      setExclusiveVideos(mappedExcl)
+      setExclusiveProgress(mappedExProg)
     } finally {
       setLoading(false)
     }
@@ -630,7 +648,107 @@ export default function Academia() {
             )
           })}
         </div>
+
+        {/* ── Videos exclusivos ── */}
+        {exclusiveVideos.length > 0 && (
+          <div className="mt-6">
+            <div className="flex items-center gap-2 mb-3">
+              <div className="w-6 h-6 rounded-lg bg-amber-500 flex items-center justify-center shrink-0">
+                <span className="text-white text-[11px] font-black">⭐</span>
+              </div>
+              <h2 className="text-sm font-black text-slate-700 uppercase tracking-wide">Contenido exclusivo</h2>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+              {exclusiveVideos.map(vid => {
+                const ytId = extractYoutubeId(vid.youtubeUrl)
+                const done = exclusiveProgress.some(p => p.videoId === vid.id && p.completed)
+                return (
+                  <button
+                    key={vid.id}
+                    onClick={() => setSelectedExclusive(vid)}
+                    className="bg-white rounded-2xl border border-amber-200 overflow-hidden hover:border-amber-300 hover:shadow-md hover:shadow-amber-50 transition-all text-left group flex flex-col"
+                  >
+                    {ytId ? (
+                      <div className="relative h-32 overflow-hidden shrink-0">
+                        <img src={`https://img.youtube.com/vi/${ytId}/mqdefault.jpg`} alt="" className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />
+                        <div className="absolute inset-0 bg-gradient-to-t from-black/40 to-transparent" />
+                        <div className="absolute top-2 left-2 bg-amber-500 text-white text-[9px] font-black px-1.5 py-0.5 rounded-full">EXCLUSIVO</div>
+                        {done && <div className="absolute top-2 right-2 bg-emerald-500 text-white text-[9px] font-black px-1.5 py-0.5 rounded-full flex items-center gap-0.5"><CheckCircle2 size={9}/> Visto</div>}
+                        <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                          <div className="bg-white/20 backdrop-blur-sm rounded-full p-3"><Play size={20} className="text-white" fill="white" /></div>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="h-32 bg-amber-50 flex items-center justify-center shrink-0">
+                        <Video size={32} className="text-amber-300" />
+                      </div>
+                    )}
+                    <div className="p-3 flex-1">
+                      <div className="text-sm font-black text-slate-800 leading-tight line-clamp-2">{vid.title}</div>
+                      {vid.durationMinutes && (
+                        <div className="flex items-center gap-1 text-[11px] text-slate-400 mt-1"><Clock size={10}/>{formatDuration(vid.durationMinutes)}</div>
+                      )}
+                    </div>
+                  </button>
+                )
+              })}
+            </div>
+          </div>
+        )}
       </div>
+
+      {/* ── Player de video exclusivo (overlay fixed) ── */}
+      {selectedExclusive && (() => {
+      const ytId = extractYoutubeId(selectedExclusive.youtubeUrl)
+      const done = exclusiveProgress.some(p => p.videoId === selectedExclusive.id && p.completed)
+      const toggleExclusiveDone = async () => {
+        if (!user) return
+        const existing = exclusiveProgress.find(p => p.videoId === selectedExclusive.id)
+        const nowDone = !done
+        if (existing) {
+          await supabase.from('exclusive_video_progress').update({ completed: nowDone, completed_at: nowDone ? new Date().toISOString() : null }).eq('id', existing.id)
+          setExclusiveProgress(prev => prev.map(p => p.id === existing.id ? { ...p, completed: nowDone } : p))
+        } else {
+          const np: ExclusiveVideoProgress = { id: generateId(), userId: user.id, videoId: selectedExclusive.id, completed: true, completedAt: new Date().toISOString() }
+          await supabase.from('exclusive_video_progress').insert({ id: np.id, user_id: np.userId, video_id: np.videoId, completed: true, completed_at: np.completedAt })
+          setExclusiveProgress(prev => [...prev, np])
+        }
+      }
+      return (
+        <div className="fixed inset-0 z-[300] flex flex-col bg-slate-900">
+          {/* Top bar */}
+          <div className="flex items-center gap-3 px-4 py-3 bg-slate-900 border-b border-slate-800 shrink-0">
+            <button onClick={() => setSelectedExclusive(null)} className="p-2 rounded-xl hover:bg-slate-800 text-slate-400">
+              <ChevronLeft size={20} />
+            </button>
+            <div className="min-w-0 flex-1">
+              <div className="text-sm font-black text-white truncate">{selectedExclusive.title}</div>
+              <div className="text-[10px] text-amber-400 font-bold uppercase">Contenido Exclusivo</div>
+            </div>
+            <button onClick={toggleExclusiveDone}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all shrink-0 ${done ? 'bg-emerald-500/20 text-emerald-400' : 'bg-slate-800 text-slate-400 hover:bg-slate-700'}`}
+            >
+              {done ? <CheckCircle2 size={13} /> : <Circle size={13} />}
+              <span className="hidden sm:inline">{done ? 'Visto' : 'Marcar visto'}</span>
+            </button>
+          </div>
+          {/* Video */}
+          <div className="relative w-full" style={{ paddingBottom: '56.25%' }}>
+            {ytId ? (
+              <iframe className="absolute inset-0 w-full h-full" src={`https://www.youtube.com/embed/${ytId}?rel=0&modestbranding=1`} title={selectedExclusive.title} allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowFullScreen />
+            ) : (
+              <div className="absolute inset-0 flex items-center justify-center bg-slate-800 text-slate-500"><Video size={36} /></div>
+            )}
+          </div>
+          {/* Info */}
+          <div className="flex-1 overflow-y-auto bg-white p-4">
+            <h2 className="text-lg font-black text-slate-800">{selectedExclusive.title}</h2>
+            {selectedExclusive.durationMinutes && <div className="flex items-center gap-1.5 text-sm text-slate-400 mt-1"><Clock size={14}/>{formatDuration(selectedExclusive.durationMinutes)}</div>}
+            {selectedExclusive.description && <p className="text-sm text-slate-600 mt-3 leading-relaxed">{selectedExclusive.description}</p>}
+          </div>
+        </div>
+      )
+    })()}
     </div>
   )
 }

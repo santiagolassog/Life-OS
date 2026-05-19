@@ -273,3 +273,30 @@ export interface AcademyProgress {
   completed: boolean
   completedAt?: string
 }
+
+export interface CompanyCourseAccess {
+  id: string
+  companyId: string
+  courseId: string
+  grantedAt: string
+}
+
+export interface ExclusiveVideo {
+  id: string
+  companyId: string
+  title: string
+  youtubeUrl: string
+  description?: string
+  durationMinutes?: number
+  sortOrder: number
+  published: boolean
+  createdAt: string
+}
+
+export interface ExclusiveVideoProgress {
+  id: string
+  userId: string
+  videoId: string
+  completed: boolean
+  completedAt?: string
+}
