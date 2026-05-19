@@ -543,8 +543,8 @@ export default function Academia() {
       </div>
 
       {/* Courses grid */}
-      <div className="flex-1 overflow-y-auto custom-scrollbar p-4">
-        <div className="space-y-4">
+      <div className="flex-1 overflow-y-auto custom-scrollbar p-5">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
           {courses.map(course => {
             const { done, total }   = getCourseProgress(course.id)
             const pct               = total > 0 ? Math.round((done / total) * 100) : 0
@@ -561,44 +561,67 @@ export default function Academia() {
                   setSelectedCourse(course)
                   setExpandedMods(firstMod ? [firstMod.id] : [])
                 }}
-                className="w-full bg-white rounded-3xl border border-slate-200 overflow-hidden hover:border-indigo-300 hover:shadow-lg hover:shadow-indigo-50 transition-all text-left group"
+                className="bg-white rounded-2xl border border-slate-200 overflow-hidden hover:border-indigo-300 hover:shadow-md hover:shadow-indigo-100/50 transition-all text-left group flex flex-col"
               >
+                {/* Thumbnail */}
                 {firstYtId ? (
-                  <div className="relative h-44 overflow-hidden">
+                  <div className="relative h-36 overflow-hidden shrink-0">
                     <img
-                      src={`https://img.youtube.com/vi/${firstYtId}/maxresdefault.jpg`}
+                      src={`https://img.youtube.com/vi/${firstYtId}/mqdefault.jpg`}
                       alt=""
                       className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-                      onError={e => { (e.target as HTMLImageElement).src = `https://img.youtube.com/vi/${firstYtId}/mqdefault.jpg` }}
                     />
-                    <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent" />
+                    <div className="absolute inset-0 bg-gradient-to-t from-black/50 to-transparent" />
                     {pct === 100 && (
-                      <div className="absolute top-3 right-3 bg-emerald-500 text-white text-xs font-black px-2.5 py-1 rounded-full flex items-center gap-1">
-                        <CheckCircle2 size={11} /> Completado
+                      <div className="absolute top-2 right-2 bg-emerald-500 text-white text-[10px] font-black px-2 py-0.5 rounded-full flex items-center gap-1">
+                        <CheckCircle2 size={10} /> Completado
+                      </div>
+                    )}
+                    {pct > 0 && pct < 100 && (
+                      <div className="absolute bottom-2 left-2 right-2 h-1 rounded-full bg-white/30 overflow-hidden">
+                        <div className="h-full rounded-full bg-indigo-400" style={{ width: `${pct}%` }} />
                       </div>
                     )}
                   </div>
                 ) : (
-                  <div className="h-44 bg-indigo-100 flex items-center justify-center">
-                    <BookOpen size={48} className="text-indigo-300" />
+                  <div className="h-36 bg-gradient-to-br from-indigo-50 to-slate-100 flex items-center justify-center shrink-0">
+                    <BookOpen size={36} className="text-indigo-300" />
                   </div>
                 )}
-                <div className="p-4">
-                  <h3 className="text-base font-black text-slate-800 mb-1">{course.title}</h3>
-                  {course.description && <p className="text-sm text-slate-500 line-clamp-2 mb-3 leading-relaxed">{course.description}</p>}
-                  <div className="flex items-center gap-4 text-xs text-slate-400 mb-3">
-                    {courseMods.length > 0 && <div className="flex items-center gap-1"><Layers size={12} />{courseMods.length} módulo{courseMods.length !== 1 ? 's' : ''}</div>}
-                    <div className="flex items-center gap-1"><Video size={12} />{total} lección{total !== 1 ? 'es' : ''}</div>
-                    {totalDuration > 0 && <div className="flex items-center gap-1"><Clock size={12} />{formatDuration(totalDuration)}</div>}
-                  </div>
-                  {total > 0 && (
-                    <div>
-                      <div className="flex items-center justify-between text-[11px] text-slate-400 mb-1">
-                        <span>{done} de {total} completadas</span>
-                        <span className="font-bold text-indigo-500">{pct}%</span>
+                {/* Info */}
+                <div className="p-3.5 flex flex-col flex-1">
+                  <h3 className="text-sm font-black text-slate-800 leading-tight line-clamp-2 mb-1.5">{course.title}</h3>
+                  {/* Stats row */}
+                  <div className="flex items-center gap-3 text-[11px] text-slate-400 mb-auto">
+                    {courseMods.length > 0 && (
+                      <div className="flex items-center gap-1">
+                        <Layers size={11} />
+                        {courseMods.length} mód.
                       </div>
-                      <div className="h-1.5 rounded-full bg-slate-100 overflow-hidden">
-                        <div className="h-full rounded-full bg-indigo-500 transition-all duration-500" style={{ width: `${pct}%` }} />
+                    )}
+                    <div className="flex items-center gap-1">
+                      <Video size={11} />
+                      {total} lec.
+                    </div>
+                    {totalDuration > 0 && (
+                      <div className="flex items-center gap-1">
+                        <Clock size={11} />
+                        {formatDuration(totalDuration)}
+                      </div>
+                    )}
+                  </div>
+                  {/* Progress */}
+                  {total > 0 && (
+                    <div className="mt-3">
+                      <div className="flex items-center justify-between text-[10px] text-slate-400 mb-1">
+                        <span>{done}/{total} completadas</span>
+                        <span className={`font-bold ${pct === 100 ? 'text-emerald-500' : 'text-indigo-500'}`}>{pct}%</span>
+                      </div>
+                      <div className="h-1 rounded-full bg-slate-100 overflow-hidden">
+                        <div
+                          className={`h-full rounded-full transition-all duration-500 ${pct === 100 ? 'bg-emerald-400' : 'bg-indigo-400'}`}
+                          style={{ width: `${pct}%` }}
+                        />
                       </div>
                     </div>
                   )}
