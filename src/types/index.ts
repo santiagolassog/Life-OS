@@ -238,12 +238,24 @@ export interface AcademyCourse {
   createdAt: string
   updatedAt: string
   // joined
+  modules?: AcademyModule[]
+}
+
+export interface AcademyModule {
+  id: string
+  courseId: string
+  title: string
+  description?: string
+  sortOrder: number
+  createdAt: string
+  // joined
   lessons?: AcademyLesson[]
 }
 
 export interface AcademyLesson {
   id: string
   courseId: string
+  moduleId?: string      // optional for backward compat
   title: string
   youtubeUrl: string
   description?: string

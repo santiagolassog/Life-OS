@@ -161,7 +161,7 @@ export default function Academia() {
     return (
       <div className="flex items-center justify-center h-full p-8">
         <div className="text-center max-w-xs">
-          <div className="w-20 h-20 rounded-3xl bg-gradient-to-br from-indigo-100 to-purple-100 flex items-center justify-center mx-auto mb-4">
+          <div className="w-20 h-20 rounded-3xl bg-indigo-100 flex items-center justify-center mx-auto mb-4">
             <GraduationCap size={36} className="text-indigo-400" />
           </div>
           <h2 className="text-xl font-black text-slate-700 mb-2">Academia</h2>
@@ -322,7 +322,7 @@ export default function Academia() {
     return (
       <div className="flex flex-col h-full bg-white">
         {/* Header */}
-        <div className="bg-gradient-to-br from-indigo-600 to-purple-700 px-4 pt-4 pb-6">
+        <div className="bg-indigo-950 px-4 pt-4 pb-6">
           <button
             onClick={() => setSelectedCourse(null)}
             className="flex items-center gap-1.5 text-indigo-200 text-sm font-bold mb-4 hover:text-white transition-colors"
@@ -422,7 +422,7 @@ export default function Academia() {
       {/* Header */}
       <div className="bg-white border-b border-slate-200 px-4 py-4">
         <div className="flex items-center gap-3 mb-3">
-          <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-indigo-600 to-purple-600 flex items-center justify-center shadow-md">
+          <div className="w-10 h-10 rounded-2xl bg-indigo-600 flex items-center justify-center shadow-md">
             <GraduationCap size={20} className="text-white" />
           </div>
           <div>
@@ -433,7 +433,7 @@ export default function Academia() {
 
         {/* Global progress */}
         {totalLessons > 0 && (
-          <div className="bg-gradient-to-br from-indigo-50 to-purple-50 rounded-2xl p-4 border border-indigo-100">
+          <div className="bg-indigo-50 rounded-2xl p-4 border border-indigo-100">
             <div className="flex items-center justify-between mb-2">
               <div className="flex items-center gap-2">
                 <BarChart3 size={15} className="text-indigo-500" />
@@ -490,7 +490,7 @@ export default function Academia() {
                     )}
                   </div>
                 ) : (
-                  <div className="h-44 bg-gradient-to-br from-indigo-100 to-purple-100 flex items-center justify-center">
+                  <div className="h-44 bg-indigo-100 flex items-center justify-center">
                     <BookOpen size={48} className="text-indigo-300" />
                   </div>
                 )}

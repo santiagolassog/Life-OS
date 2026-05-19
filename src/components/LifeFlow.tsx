@@ -204,8 +204,8 @@ type SectionKey = 'hoy' | 'tiempo' | 'dinero' | 'objetivos' | 'lista' | 'revisio
 const SECTIONS: Array<{ key: SectionKey; label: string; Icon: React.FC<{ size?: number }> }> = [
   { key: 'hoy',      label: 'Inicio',   Icon: Home },
   { key: 'dinero',   label: 'Dinero',   Icon: DollarSign },
-  { key: 'tiempo',   label: 'Tiempo',   Icon: CalendarDays },
-  { key: 'lista',    label: 'Lista',    Icon: CheckSquare },
+  { key: 'tiempo',   label: 'Agenda',   Icon: CalendarDays },
+  { key: 'lista',    label: 'Tareas',   Icon: CheckSquare },
   { key: 'habitos',  label: 'Hábitos',  Icon: Flame },
   { key: 'objetivos',label: 'Objetivos',Icon: Target },
   { key: 'revision', label: 'Revisión', Icon: BarChart3 },
@@ -219,6 +219,40 @@ const MORE_SECTIONS = SECTIONS.filter(s => ['habitos','objetivos','revision','ac
 const App = () => {
   const { user, signOut, displayName, updateDisplayName, isSuperAdmin } = useAuth();
   const userId = user?.id ?? '';
+
+  // ── Módulos habilitados por empresa ───────────────────────────────────────────
+  // null = sin restricción (usuario personal o super_admin) → se muestran todos
+  // string[] = lista de moduleKeys habilitados para la empresa del usuario
+  const [enabledModules, setEnabledModules] = useState<string[] | null>(null);
+
+  useEffect(() => {
+    if (!user || isSuperAdmin) { setEnabledModules(null); return; }
+    const fetchModules = async () => {
+      // Empresa del usuario
+      const { data: membership } = await supabase
+        .from('company_members')
+        .select('company_id')
+        .eq('user_id', user.id)
+        .maybeSingle();
+
+      if (!membership) { setEnabledModules(null); return; } // sin empresa → todo habilitado
+
+      // Módulos configurados para esa empresa
+      const { data: mods } = await supabase
+        .from('company_modules')
+        .select('module_key, enabled')
+        .eq('company_id', membership.company_id);
+
+      if (!mods || mods.length === 0) { setEnabledModules(null); return; } // sin config → todo habilitado
+
+      const enabled = mods.filter(m => m.enabled).map(m => m.module_key as string);
+      setEnabledModules(enabled);
+    };
+    fetchModules();
+  }, [user, isSuperAdmin]);
+
+  // Helper: ¿está habilitado este módulo para el usuario actual?
+  const isModuleEnabled = (key: string) => isSuperAdmin || enabledModules === null || enabledModules.includes(key);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const [showSearch, setShowSearch]         = useState(false);
   const [showOnboarding, setShowOnboarding] = useState(false);
@@ -257,7 +291,7 @@ const App = () => {
   const [categories, setCategories] = useState(INITIAL_CATEGORIES);
   const [modalData, setModalData] = useState(null);
   const [catModal, setCatModal] = useState(null);
-  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [sidebarOpen, setSidebarOpen] = useState(true);
   const [draggedItem, setDraggedItem] = useState(null);
   const [mobileDayOffset, setMobileDayOffset] = useState(() => {
     const day = new Date().getDay();
@@ -799,6 +833,19 @@ const App = () => {
     }
   }, [section, loading]);
 
+  // Auto-expandir el grupo correcto al cambiar de sección
+  useEffect(() => {
+    const g = SECTION_TO_GROUP[section as SectionKey];
+    if (g) setExpandedGroups(prev => prev.includes(g) ? prev : [...prev, g]);
+  }, [section]);
+
+  // Redirigir a 'hoy' si la sección activa queda deshabilitada para este usuario
+  useEffect(() => {
+    if (enabledModules !== null && section !== 'hoy' && section !== 'admin' && !enabledModules.includes(section)) {
+      setSection('hoy');
+    }
+  }, [enabledModules, section]);
+
   useEffect(() => {
     const handler = (e: MouseEvent) => {
       if (userMenuRef.current && !userMenuRef.current.contains(e.target as Node)) {
@@ -1143,6 +1190,38 @@ const App = () => {
     }, 100);
   };
 
+  // ── Grupos colapsables del sidebar ───────────────────────────────────────────
+  const SECTION_TO_GROUP: Partial<Record<SectionKey, string>> = {
+    tiempo: 'planificacion', lista: 'planificacion',
+    habitos: 'crecimiento', objetivos: 'crecimiento', academia: 'crecimiento',
+    dinero: 'finanzas',
+    revision: 'reflexion',
+  };
+  const [expandedGroups, setExpandedGroups] = useState<string[]>(['planificacion', 'crecimiento', 'finanzas', 'reflexion']);
+  const toggleGroup = (key: string) =>
+    setExpandedGroups(prev => prev.includes(key) ? prev.filter(k => k !== key) : [...prev, key]);
+
+  // ── Desktop sidebar nav item ─────────────────────────────────────────────────
+  const NavItem = ({ navKey, label, Icon, amber = false }: {
+    navKey: SectionKey; label: string; Icon: React.FC<{ size?: number; strokeWidth?: number }>; amber?: boolean
+  }) => {
+    const isActive = section === navKey;
+    return (
+      <button
+        onClick={() => setSection(navKey)}
+        className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-bold transition-all group ${
+          isActive
+            ? amber ? 'bg-amber-500/20 text-amber-300' : 'bg-indigo-500/25 text-white'
+            : amber ? 'text-amber-500/60 hover:bg-amber-500/10 hover:text-amber-400' : 'text-indigo-400 hover:bg-white/5 hover:text-indigo-200'
+        }`}
+      >
+        <Icon size={16} strokeWidth={isActive ? 2.5 : 2} />
+        <span className="truncate">{label}</span>
+        {isActive && <div className={`ml-auto w-1.5 h-1.5 rounded-full shrink-0 ${amber ? 'bg-amber-400' : 'bg-indigo-400'}`} />}
+      </button>
+    );
+  };
+
   if (loading) {
     return (
       <div className="flex flex-col h-screen bg-indigo-950 items-center justify-center gap-4">
@@ -1177,44 +1256,164 @@ const App = () => {
   }
 
   return (
-    <div className="flex flex-col h-screen [height:100dvh] bg-slate-50 text-slate-900 overflow-hidden font-sans">
+    <div className="flex h-screen [height:100dvh] bg-slate-50 text-slate-900 overflow-hidden font-sans">
 
-      {/* ---- HEADER LIFEOS ---- */}
-      <header className="bg-indigo-950 border-b border-indigo-900/50 px-4 md:px-6 py-3 flex justify-between items-center z-[100] shrink-0 shadow-lg">
-        <div className="flex items-center gap-3 text-white">
-          {section === 'tiempo' && (
-            <button onClick={() => setSidebarOpen(true)} className="p-2 hover:bg-white/10 rounded-xl lg:hidden">
-              <Menu size={20} />
-            </button>
-          )}
-          <div className="flex items-center gap-2">
-            <div className="bg-indigo-500 p-1.5 rounded-lg shadow-inner"><Zap size={18} fill="white" /></div>
-            <h1 className="text-lg font-black tracking-tight uppercase italic leading-none hidden sm:block">LifeOS</h1>
+      {/* ══ DESKTOP SIDEBAR ══════════════════════════════════════════════════════ */}
+      <nav className="hidden lg:flex flex-col w-[220px] shrink-0 bg-indigo-950 border-r border-indigo-900/50 z-[100] overflow-hidden">
+        {/* Logo */}
+        <div className="px-4 py-5 border-b border-indigo-900/50 shrink-0">
+          <div className="flex items-center gap-2.5">
+            <div className="bg-indigo-500 p-1.5 rounded-lg shadow-inner shrink-0">
+              <Zap size={18} fill="white" className="text-white" />
+            </div>
+            <span className="text-lg font-black tracking-tight uppercase italic text-white leading-none">LifeOS</span>
           </div>
         </div>
 
-        {/* Section tabs — desktop */}
-        <div className="hidden md:flex items-center bg-white/5 rounded-full p-1 border border-white/10 gap-0.5">
-          {SECTIONS.map(({ key, label, Icon }) => (
-            <button
-              key={key}
-              onClick={() => setSection(key)}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[11px] font-black uppercase tracking-wide transition-all ${section === key ? 'bg-indigo-500 text-white shadow-lg' : 'text-indigo-300 hover:text-white hover:bg-white/10'}`}
-            >
-              <Icon size={12} />
-              <span className="hidden lg:inline">{label}</span>
-            </button>
-          ))}
+        {/* Búsqueda — fija, no hace scroll */}
+        <div className="px-3 py-3 border-b border-indigo-900/50 shrink-0">
+          <button
+            onClick={() => setShowSearch(true)}
+            className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl bg-white/5 border border-indigo-900/80 text-indigo-400 hover:bg-white/10 hover:text-indigo-200 transition-all text-sm font-bold"
+          >
+            <Search size={14} strokeWidth={2} />
+            <span className="flex-1 text-left text-[13px]">Buscar</span>
+            <kbd className="text-[9px] font-black text-indigo-600 bg-black/20 border border-indigo-900 px-1.5 py-0.5 rounded-md">⌘K</kbd>
+          </button>
+        </div>
+
+        {/* Nav groups — scrollable */}
+        <div className="flex-1 overflow-y-auto custom-scrollbar py-2">
+
+          {/* INICIO — acceso directo */}
+          <button
+            onClick={() => setSection('hoy')}
+            className={`w-full flex items-center gap-3 px-4 py-2.5 text-sm font-bold transition-all ${
+              section === 'hoy'
+                ? 'bg-indigo-500/25 text-white'
+                : 'text-indigo-300 hover:bg-white/5 hover:text-white'
+            }`}
+          >
+            <Home size={16} strokeWidth={section === 'hoy' ? 2.5 : 2} />
+            <span className="flex-1 text-left">Inicio</span>
+            {section === 'hoy' && <div className="w-1.5 h-1.5 rounded-full bg-indigo-400 shrink-0" />}
+          </button>
+
+          {/* GRUPOS COLAPSABLES */}
+          {([
+            { key: 'planificacion', label: 'Planificación', items: [
+              { navKey: 'tiempo' as SectionKey, label: 'Agenda', Icon: CalendarDays },
+              { navKey: 'lista'  as SectionKey, label: 'Tareas', Icon: CheckSquare },
+            ]},
+            { key: 'crecimiento', label: 'Crecimiento', items: [
+              { navKey: 'habitos'   as SectionKey, label: 'Hábitos',   Icon: Flame },
+              { navKey: 'objetivos' as SectionKey, label: 'Objetivos', Icon: Target },
+              { navKey: 'academia'  as SectionKey, label: 'Academia',  Icon: GraduationCap },
+            ]},
+            { key: 'finanzas', label: 'Finanzas', items: [
+              { navKey: 'dinero' as SectionKey, label: 'Dinero', Icon: DollarSign },
+            ]},
+            { key: 'reflexion', label: 'Reflexión', items: [
+              { navKey: 'revision' as SectionKey, label: 'Revisión', Icon: BarChart3 },
+            ]},
+          ] as const).map(group => {
+            // Filtrar items por módulos habilitados para la empresa del usuario
+            const visibleItems = group.items.filter(i => isModuleEnabled(i.navKey));
+            if (visibleItems.length === 0) return null; // ocultar grupo completo si no hay items
+
+            const isExpanded = expandedGroups.includes(group.key);
+            const isGroupActive = visibleItems.some(i => i.navKey === section);
+            return (
+              <div key={group.key}>
+                {/* Group header */}
+                <button
+                  onClick={() => toggleGroup(group.key)}
+                  className={`w-full flex items-center gap-3 px-4 py-2.5 text-sm font-bold transition-all ${
+                    isGroupActive && !isExpanded
+                      ? 'text-white'
+                      : isGroupActive
+                        ? 'text-indigo-200'
+                        : 'text-indigo-400 hover:bg-white/5 hover:text-indigo-200'
+                  }`}
+                >
+                  <span className="flex-1 text-left">{group.label}</span>
+                  {isGroupActive && !isExpanded && <div className="w-1.5 h-1.5 rounded-full bg-indigo-400 shrink-0" />}
+                  <ChevronRight size={13} className={`shrink-0 transition-transform duration-200 text-indigo-600 ${isExpanded ? 'rotate-90' : ''}`} />
+                </button>
+                {/* Sub-items */}
+                {isExpanded && (
+                  <div className="pb-1">
+                    {visibleItems.map(item => (
+                      <NavItem key={item.navKey} navKey={item.navKey} label={item.label} Icon={item.Icon} />
+                    ))}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+
+        {/* Bottom: admin + profile */}
+        <div className="border-t border-indigo-900/50 p-3 space-y-1 shrink-0">
           {/* Admin — solo super_admin */}
           {isSuperAdmin && (
-            <button
-              onClick={() => setSection('admin')}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[11px] font-black uppercase tracking-wide transition-all ${section === 'admin' ? 'bg-amber-500 text-white shadow-lg' : 'text-amber-400 hover:text-white hover:bg-amber-500/20'}`}
-            >
-              <Shield size={12} />
-              <span className="hidden lg:inline">Admin</span>
-            </button>
+            <NavItem navKey="admin" label="Admin" Icon={Shield} amber />
           )}
+
+          <div className="h-px bg-indigo-900/50 my-1" />
+
+          {/* Perfil */}
+          <button
+            onClick={() => { setProfileName(displayName); setShowProfile(true); }}
+            className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-indigo-300 hover:bg-white/5 hover:text-white transition-all"
+          >
+            <div className="w-7 h-7 rounded-full bg-gradient-to-br from-indigo-400 to-violet-500 flex items-center justify-center text-white text-[11px] font-black shrink-0">
+              {(displayName || user?.email)?.[0]?.toUpperCase()}
+            </div>
+            <div className="min-w-0 flex-1 text-left">
+              <p className="text-xs font-black text-indigo-200 truncate leading-none">{displayName || user?.email?.split('@')[0]}</p>
+              <p className="text-[10px] text-indigo-500 truncate mt-0.5 leading-none">{user?.email}</p>
+            </div>
+          </button>
+          <button
+            onClick={signOut}
+            className="w-full flex items-center gap-3 px-3 py-2 rounded-xl text-indigo-600 hover:bg-red-500/10 hover:text-red-400 transition-all text-xs font-bold"
+          >
+            <LogOut size={14} />
+            Cerrar sesión
+          </button>
+        </div>
+      </nav>
+
+      {/* ══ RIGHT COLUMN (header + content + mobile nav) ═════════════════════ */}
+      <div className="flex flex-col flex-1 overflow-hidden min-w-0">
+
+      {/* ---- HEADER LIFEOS — solo mobile/tablet, desktop usa sidebar ---- */}
+      <header className="lg:hidden bg-indigo-950 border-b border-indigo-900/50 px-4 md:px-6 py-3 flex justify-between items-center z-[100] shrink-0 shadow-lg">
+        <div className="flex items-center gap-3 text-white">
+          {/* Mobile: logo + menú tiempo */}
+          <div className="lg:hidden flex items-center gap-2">
+            {section === 'tiempo' && (
+              <button onClick={() => setSidebarOpen(true)} className="p-2 hover:bg-white/10 rounded-xl">
+                <Menu size={20} />
+              </button>
+            )}
+            <div className="flex items-center gap-2">
+              <div className="bg-indigo-500 p-1.5 rounded-lg shadow-inner"><Zap size={18} fill="white" /></div>
+              <h1 className="text-lg font-black tracking-tight uppercase italic leading-none hidden sm:block">LifeOS</h1>
+            </div>
+          </div>
+          {/* Desktop: título de la sección actual + menú tiempo */}
+          <div className="hidden lg:flex items-center gap-3">
+            {section === 'tiempo' && (
+              <button onClick={() => setSidebarOpen(true)} className="p-2 hover:bg-white/10 rounded-xl">
+                <Menu size={20} />
+              </button>
+            )}
+            <span className="text-white font-black text-base">
+              {section === 'admin' ? 'Admin' : SECTIONS.find(s => s.key === section)?.label ?? ''}
+            </span>
+          </div>
         </div>
 
         <div className="flex items-center gap-2 md:gap-3 text-white">
@@ -1228,8 +1427,8 @@ const App = () => {
             <kbd className="hidden lg:inline-flex items-center text-[9px] font-black text-indigo-500 bg-white/5 border border-white/10 px-1.5 py-0.5 rounded-md">⌘K</kbd>
           </button>
 
-          {/* Indicador de guardado — espacio siempre reservado para no mover layout */}
-          <div className={`hidden lg:flex items-center gap-1.5 text-[10px] font-bold min-w-[90px] justify-center transition-all duration-300 ${
+          {/* Indicador de guardado — visible en desktop y tablet */}
+          <div className={`hidden sm:flex items-center gap-1.5 text-[10px] font-bold min-w-[90px] justify-center transition-all duration-300 ${
             saveStatus === 'idle' ? 'opacity-0 pointer-events-none' : 'opacity-100'
           } ${saveStatus === 'saving' ? 'text-indigo-400' : 'text-emerald-400'}`}>
             {saveStatus === 'saving' ? (
@@ -1257,8 +1456,8 @@ const App = () => {
             <Search size={16} />
           </button>
 
-          {/* Menú de usuario */}
-          <div className="relative" ref={userMenuRef}>
+          {/* Menú de usuario — solo mobile/tablet (desktop lo tiene en sidebar) */}
+          <div className="lg:hidden relative" ref={userMenuRef}>
             <button
               onClick={() => setUserMenuOpen(v => !v)}
               className={`flex items-center gap-2 border rounded-full pl-1 pr-2.5 py-1 transition-all ${userMenuOpen ? 'bg-white/10 border-white/20' : 'bg-white/5 border-white/10 hover:bg-white/10'}`}
@@ -1334,7 +1533,7 @@ const App = () => {
 
         {/* Sidebar — only in tiempo section */}
         {section === 'tiempo' && (
-          <aside className={`fixed inset-y-0 left-0 z-[120] w-80 bg-white border-r transform transition-transform lg:relative lg:translate-x-0 ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'} flex flex-col shrink-0 overflow-y-auto custom-scrollbar`}>
+          <aside className={`fixed inset-y-0 left-0 z-[120] w-80 bg-white border-r transform transition-transform lg:relative lg:inset-y-auto lg:left-auto ${sidebarOpen ? 'translate-x-0' : '-translate-x-full lg:-translate-x-full lg:w-0 lg:opacity-0 lg:overflow-hidden'} flex flex-col shrink-0 overflow-y-auto custom-scrollbar`}>
             <div className="p-6 space-y-8 pb-24 lg:pb-6">
               <section>
                 <div className="flex items-center justify-between mb-4 px-1">
@@ -1639,6 +1838,10 @@ const App = () => {
               {!isMobile && (
                 <div className="hidden md:flex items-center justify-between px-6 py-2.5 bg-slate-100 border-b border-slate-200 shrink-0">
                   <div className="flex items-center gap-3">
+                    {/* Botón abrir sidebar categorías */}
+                    <button onClick={() => setSidebarOpen(v => !v)} className="p-1.5 hover:bg-slate-200 rounded-lg transition-all text-slate-500 hover:text-slate-700">
+                      <Menu size={16} />
+                    </button>
                     <div className="flex items-center bg-white rounded-full p-0.5 border border-slate-200 shadow-sm">
                       <button onClick={() => { const d = new Date(currentDate); d.setDate(d.getDate() - 7); setCurrentDate(d); }} className="p-1.5 hover:bg-slate-100 rounded-full transition-all"><ChevronLeft size={14} className="text-slate-500"/></button>
                       <span className="px-3 text-xs font-black min-w-[180px] text-center text-slate-700">
@@ -1929,6 +2132,8 @@ const App = () => {
         </>
       )}
 
+      </div>{/* ── end right column ── */}
+
       {/* ── BÚSQUEDA GLOBAL ── */}
       {showSearch && (
         <SearchModal
@@ -2050,8 +2255,8 @@ const App = () => {
               {[
                 { key: 'H', desc: 'Dashboard Hoy' },
                 { key: 'D', desc: 'Dinero' },
-                { key: 'T', desc: 'Tiempo' },
-                { key: 'L', desc: 'Lista' },
+                { key: 'T', desc: 'Agenda' },
+                { key: 'L', desc: 'Tareas' },
                 { key: 'O', desc: 'Objetivos' },
                 { key: 'R', desc: 'Revisión' },
                 { key: '?', desc: 'Mostrar atajos' },
