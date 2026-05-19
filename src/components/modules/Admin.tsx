@@ -1,9 +1,9 @@
 import React, { useState, useEffect, useCallback } from 'react'
 import {
   Building2, Users, LayoutGrid, GraduationCap, Plus, Edit2, Trash2,
-  Check, X, ChevronDown, ChevronRight, Shield, UserCheck, UserX,
+  Check, X, ChevronDown, ChevronRight, ChevronUp, Shield, UserCheck, UserX,
   BookOpen, Video, ToggleLeft, ToggleRight, Search, Crown, Star,
-  RefreshCw, Eye, EyeOff, ExternalLink,
+  RefreshCw, Eye, EyeOff, ExternalLink, ArrowUpDown, Link,
 } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
 import type {
@@ -85,32 +85,38 @@ export default function Admin() {
 
   const fetchAll = useCallback(async () => {
     setLoading(true)
-    const [
-      { data: comp },
-      { data: prof },
-      { data: memb },
-      { data: mods },
-      { data: cors },
-      { data: amods },
-      { data: less },
-    ] = await Promise.all([
-      supabase.from('companies').select('*').order('created_at', { ascending: false }),
-      supabase.from('user_profiles').select('*').order('created_at', { ascending: false }),
-      supabase.from('company_members').select('*'),
-      supabase.from('company_modules').select('*'),
-      supabase.from('academy_courses').select('*').order('sort_order'),
-      supabase.from('academy_modules').select('*').order('sort_order'),
-      supabase.from('academy_lessons').select('*').order('sort_order'),
-    ])
+    try {
+      const [
+        { data: comp },
+        { data: prof },
+        { data: memb },
+        { data: mods },
+        { data: cors },
+        amodsResult,
+        { data: less },
+      ] = await Promise.all([
+        supabase.from('companies').select('*').order('created_at', { ascending: false }),
+        supabase.from('user_profiles').select('*').order('created_at', { ascending: false }),
+        supabase.from('company_members').select('*'),
+        supabase.from('company_modules').select('*'),
+        supabase.from('academy_courses').select('*').order('sort_order'),
+        supabase.from('academy_modules').select('*').order('sort_order'),
+        supabase.from('academy_lessons').select('*').order('sort_order'),
+      ])
 
-    setCompanies((comp ?? []).map(rowToCompany))
-    setUsers((prof ?? []).map(rowToUserProfile))
-    setMembers((memb ?? []).map(rowToMember))
-    setModules((mods ?? []).map(rowToModule))
-    setCourses((cors ?? []).map(rowToCourse))
-    setAcademyModules((amods ?? []).map(rowToAcademyModule))
-    setLessons((less ?? []).map(rowToLesson))
-    setLoading(false)
+      setCompanies((comp ?? []).map(rowToCompany))
+      setUsers((prof ?? []).map(rowToUserProfile))
+      setMembers((memb ?? []).map(rowToMember))
+      setModules((mods ?? []).map(rowToModule))
+      setCourses((cors ?? []).map(rowToCourse))
+      // academy_modules puede no existir si la migración no se ha ejecutado
+      setAcademyModules(((amodsResult?.data) ?? []).map(rowToAcademyModule))
+      setLessons((less ?? []).map(rowToLesson))
+    } catch (e) {
+      console.error('Admin fetchAll error:', e)
+    } finally {
+      setLoading(false)
+    }
   }, [])
 
   useEffect(() => { fetchAll() }, [fetchAll])
@@ -925,6 +931,38 @@ function AcademiaTab({
     await supabase.from('academy_lessons').delete().eq('id', id); onRefresh()
   }
 
+  // ── Reordenamiento ───────────────────────────────────────────────────────────
+  const moveModule = async (mods: AcademyModule[], idx: number, dir: -1 | 1) => {
+    const target = mods[idx + dir]
+    if (!target) return
+    const current = mods[idx]
+    await Promise.all([
+      supabase.from('academy_modules').update({ sort_order: target.sortOrder }).eq('id', current.id),
+      supabase.from('academy_modules').update({ sort_order: current.sortOrder }).eq('id', target.id),
+    ])
+    onRefresh()
+  }
+
+  const moveLesson = async (lessList: AcademyLesson[], idx: number, dir: -1 | 1) => {
+    const target = lessList[idx + dir]
+    if (!target) return
+    const current = lessList[idx]
+    await Promise.all([
+      supabase.from('academy_lessons').update({ sort_order: target.sortOrder }).eq('id', current.id),
+      supabase.from('academy_lessons').update({ sort_order: current.sortOrder }).eq('id', target.id),
+    ])
+    onRefresh()
+  }
+
+  // ── Asignar lección existente a módulo ───────────────────────────────────────
+  const assignLesson = async (lessonId: string, moduleId: string) => {
+    await supabase.from('academy_lessons').update({ module_id: moduleId }).eq('id', lessonId)
+    onRefresh()
+  }
+
+  // ── Datos derivados ───────────────────────────────────────────────────────────
+  const companyCourses = courses.filter(c => c.companyId === selectedCompany)
+
   return (
     <div className="p-4 space-y-4">
 
@@ -1035,84 +1073,138 @@ function AcademiaTab({
                     </div>
 
                     {/* ── NIVEL 2: Módulos ── */}
-                    {isCourseOpen && (
-                      <div className="border-t border-slate-100">
-                        {courseModules.length === 0 && (
-                          <p className="text-xs text-slate-400 px-12 py-3">Sin módulos todavía</p>
-                        )}
+                    {isCourseOpen && (() => {
+                      const unassigned = lessons.filter(l => l.courseId === course.id && !l.moduleId)
+                      return (
+                        <div className="border-t border-slate-100">
+                          {courseModules.length === 0 && (
+                            <p className="text-xs text-slate-400 px-12 py-3">Sin módulos todavía — crea uno para organizar las lecciones</p>
+                          )}
 
-                        {courseModules.map(mod => {
-                          const modLessons = lessons.filter(l => l.moduleId === mod.id)
-                          const isModOpen  = expandedModules.has(mod.id)
+                          {courseModules.map((mod, modIdx) => {
+                            const modLessons = lessons.filter(l => l.moduleId === mod.id)
+                            const isModOpen  = expandedModules.has(mod.id)
 
-                          return (
-                            <div key={mod.id} className="border-b border-slate-50 last:border-0">
-                              {/* Módulo row */}
-                              <div className="flex items-center gap-2 pl-10 pr-4 py-2.5 bg-slate-50/70">
-                                <button onClick={() => toggleModule(mod.id)} className="flex items-center gap-2.5 flex-1 min-w-0 text-left">
-                                  <div className="w-6 h-6 rounded-lg bg-indigo-100 flex items-center justify-center shrink-0">
-                                    <ChevronRight size={12} className={`text-indigo-500 transition-transform ${isModOpen ? 'rotate-90' : ''}`} />
-                                  </div>
-                                  <div className="min-w-0 flex-1">
-                                    <div className="font-bold text-slate-700 text-xs truncate">{mod.title}</div>
-                                    <div className="text-[10px] text-slate-400">{modLessons.length} lección{modLessons.length !== 1 ? 'es' : ''}</div>
-                                  </div>
-                                </button>
-                                <button onClick={() => openModuleForm(course.id, mod)} className="p-1.5 rounded-lg hover:bg-indigo-50 text-indigo-400"><Edit2 size={11} /></button>
-                                <button onClick={() => deleteModule(mod.id)} className="p-1.5 rounded-lg hover:bg-red-50 text-red-400"><Trash2 size={11} /></button>
-                              </div>
-
-                              {/* ── NIVEL 3: Lecciones ── */}
-                              {isModOpen && (
-                                <div className="pl-16 pr-4 py-2 space-y-1.5 bg-white">
-                                  {modLessons.map((lesson, i) => {
-                                    const ytId = extractYoutubeId(lesson.youtubeUrl)
-                                    return (
-                                      <div key={lesson.id} className="flex items-center gap-2.5 py-1.5 border-b border-slate-50 last:border-0">
-                                        {ytId ? (
-                                          <img src={`https://img.youtube.com/vi/${ytId}/default.jpg`} alt="" className="w-12 h-8 rounded-lg object-cover shrink-0" />
-                                        ) : (
-                                          <div className="w-12 h-8 rounded-lg bg-slate-100 flex items-center justify-center shrink-0">
-                                            <Video size={12} className="text-slate-400" />
-                                          </div>
-                                        )}
-                                        <div className="min-w-0 flex-1">
-                                          <div className="text-[11px] font-bold text-slate-700 truncate">{i + 1}. {lesson.title}</div>
-                                          {lesson.durationMinutes && <div className="text-[10px] text-slate-400">{lesson.durationMinutes} min</div>}
-                                        </div>
-                                        <div className="flex gap-1 shrink-0">
-                                          <button onClick={() => openLessonForm(course.id, mod.id, lesson)} className="p-1 rounded hover:bg-indigo-50 text-indigo-400"><Edit2 size={11} /></button>
-                                          <button onClick={() => deleteLesson(lesson.id)} className="p-1 rounded hover:bg-red-50 text-red-400"><Trash2 size={11} /></button>
-                                          {ytId && (
-                                            <a href={lesson.youtubeUrl} target="_blank" rel="noopener noreferrer" className="p-1 rounded hover:bg-slate-100 text-slate-400"><ExternalLink size={11} /></a>
-                                          )}
-                                        </div>
-                                      </div>
-                                    )
-                                  })}
-
-                                  {/* Agregar lección */}
-                                  <button
-                                    onClick={() => openLessonForm(course.id, mod.id)}
-                                    className="w-full flex items-center gap-2 py-2 rounded-xl border border-dashed border-slate-200 text-slate-400 text-[11px] font-bold hover:border-indigo-300 hover:text-indigo-500 hover:bg-indigo-50 transition-colors justify-center"
-                                  >
-                                    <Plus size={11} /> Agregar lección
+                            return (
+                              <div key={mod.id} className="border-b border-slate-50 last:border-0">
+                                {/* Módulo row */}
+                                <div className="flex items-center gap-1 pl-10 pr-3 py-2.5 bg-slate-50/70">
+                                  <button onClick={() => toggleModule(mod.id)} className="flex items-center gap-2.5 flex-1 min-w-0 text-left">
+                                    <div className="w-6 h-6 rounded-lg bg-indigo-100 flex items-center justify-center shrink-0">
+                                      <ChevronRight size={12} className={`text-indigo-500 transition-transform ${isModOpen ? 'rotate-90' : ''}`} />
+                                    </div>
+                                    <div className="min-w-0 flex-1">
+                                      <div className="font-bold text-slate-700 text-xs truncate">{mod.title}</div>
+                                      <div className="text-[10px] text-slate-400">{modLessons.length} lección{modLessons.length !== 1 ? 'es' : ''}</div>
+                                    </div>
                                   </button>
+                                  {/* Reordenar módulo */}
+                                  <div className="flex flex-col gap-0.5 shrink-0">
+                                    <button onClick={() => moveModule(courseModules, modIdx, -1)} disabled={modIdx === 0} className="p-0.5 rounded hover:bg-slate-200 text-slate-400 disabled:opacity-20"><ChevronUp size={11} /></button>
+                                    <button onClick={() => moveModule(courseModules, modIdx, 1)} disabled={modIdx === courseModules.length - 1} className="p-0.5 rounded hover:bg-slate-200 text-slate-400 disabled:opacity-20"><ChevronDown size={11} /></button>
+                                  </div>
+                                  <button onClick={() => openModuleForm(course.id, mod)} className="p-1.5 rounded-lg hover:bg-indigo-50 text-indigo-400"><Edit2 size={11} /></button>
+                                  <button onClick={() => deleteModule(mod.id)} className="p-1.5 rounded-lg hover:bg-red-50 text-red-400"><Trash2 size={11} /></button>
                                 </div>
-                              )}
-                            </div>
-                          )
-                        })}
 
-                        {/* Agregar módulo */}
-                        <button
-                          onClick={() => { openModuleForm(course.id); setExpandedCourses(s => new Set([...s, course.id])) }}
-                          className="w-full flex items-center gap-2 px-10 py-2.5 text-indigo-500 text-xs font-bold hover:bg-indigo-50 transition-colors border-t border-slate-100"
-                        >
-                          <Plus size={12} /> Agregar módulo
-                        </button>
-                      </div>
-                    )}
+                                {/* ── NIVEL 3: Lecciones ── */}
+                                {isModOpen && (
+                                  <div className="pl-16 pr-3 py-2 space-y-1.5 bg-white">
+                                    {modLessons.map((lesson, lessonIdx) => {
+                                      const ytId = extractYoutubeId(lesson.youtubeUrl)
+                                      return (
+                                        <div key={lesson.id} className="flex items-center gap-2 py-1.5 border-b border-slate-50 last:border-0">
+                                          {ytId ? (
+                                            <img src={`https://img.youtube.com/vi/${ytId}/default.jpg`} alt="" className="w-12 h-8 rounded-lg object-cover shrink-0" />
+                                          ) : (
+                                            <div className="w-12 h-8 rounded-lg bg-slate-100 flex items-center justify-center shrink-0">
+                                              <Video size={12} className="text-slate-400" />
+                                            </div>
+                                          )}
+                                          <div className="min-w-0 flex-1">
+                                            <div className="text-[11px] font-bold text-slate-700 truncate">{lessonIdx + 1}. {lesson.title}</div>
+                                            {lesson.durationMinutes && <div className="text-[10px] text-slate-400">{lesson.durationMinutes} min</div>}
+                                          </div>
+                                          <div className="flex items-center gap-0.5 shrink-0">
+                                            {/* Reordenar lección */}
+                                            <div className="flex flex-col gap-0.5">
+                                              <button onClick={() => moveLesson(modLessons, lessonIdx, -1)} disabled={lessonIdx === 0} className="p-0.5 rounded hover:bg-slate-200 text-slate-400 disabled:opacity-20"><ChevronUp size={10} /></button>
+                                              <button onClick={() => moveLesson(modLessons, lessonIdx, 1)} disabled={lessonIdx === modLessons.length - 1} className="p-0.5 rounded hover:bg-slate-200 text-slate-400 disabled:opacity-20"><ChevronDown size={10} /></button>
+                                            </div>
+                                            <button onClick={() => openLessonForm(course.id, mod.id, lesson)} className="p-1 rounded hover:bg-indigo-50 text-indigo-400"><Edit2 size={11} /></button>
+                                            <button onClick={() => deleteLesson(lesson.id)} className="p-1 rounded hover:bg-red-50 text-red-400"><Trash2 size={11} /></button>
+                                            {ytId && <a href={lesson.youtubeUrl} target="_blank" rel="noopener noreferrer" className="p-1 rounded hover:bg-slate-100 text-slate-400"><ExternalLink size={11} /></a>}
+                                          </div>
+                                        </div>
+                                      )
+                                    })}
+                                    <button
+                                      onClick={() => openLessonForm(course.id, mod.id)}
+                                      className="w-full flex items-center gap-2 py-2 rounded-xl border border-dashed border-slate-200 text-slate-400 text-[11px] font-bold hover:border-indigo-300 hover:text-indigo-500 hover:bg-indigo-50 transition-colors justify-center"
+                                    >
+                                      <Plus size={11} /> Nueva lección
+                                    </button>
+                                  </div>
+                                )}
+                              </div>
+                            )
+                          })}
+
+                          {/* ── Lecciones sin módulo ── */}
+                          {unassigned.length > 0 && (
+                            <div className="border-t-2 border-dashed border-amber-200 bg-amber-50/50">
+                              <div className="flex items-center gap-2 px-10 py-2">
+                                <Link size={12} className="text-amber-500 shrink-0" />
+                                <span className="text-[11px] font-black text-amber-600 uppercase tracking-wide">
+                                  {unassigned.length} lección{unassigned.length !== 1 ? 'es' : ''} sin módulo
+                                </span>
+                              </div>
+                              {unassigned.map(lesson => {
+                                const ytId = extractYoutubeId(lesson.youtubeUrl)
+                                return (
+                                  <div key={lesson.id} className="flex items-center gap-2.5 pl-12 pr-3 py-2 border-t border-amber-100">
+                                    {ytId ? (
+                                      <img src={`https://img.youtube.com/vi/${ytId}/default.jpg`} alt="" className="w-10 h-7 rounded-lg object-cover shrink-0" />
+                                    ) : (
+                                      <div className="w-10 h-7 rounded-lg bg-amber-100 flex items-center justify-center shrink-0">
+                                        <Video size={11} className="text-amber-400" />
+                                      </div>
+                                    )}
+                                    <div className="min-w-0 flex-1">
+                                      <div className="text-[11px] font-bold text-slate-700 truncate">{lesson.title}</div>
+                                    </div>
+                                    {/* Selector de módulo */}
+                                    {courseModules.length > 0 ? (
+                                      <select
+                                        defaultValue=""
+                                        onChange={e => { if (e.target.value) assignLesson(lesson.id, e.target.value) }}
+                                        className="text-[11px] font-bold text-indigo-600 bg-indigo-50 border border-indigo-200 rounded-lg px-2 py-1 focus:outline-none focus:ring-1 focus:ring-indigo-400 cursor-pointer shrink-0"
+                                      >
+                                        <option value="" disabled>Asignar módulo…</option>
+                                        {courseModules.map(m => (
+                                          <option key={m.id} value={m.id}>{m.title}</option>
+                                        ))}
+                                      </select>
+                                    ) : (
+                                      <span className="text-[10px] text-amber-500 shrink-0">Crea un módulo primero</span>
+                                    )}
+                                    <button onClick={() => deleteLesson(lesson.id)} className="p-1 rounded hover:bg-red-50 text-red-400 shrink-0"><Trash2 size={11} /></button>
+                                  </div>
+                                )
+                              })}
+                            </div>
+                          )}
+
+                          {/* Agregar módulo */}
+                          <button
+                            onClick={() => openModuleForm(course.id)}
+                            className="w-full flex items-center gap-2 px-10 py-2.5 text-indigo-500 text-xs font-bold hover:bg-indigo-50 transition-colors border-t border-slate-100"
+                          >
+                            <Plus size={12} /> Agregar módulo
+                          </button>
+                        </div>
+                      )
+                    })()}
                   </div>
                 )
               })}
