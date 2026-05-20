@@ -38,6 +38,16 @@ const ALL_MODULES: { key: ModuleKey; label: string; icon: string }[] = [
   { key: 'academia',  label: 'Academia',  icon: '🎓' },
 ]
 
+function formatAdminDuration(seconds?: number): string {
+  if (!seconds || seconds <= 0) return ''
+  const h = Math.floor(seconds / 3600)
+  const m = Math.floor((seconds % 3600) / 60)
+  const s = seconds % 60
+  if (h > 0) return s > 0 ? `${h}h ${m}m ${s}s` : m > 0 ? `${h}h ${m}m` : `${h}h`
+  if (m > 0) return s > 0 ? `${m}m ${s}s` : `${m}m`
+  return `${s}s`
+}
+
 function extractYoutubeId(url: string | undefined | null): string | null {
   if (!url) return null
   const match = url.match(
@@ -1038,8 +1048,8 @@ function AcademiaTab({
         <textarea value={lessonForm.description} onChange={e => setLessonForm(p => ({ ...p, description: e.target.value }))} rows={2} className={`${inputCls} resize-none`} placeholder="Descripción opcional..." />
       </FormField>
       {lessonForm.lessonType === 'video' && (
-        <FormField label="Duración (minutos)">
-          <input type="number" value={lessonForm.durationMinutes} onChange={e => setLessonForm(p => ({ ...p, durationMinutes: e.target.value }))} className={inputCls} placeholder="Ej. 12" />
+        <FormField label="Duración (segundos)">
+          <input type="number" value={lessonForm.durationMinutes} onChange={e => setLessonForm(p => ({ ...p, durationMinutes: e.target.value }))} className={inputCls} placeholder="Ej. 275 (= 4m 35s)" />
         </FormField>
       )}
     </Modal>
@@ -1063,7 +1073,7 @@ function AcademiaTab({
             <div className="text-[11px] font-bold text-slate-700 truncate">{idx + 1}. {lesson.title}</div>
             {isDoc && <span className="text-[8px] font-black text-emerald-600 bg-emerald-50 border border-emerald-200 px-1 rounded shrink-0">PDF</span>}
           </div>
-          {lesson.durationMinutes && <div className="text-[10px] text-slate-400">{lesson.durationMinutes} min</div>}
+          {lesson.durationMinutes && <div className="text-[10px] text-slate-400">{formatAdminDuration(lesson.durationMinutes)}</div>}
         </div>
         <div className="flex items-center gap-0.5 shrink-0">
           <div className="flex flex-col gap-0.5">

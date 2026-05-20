@@ -24,12 +24,14 @@ function getDriveEmbedUrl(url: string): string | null {
   return `https://drive.google.com/file/d/${match[1]}/preview`
 }
 
-function formatDuration(minutes?: number): string {
-  if (!minutes) return ''
-  if (minutes < 60) return `${minutes} min`
-  const h = Math.floor(minutes / 60)
-  const m = minutes % 60
-  return m ? `${h}h ${m}m` : `${h}h`
+function formatDuration(seconds?: number): string {
+  if (!seconds || seconds <= 0) return ''
+  const h = Math.floor(seconds / 3600)
+  const m = Math.floor((seconds % 3600) / 60)
+  const s = seconds % 60
+  if (h > 0) return s > 0 ? `${h}h ${m}m ${s}s` : m > 0 ? `${h}h ${m}m` : `${h}h`
+  if (m > 0) return s > 0 ? `${m}m ${s}s` : `${m}m`
+  return `${s}s`
 }
 
 // ── Main Component ─────────────────────────────────────────────────────────────
