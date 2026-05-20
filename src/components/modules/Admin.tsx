@@ -1016,7 +1016,9 @@ function AcademiaTab({
   const lessonFormDisabled = !lessonForm.title.trim() || (lessonForm.lessonType === 'video' && !lessonForm.youtubeUrl.trim()) || (lessonForm.lessonType === 'document' && !lessonForm.documentUrl.trim())
 
   // ── Shared lesson form JSX ────────────────────────────────────────────────────
-  const LessonFormModal = () => (
+  // LessonFormModal se renderiza inline (no como componente) para evitar
+  // que React lo desmonte/remonte en cada render y robe el foco de los inputs
+  const lessonFormJSX = isLessonFormOpen ? (
     <Modal title={editingItem ? 'Editar lección' : 'Nueva lección'} onClose={closeForm} onSave={lessonSaveHandler} saving={saving} disabled={lessonFormDisabled}>
       <div>
         <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">Tipo de lección</label>
@@ -1031,7 +1033,7 @@ function AcademiaTab({
         </div>
       </div>
       <FormField label="Título *">
-        <input autoFocus value={lessonForm.title} onChange={e => setLessonForm(p => ({ ...p, title: e.target.value }))} className={inputCls} placeholder={lessonForm.lessonType === 'video' ? 'Ej. Introducción' : 'Ej. Guía práctica'} />
+        <input value={lessonForm.title} onChange={e => setLessonForm(p => ({ ...p, title: e.target.value }))} className={inputCls} placeholder={lessonForm.lessonType === 'video' ? 'Ej. Introducción' : 'Ej. Guía práctica'} />
       </FormField>
       {lessonForm.lessonType === 'video' ? (
         <FormField label="URL de YouTube *">
@@ -1053,7 +1055,7 @@ function AcademiaTab({
         </FormField>
       )}
     </Modal>
-  )
+  ) : null
 
   // ── Render de árbol de lecciones (reutilizable) ───────────────────────────────
   const renderLessonRow = (lesson: AcademyLesson | ExclusiveLesson, idx: number, list: any[], isExc: boolean, onEdit: () => void, onDel: () => void, onMoveUp: () => void, onMoveDown: () => void) => {
@@ -1148,7 +1150,7 @@ function AcademiaTab({
           <FormField label="Descripción"><textarea value={moduleForm.description} onChange={e => setModuleForm(p => ({ ...p, description: e.target.value }))} rows={2} className={`${inputCls} resize-none`} /></FormField>
         </Modal>
       )}
-      {isLessonFormOpen && <LessonFormModal />}
+      {lessonFormJSX}
 
       {/* ══════════════════════════════════════════════
           SUB-TAB: CURSOS GLOBALES
