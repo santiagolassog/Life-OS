@@ -8,8 +8,9 @@ import {
 import { supabase } from '../../lib/supabase'
 import type {
   Company, CompanyMember, CompanyModule, UserProfile,
-  AcademyCourse, AcademyModule, AcademyLesson, CompanyCourseAccess, ExclusiveVideo,
-  CompanyPlan, ModuleKey, CompanyMemberRole,
+  AcademyCourse, AcademyModule, AcademyLesson, CompanyCourseAccess,
+  ExclusiveContent, ExclusiveModule, ExclusiveLesson,
+  CompanyPlan, ModuleKey, CompanyMemberRole, LessonType,
 } from '../../types'
 import { generateId } from '../../lib/utils'
 
@@ -81,8 +82,10 @@ export default function Admin() {
   const [courses, setCourses]                   = useState<AcademyCourse[]>([])
   const [academyModules, setAcademyModules]     = useState<AcademyModule[]>([])
   const [lessons, setLessons]                   = useState<AcademyLesson[]>([])
-  const [courseAccess, setCourseAccess]         = useState<CompanyCourseAccess[]>([])
-  const [exclusiveVideos, setExclusiveVideos]   = useState<ExclusiveVideo[]>([])
+  const [courseAccess, setCourseAccess]             = useState<CompanyCourseAccess[]>([])
+  const [exclusiveContents, setExclusiveContents]   = useState<ExclusiveContent[]>([])
+  const [exclusiveMods, setExclusiveMods]           = useState<ExclusiveModule[]>([])
+  const [exclusiveLessons, setExclusiveLessons]     = useState<ExclusiveLesson[]>([])
 
   // ── Selection ────────────────────────────────────────────────────────────────
   const [selectedCompany, setSelectedCompany] = useState<string | null>(null)
@@ -99,7 +102,9 @@ export default function Admin() {
         amodsResult,
         { data: less },
         { data: access },
-        { data: excl },
+        { data: exContents },
+        { data: exMods },
+        { data: exLess },
       ] = await Promise.all([
         supabase.from('companies').select('*').order('created_at', { ascending: false }),
         supabase.from('user_profiles').select('*').order('created_at', { ascending: false }),
@@ -109,7 +114,9 @@ export default function Admin() {
         supabase.from('academy_modules').select('*').order('sort_order'),
         supabase.from('academy_lessons').select('*').order('sort_order'),
         supabase.from('company_course_access').select('*'),
-        supabase.from('company_exclusive_videos').select('*').order('sort_order'),
+        supabase.from('exclusive_content').select('*').order('sort_order'),
+        supabase.from('exclusive_modules').select('*').order('sort_order'),
+        supabase.from('exclusive_lessons').select('*').order('sort_order'),
       ])
 
       setCompanies((comp ?? []).map(rowToCompany))
@@ -120,7 +127,9 @@ export default function Admin() {
       setAcademyModules(((amodsResult?.data) ?? []).map(rowToAcademyModule))
       setLessons((less ?? []).map(rowToLesson))
       setCourseAccess((access ?? []).map((r: any): CompanyCourseAccess => ({ id: r.id, companyId: r.company_id, courseId: r.course_id, grantedAt: r.granted_at })))
-      setExclusiveVideos((excl ?? []).map((r: any): ExclusiveVideo => ({ id: r.id, companyId: r.company_id, title: r.title, youtubeUrl: r.youtube_url, description: r.description, durationMinutes: r.duration_minutes, sortOrder: r.sort_order, published: r.published, createdAt: r.created_at })))
+      setExclusiveContents((exContents ?? []).map((r: any): ExclusiveContent => ({ id: r.id, companyId: r.company_id, title: r.title, description: r.description, sortOrder: r.sort_order, published: r.published, createdAt: r.created_at })))
+      setExclusiveMods((exMods ?? []).map((r: any): ExclusiveModule => ({ id: r.id, contentId: r.content_id, title: r.title, description: r.description, sortOrder: r.sort_order, createdAt: r.created_at })))
+      setExclusiveLessons((exLess ?? []).map((r: any): ExclusiveLesson => ({ id: r.id, contentId: r.content_id, moduleId: r.module_id ?? undefined, lessonType: (r.lesson_type ?? 'video') as LessonType, title: r.title, youtubeUrl: r.youtube_url ?? undefined, documentUrl: r.document_url ?? undefined, description: r.description, durationMinutes: r.duration_minutes, sortOrder: r.sort_order, createdAt: r.created_at })))
     } catch (e) {
       console.error('Admin fetchAll error:', e)
     } finally {
@@ -229,7 +238,9 @@ export default function Admin() {
             academyModules={academyModules}
             lessons={lessons}
             courseAccess={courseAccess}
-            exclusiveVideos={exclusiveVideos}
+            exclusiveContents={exclusiveContents}
+            exclusiveMods={exclusiveMods}
+            exclusiveLessons={exclusiveLessons}
             onRefresh={fetchAll}
           />
         )}
@@ -829,249 +840,258 @@ function FormField({ label, children }: { label: string; children: React.ReactNo
 const inputCls = "w-full px-4 py-3 rounded-xl border border-slate-200 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-indigo-300 bg-white"
 
 function AcademiaTab({
-  companies, courses, academyModules, lessons, courseAccess, exclusiveVideos, onRefresh,
+  companies, courses, academyModules, lessons, courseAccess,
+  exclusiveContents, exclusiveMods, exclusiveLessons, onRefresh,
 }: {
   companies: Company[]
   courses: AcademyCourse[]
   academyModules: AcademyModule[]
   lessons: AcademyLesson[]
   courseAccess: CompanyCourseAccess[]
-  exclusiveVideos: ExclusiveVideo[]
+  exclusiveContents: ExclusiveContent[]
+  exclusiveMods: ExclusiveModule[]
+  exclusiveLessons: ExclusiveLesson[]
   onRefresh: () => void
 }) {
-  // Sub-tabs: 'cursos' | 'acceso' | 'exclusivo'
   const [academiaTab, setAcademiaTab] = useState<'cursos' | 'acceso' | 'exclusivo'>('cursos')
   const [selectedCompany, setSelectedCompany] = useState(companies[0]?.id ?? '')
-  const [expandedCourses, setExpandedCourses] = useState<Set<string>>(new Set())
-  const [expandedModules, setExpandedModules] = useState<Set<string>>(new Set())
+  const [expandedItems, setExpandedItems] = useState<Set<string>>(new Set())
   const [saving, setSaving] = useState(false)
-
-  // ── Forms ─────────────────────────────────────────────────────────────────────
-  type FormType = 'course' | 'module' | 'lesson' | null
-  const [formType, setFormType]       = useState<FormType>(null)
-  const [formContext, setFormContext]  = useState<{ courseId?: string; moduleId?: string }>({})
-  const [editingItem, setEditingItem] = useState<AcademyCourse | AcademyModule | AcademyLesson | null>(null)
-
-  const [courseForm, setCourseForm] = useState({ title: '', description: '', published: true })
-  const [moduleForm, setModuleForm] = useState({ title: '', description: '' })
-  const [lessonForm, setLessonForm] = useState({ title: '', lessonType: 'video' as 'video' | 'document', youtubeUrl: '', documentUrl: '', description: '', durationMinutes: '' })
 
   useEffect(() => {
     if (!selectedCompany && companies.length) setSelectedCompany(companies[0].id)
   }, [companies, selectedCompany])
 
-  const toggleCourse  = (id: string) => setExpandedCourses(s => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n })
-  const toggleModule  = (id: string) => setExpandedModules(s => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n })
+  const toggleItem = (id: string) => setExpandedItems(s => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n })
 
-  // ── Open forms ────────────────────────────────────────────────────────────────
-  const openCourseForm = (editing?: AcademyCourse) => {
-    setEditingItem(editing ?? null)
-    setCourseForm({ title: editing?.title ?? '', description: editing?.description ?? '', published: editing?.published ?? true })
-    setFormType('course')
-  }
-  const openModuleForm = (courseId: string, editing?: AcademyModule) => {
-    setEditingItem(editing ?? null)
-    setFormContext({ courseId })
-    setModuleForm({ title: editing?.title ?? '', description: editing?.description ?? '' })
-    setFormType('module')
-  }
-  const openLessonForm = (courseId: string, moduleId: string, editing?: AcademyLesson) => {
-    setEditingItem(editing ?? null)
-    setFormContext({ courseId, moduleId })
-    setLessonForm({ title: editing?.title ?? '', lessonType: editing?.lessonType ?? 'video', youtubeUrl: editing?.youtubeUrl ?? '', documentUrl: editing?.documentUrl ?? '', description: editing?.description ?? '', durationMinutes: editing?.durationMinutes?.toString() ?? '' })
-    setFormType('lesson')
-  }
+  // ── Form state ────────────────────────────────────────────────────────────────
+  type FormType = 'course' | 'courseLesson' |  // cursos globales
+                  'module' | 'lesson' |          // cursos globales módulos/lecciones
+                  'excContent' | 'excModule' | 'excLesson' | null  // exclusivo
+
+  const [formType, setFormType]       = useState<FormType>(null)
+  const [formContext, setFormContext]  = useState<{ courseId?: string; moduleId?: string; contentId?: string; excModuleId?: string }>({})
+  const [editingItem, setEditingItem] = useState<any>(null)
+  const [courseForm, setCourseForm]   = useState({ title: '', description: '', published: true })
+  const [moduleForm, setModuleForm]   = useState({ title: '', description: '' })
+  const [lessonForm, setLessonForm]   = useState({ title: '', lessonType: 'video' as LessonType, youtubeUrl: '', documentUrl: '', description: '', durationMinutes: '' })
+  const [excContentForm, setExcContentForm] = useState({ title: '', description: '', published: true })
+
   const closeForm = () => { setFormType(null); setEditingItem(null); setFormContext({}) }
 
-  // ── Save handlers ─────────────────────────────────────────────────────────────
+  // ── Lesson form shared opener ─────────────────────────────────────────────────
+  const openLessonForm = (type: 'lesson' | 'courseLesson' | 'excLesson', ctx: typeof formContext, editing?: AcademyLesson | ExclusiveLesson) => {
+    setEditingItem(editing ?? null)
+    setFormContext(ctx)
+    setLessonForm({ title: editing?.title ?? '', lessonType: editing?.lessonType ?? 'video', youtubeUrl: editing?.youtubeUrl ?? '', documentUrl: editing?.documentUrl ?? '', description: editing?.description ?? '', durationMinutes: editing?.durationMinutes?.toString() ?? '' })
+    setFormType(type)
+  }
+
+  // ── CURSOS GLOBALES handlers ──────────────────────────────────────────────────
   const saveCourse = async () => {
-    if (!courseForm.title.trim()) return
-    setSaving(true)
-    const payload = {
-      title: courseForm.title.trim(), description: courseForm.description.trim() || null,
-      published: courseForm.published,
-      // Sin company_id — los cursos son globales
-      sort_order: (editingItem as AcademyCourse)?.sortOrder ?? courses.length,
-      updated_at: new Date().toISOString(),
-    }
+    if (!courseForm.title.trim()) return; setSaving(true)
+    const payload = { title: courseForm.title.trim(), description: courseForm.description.trim() || null, published: courseForm.published, sort_order: editingItem?.sortOrder ?? courses.length, updated_at: new Date().toISOString() }
     if (editingItem) await supabase.from('academy_courses').update(payload).eq('id', editingItem.id)
     else await supabase.from('academy_courses').insert({ ...payload, id: generateId() })
     setSaving(false); closeForm(); onRefresh()
   }
-
-  const saveModule = async () => {
-    if (!moduleForm.title.trim() || !formContext.courseId) return
-    setSaving(true)
-    const courseMods = academyModules.filter(m => m.courseId === formContext.courseId)
-    const payload = {
-      title: moduleForm.title.trim(), description: moduleForm.description.trim() || null,
-      course_id: formContext.courseId,
-      sort_order: (editingItem as AcademyModule)?.sortOrder ?? courseMods.length,
-    }
-    if (editingItem) await supabase.from('academy_modules').update(payload).eq('id', editingItem.id)
-    else {
-      const newId = generateId()
-      await supabase.from('academy_modules').insert({ ...payload, id: newId })
-      setExpandedModules(s => new Set([...s, newId]))
-    }
-    setSaving(false); closeForm(); onRefresh()
-  }
-
-  const saveLesson = async () => {
-    const isVideo = lessonForm.lessonType === 'video'
-    const isDoc   = lessonForm.lessonType === 'document'
-    if (!lessonForm.title.trim()) return
-    if (isVideo && !lessonForm.youtubeUrl.trim()) return
-    if (isDoc  && !lessonForm.documentUrl.trim()) return
-    if (!formContext.moduleId) return
-    setSaving(true)
-    const modLessons = lessons.filter(l => l.moduleId === formContext.moduleId)
-    const payload = {
-      title: lessonForm.title.trim(),
-      lesson_type: lessonForm.lessonType,
-      youtube_url: isVideo ? lessonForm.youtubeUrl.trim() : null,
-      document_url: isDoc ? lessonForm.documentUrl.trim() : null,
-      description: lessonForm.description.trim() || null,
-      duration_minutes: lessonForm.durationMinutes ? parseInt(lessonForm.durationMinutes) : null,
-      course_id: formContext.courseId, module_id: formContext.moduleId,
-      sort_order: (editingItem as AcademyLesson)?.sortOrder ?? modLessons.length,
-    }
-    if (editingItem) await supabase.from('academy_lessons').update(payload).eq('id', editingItem.id)
-    else await supabase.from('academy_lessons').insert({ ...payload, id: generateId() })
-    setSaving(false); closeForm(); onRefresh()
-  }
-
   const deleteCourse = async (id: string) => {
     if (!confirm('¿Eliminar este curso? Se borrarán todos sus módulos y lecciones.')) return
     await supabase.from('academy_courses').delete().eq('id', id); onRefresh()
   }
+  const saveModule = async () => {
+    if (!moduleForm.title.trim() || !formContext.courseId) return; setSaving(true)
+    const mods = academyModules.filter(m => m.courseId === formContext.courseId)
+    const payload = { title: moduleForm.title.trim(), description: moduleForm.description.trim() || null, course_id: formContext.courseId, sort_order: editingItem?.sortOrder ?? mods.length }
+    if (editingItem) await supabase.from('academy_modules').update(payload).eq('id', editingItem.id)
+    else await supabase.from('academy_modules').insert({ ...payload, id: generateId() })
+    setSaving(false); closeForm(); onRefresh()
+  }
   const deleteModule = async (id: string) => {
-    if (!confirm('¿Eliminar este módulo? Se borrarán todas sus lecciones.')) return
+    if (!confirm('¿Eliminar este módulo?')) return
     await supabase.from('academy_modules').delete().eq('id', id); onRefresh()
+  }
+  const saveLesson = async () => {
+    const isVideo = lessonForm.lessonType === 'video'; const isDoc = !isVideo
+    if (!lessonForm.title.trim() || (isVideo && !lessonForm.youtubeUrl.trim()) || (isDoc && !lessonForm.documentUrl.trim())) return
+    setSaving(true)
+    const payload = { title: lessonForm.title.trim(), lesson_type: lessonForm.lessonType, youtube_url: isVideo ? lessonForm.youtubeUrl.trim() : null, document_url: isDoc ? lessonForm.documentUrl.trim() : null, description: lessonForm.description.trim() || null, duration_minutes: lessonForm.durationMinutes ? parseInt(lessonForm.durationMinutes) : null, course_id: formContext.courseId, module_id: formContext.moduleId ?? null, sort_order: editingItem?.sortOrder ?? lessons.filter(l => l.moduleId === (formContext.moduleId ?? undefined) && l.courseId === formContext.courseId).length }
+    if (editingItem) await supabase.from('academy_lessons').update(payload).eq('id', editingItem.id)
+    else await supabase.from('academy_lessons').insert({ ...payload, id: generateId() })
+    setSaving(false); closeForm(); onRefresh()
   }
   const deleteLesson = async (id: string) => {
     if (!confirm('¿Eliminar esta lección?')) return
     await supabase.from('academy_lessons').delete().eq('id', id); onRefresh()
   }
-
-  // ── Reordenamiento ───────────────────────────────────────────────────────────
   const moveModule = async (mods: AcademyModule[], idx: number, dir: -1 | 1) => {
-    const target = mods[idx + dir]
-    if (!target) return
-    const current = mods[idx]
-    await Promise.all([
-      supabase.from('academy_modules').update({ sort_order: target.sortOrder }).eq('id', current.id),
-      supabase.from('academy_modules').update({ sort_order: current.sortOrder }).eq('id', target.id),
-    ])
-    onRefresh()
+    const t = mods[idx + dir]; if (!t) return; const c = mods[idx]
+    await Promise.all([supabase.from('academy_modules').update({ sort_order: t.sortOrder }).eq('id', c.id), supabase.from('academy_modules').update({ sort_order: c.sortOrder }).eq('id', t.id)]); onRefresh()
   }
-
-  const moveLesson = async (lessList: AcademyLesson[], idx: number, dir: -1 | 1) => {
-    const target = lessList[idx + dir]
-    if (!target) return
-    const current = lessList[idx]
-    await Promise.all([
-      supabase.from('academy_lessons').update({ sort_order: target.sortOrder }).eq('id', current.id),
-      supabase.from('academy_lessons').update({ sort_order: current.sortOrder }).eq('id', target.id),
-    ])
-    onRefresh()
+  const moveLesson = async (list: AcademyLesson[], idx: number, dir: -1 | 1) => {
+    const t = list[idx + dir]; if (!t) return; const c = list[idx]
+    await Promise.all([supabase.from('academy_lessons').update({ sort_order: t.sortOrder }).eq('id', c.id), supabase.from('academy_lessons').update({ sort_order: c.sortOrder }).eq('id', t.id)]); onRefresh()
   }
-
-  // ── Asignar lección existente a módulo ───────────────────────────────────────
   const assignLesson = async (lessonId: string, moduleId: string) => {
-    await supabase.from('academy_lessons').update({ module_id: moduleId }).eq('id', lessonId)
+    await supabase.from('academy_lessons').update({ module_id: moduleId }).eq('id', lessonId); onRefresh()
+  }
+
+  // ── ACCESO handlers ───────────────────────────────────────────────────────────
+  const hasAccess = (cid: string, courseId: string) => courseAccess.some(a => a.companyId === cid && a.courseId === courseId)
+  const toggleAccess = async (cid: string, courseId: string) => {
+    const ex = courseAccess.find(a => a.companyId === cid && a.courseId === courseId)
+    if (ex) await supabase.from('company_course_access').delete().eq('id', ex.id)
+    else await supabase.from('company_course_access').insert({ id: generateId(), company_id: cid, course_id: courseId })
     onRefresh()
   }
-
-  // ── Acceso empresa-curso ─────────────────────────────────────────────────────
-  const hasAccess = (companyId: string, courseId: string) =>
-    courseAccess.some(a => a.companyId === companyId && a.courseId === courseId)
-
-  const toggleAccess = async (companyId: string, courseId: string) => {
-    const existing = courseAccess.find(a => a.companyId === companyId && a.courseId === courseId)
-    if (existing) {
-      await supabase.from('company_course_access').delete().eq('id', existing.id)
-    } else {
-      await supabase.from('company_course_access').insert({ id: generateId(), company_id: companyId, course_id: courseId })
-    }
-    onRefresh()
+  const grantAll = async (cid: string) => {
+    await Promise.all(courses.filter(c => !hasAccess(cid, c.id)).map(c => supabase.from('company_course_access').insert({ id: generateId(), company_id: cid, course_id: c.id }))); onRefresh()
+  }
+  const revokeAll = async (cid: string) => {
+    await supabase.from('company_course_access').delete().eq('company_id', cid); onRefresh()
   }
 
-  const grantAll = async (companyId: string) => {
-    const ops = courses
-      .filter(c => !hasAccess(companyId, c.id))
-      .map(c => supabase.from('company_course_access').insert({ id: generateId(), company_id: companyId, course_id: c.id }))
-    await Promise.all(ops); onRefresh()
+  // ── EXCLUSIVO handlers ────────────────────────────────────────────────────────
+  const saveExcContent = async () => {
+    if (!excContentForm.title.trim()) return; setSaving(true)
+    const payload = { title: excContentForm.title.trim(), description: excContentForm.description.trim() || null, published: excContentForm.published, company_id: selectedCompany, sort_order: editingItem?.sortOrder ?? exclusiveContents.filter(c => c.companyId === selectedCompany).length }
+    if (editingItem) await supabase.from('exclusive_content').update(payload).eq('id', editingItem.id)
+    else await supabase.from('exclusive_content').insert({ ...payload, id: generateId() })
+    setSaving(false); closeForm(); onRefresh()
   }
-
-  const revokeAll = async (companyId: string) => {
-    await supabase.from('company_course_access').delete().eq('company_id', companyId); onRefresh()
+  const deleteExcContent = async (id: string) => {
+    if (!confirm('¿Eliminar este material exclusivo? Se borrarán todos sus módulos y lecciones.')) return
+    await supabase.from('exclusive_content').delete().eq('id', id); onRefresh()
   }
-
-  // ── Videos exclusivos ────────────────────────────────────────────────────────
-  const [showVideoForm, setShowVideoForm] = useState(false)
-  const [editingVideo, setEditingVideo] = useState<ExclusiveVideo | null>(null)
-  const [videoForm, setVideoForm] = useState({ title: '', youtubeUrl: '', description: '', durationMinutes: '', published: true })
-
-  const openVideoForm = (v?: ExclusiveVideo) => {
-    setEditingVideo(v ?? null)
-    setVideoForm({ title: v?.title ?? '', youtubeUrl: v?.youtubeUrl ?? '', description: v?.description ?? '', durationMinutes: v?.durationMinutes?.toString() ?? '', published: v?.published ?? true })
-    setShowVideoForm(true)
+  const saveExcModule = async () => {
+    if (!moduleForm.title.trim() || !formContext.contentId) return; setSaving(true)
+    const mods = exclusiveMods.filter(m => m.contentId === formContext.contentId)
+    const payload = { title: moduleForm.title.trim(), description: moduleForm.description.trim() || null, content_id: formContext.contentId, sort_order: editingItem?.sortOrder ?? mods.length }
+    if (editingItem) await supabase.from('exclusive_modules').update(payload).eq('id', editingItem.id)
+    else await supabase.from('exclusive_modules').insert({ ...payload, id: generateId() })
+    setSaving(false); closeForm(); onRefresh()
   }
-
-  const saveVideo = async () => {
-    if (!videoForm.title.trim() || !videoForm.youtubeUrl.trim()) return
+  const deleteExcModule = async (id: string) => {
+    if (!confirm('¿Eliminar este módulo?')) return
+    await supabase.from('exclusive_modules').delete().eq('id', id); onRefresh()
+  }
+  const saveExcLesson = async () => {
+    const isVideo = lessonForm.lessonType === 'video'; const isDoc = !isVideo
+    if (!lessonForm.title.trim() || (isVideo && !lessonForm.youtubeUrl.trim()) || (isDoc && !lessonForm.documentUrl.trim())) return
     setSaving(true)
-    const companyVideos = exclusiveVideos.filter(v => v.companyId === selectedCompany)
-    const payload = {
-      title: videoForm.title.trim(), youtube_url: videoForm.youtubeUrl.trim(),
-      description: videoForm.description.trim() || null,
-      duration_minutes: videoForm.durationMinutes ? parseInt(videoForm.durationMinutes) : null,
-      published: videoForm.published, company_id: selectedCompany,
-      sort_order: editingVideo?.sortOrder ?? companyVideos.length,
-    }
-    if (editingVideo) await supabase.from('company_exclusive_videos').update(payload).eq('id', editingVideo.id)
-    else await supabase.from('company_exclusive_videos').insert({ ...payload, id: generateId() })
-    setSaving(false); setShowVideoForm(false); setEditingVideo(null); onRefresh()
+    const payload = { title: lessonForm.title.trim(), lesson_type: lessonForm.lessonType, youtube_url: isVideo ? lessonForm.youtubeUrl.trim() : null, document_url: isDoc ? lessonForm.documentUrl.trim() : null, description: lessonForm.description.trim() || null, duration_minutes: lessonForm.durationMinutes ? parseInt(lessonForm.durationMinutes) : null, content_id: formContext.contentId, module_id: formContext.excModuleId ?? null, sort_order: editingItem?.sortOrder ?? exclusiveLessons.filter(l => l.moduleId === (formContext.excModuleId ?? undefined) && l.contentId === formContext.contentId).length }
+    if (editingItem) await supabase.from('exclusive_lessons').update(payload).eq('id', editingItem.id)
+    else await supabase.from('exclusive_lessons').insert({ ...payload, id: generateId() })
+    setSaving(false); closeForm(); onRefresh()
+  }
+  const deleteExcLesson = async (id: string) => {
+    if (!confirm('¿Eliminar esta lección?')) return
+    await supabase.from('exclusive_lessons').delete().eq('id', id); onRefresh()
+  }
+  const moveExcModule = async (mods: ExclusiveModule[], idx: number, dir: -1 | 1) => {
+    const t = mods[idx + dir]; if (!t) return; const c = mods[idx]
+    await Promise.all([supabase.from('exclusive_modules').update({ sort_order: t.sortOrder }).eq('id', c.id), supabase.from('exclusive_modules').update({ sort_order: c.sortOrder }).eq('id', t.id)]); onRefresh()
+  }
+  const moveExcLesson = async (list: ExclusiveLesson[], idx: number, dir: -1 | 1) => {
+    const t = list[idx + dir]; if (!t) return; const c = list[idx]
+    await Promise.all([supabase.from('exclusive_lessons').update({ sort_order: t.sortOrder }).eq('id', c.id), supabase.from('exclusive_lessons').update({ sort_order: c.sortOrder }).eq('id', t.id)]); onRefresh()
+  }
+  const assignExcLesson = async (lessonId: string, moduleId: string) => {
+    await supabase.from('exclusive_lessons').update({ module_id: moduleId }).eq('id', lessonId); onRefresh()
   }
 
-  const deleteVideo = async (id: string) => {
-    if (!confirm('¿Eliminar este video exclusivo?')) return
-    await supabase.from('company_exclusive_videos').delete().eq('id', id); onRefresh()
+  // ── Shared lesson form modal ──────────────────────────────────────────────────
+  const isLessonFormOpen = formType === 'lesson' || formType === 'courseLesson' || formType === 'excLesson'
+  const lessonSaveHandler = formType === 'excLesson' ? saveExcLesson : saveLesson
+  const lessonFormDisabled = !lessonForm.title.trim() || (lessonForm.lessonType === 'video' && !lessonForm.youtubeUrl.trim()) || (lessonForm.lessonType === 'document' && !lessonForm.documentUrl.trim())
+
+  // ── Shared lesson form JSX ────────────────────────────────────────────────────
+  const LessonFormModal = () => (
+    <Modal title={editingItem ? 'Editar lección' : 'Nueva lección'} onClose={closeForm} onSave={lessonSaveHandler} saving={saving} disabled={lessonFormDisabled}>
+      <div>
+        <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">Tipo de lección</label>
+        <div className="flex gap-2 mt-2">
+          {(['video', 'document'] as const).map(type => (
+            <button key={type} type="button" onClick={() => setLessonForm(p => ({ ...p, lessonType: type }))}
+              className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl border-2 text-sm font-bold transition-all ${lessonForm.lessonType === type ? type === 'video' ? 'border-indigo-500 bg-indigo-50 text-indigo-700' : 'border-emerald-500 bg-emerald-50 text-emerald-700' : 'border-slate-200 text-slate-500 hover:border-slate-300'}`}>
+              {type === 'video' ? <Video size={15} /> : <FileText size={15} />}
+              {type === 'video' ? 'Video' : 'Documento PDF'}
+            </button>
+          ))}
+        </div>
+      </div>
+      <FormField label="Título *">
+        <input autoFocus value={lessonForm.title} onChange={e => setLessonForm(p => ({ ...p, title: e.target.value }))} className={inputCls} placeholder={lessonForm.lessonType === 'video' ? 'Ej. Introducción' : 'Ej. Guía práctica'} />
+      </FormField>
+      {lessonForm.lessonType === 'video' ? (
+        <FormField label="URL de YouTube *">
+          <input value={lessonForm.youtubeUrl} onChange={e => setLessonForm(p => ({ ...p, youtubeUrl: e.target.value }))} className={inputCls} placeholder="https://youtu.be/..." />
+          {lessonForm.youtubeUrl && extractYoutubeId(lessonForm.youtubeUrl) && <p className="text-[11px] text-emerald-600 font-semibold mt-1">✓ Video detectado</p>}
+        </FormField>
+      ) : (
+        <FormField label="Link de Google Drive *">
+          <input value={lessonForm.documentUrl} onChange={e => setLessonForm(p => ({ ...p, documentUrl: e.target.value }))} className={inputCls} placeholder="https://drive.google.com/file/d/.../view" />
+          {lessonForm.documentUrl.includes('drive.google.com') && <p className="text-[11px] text-emerald-600 font-semibold mt-1">✓ Link de Drive detectado — asegúrate que sea público</p>}
+        </FormField>
+      )}
+      <FormField label="Descripción">
+        <textarea value={lessonForm.description} onChange={e => setLessonForm(p => ({ ...p, description: e.target.value }))} rows={2} className={`${inputCls} resize-none`} placeholder="Descripción opcional..." />
+      </FormField>
+      {lessonForm.lessonType === 'video' && (
+        <FormField label="Duración (minutos)">
+          <input type="number" value={lessonForm.durationMinutes} onChange={e => setLessonForm(p => ({ ...p, durationMinutes: e.target.value }))} className={inputCls} placeholder="Ej. 12" />
+        </FormField>
+      )}
+    </Modal>
+  )
+
+  // ── Render de árbol de lecciones (reutilizable) ───────────────────────────────
+  const renderLessonRow = (lesson: AcademyLesson | ExclusiveLesson, idx: number, list: any[], isExc: boolean, onEdit: () => void, onDel: () => void, onMoveUp: () => void, onMoveDown: () => void) => {
+    const isDoc = lesson.lessonType === 'document'
+    const ytId = !isDoc ? extractYoutubeId((lesson as any).youtubeUrl) : null
+    return (
+      <div key={lesson.id} className="flex items-center gap-2 py-1.5 border-b border-slate-50 last:border-0">
+        {isDoc ? (
+          <div className="w-12 h-8 rounded-lg bg-emerald-50 border border-emerald-200 flex items-center justify-center shrink-0"><FileText size={13} className="text-emerald-600" /></div>
+        ) : ytId ? (
+          <img src={`https://img.youtube.com/vi/${ytId}/default.jpg`} alt="" className="w-12 h-8 rounded-lg object-cover shrink-0" />
+        ) : (
+          <div className="w-12 h-8 rounded-lg bg-slate-100 flex items-center justify-center shrink-0"><Video size={12} className="text-slate-400" /></div>
+        )}
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-1">
+            <div className="text-[11px] font-bold text-slate-700 truncate">{idx + 1}. {lesson.title}</div>
+            {isDoc && <span className="text-[8px] font-black text-emerald-600 bg-emerald-50 border border-emerald-200 px-1 rounded shrink-0">PDF</span>}
+          </div>
+          {lesson.durationMinutes && <div className="text-[10px] text-slate-400">{lesson.durationMinutes} min</div>}
+        </div>
+        <div className="flex items-center gap-0.5 shrink-0">
+          <div className="flex flex-col gap-0.5">
+            <button onClick={onMoveUp} disabled={idx === 0} className="p-0.5 rounded hover:bg-slate-200 text-slate-400 disabled:opacity-20"><ChevronUp size={10} /></button>
+            <button onClick={onMoveDown} disabled={idx === list.length - 1} className="p-0.5 rounded hover:bg-slate-200 text-slate-400 disabled:opacity-20"><ChevronDown size={10} /></button>
+          </div>
+          <button onClick={onEdit} className="p-1 rounded hover:bg-indigo-50 text-indigo-400"><Edit2 size={11} /></button>
+          <button onClick={onDel} className="p-1 rounded hover:bg-red-50 text-red-400"><Trash2 size={11} /></button>
+        </div>
+      </div>
+    )
   }
 
-  const moveVideo = async (vids: ExclusiveVideo[], idx: number, dir: -1 | 1) => {
-    const target = vids[idx + dir]; if (!target) return
-    const current = vids[idx]
-    await Promise.all([
-      supabase.from('company_exclusive_videos').update({ sort_order: target.sortOrder }).eq('id', current.id),
-      supabase.from('company_exclusive_videos').update({ sort_order: current.sortOrder }).eq('id', target.id),
-    ]); onRefresh()
-  }
-
-  // ── Datos derivados ───────────────────────────────────────────────────────────
-  const companyVideos = exclusiveVideos.filter(v => v.companyId === selectedCompany)
+  // ── Derived data ──────────────────────────────────────────────────────────────
+  const companyExcContents = exclusiveContents.filter(c => c.companyId === selectedCompany)
 
   return (
     <div className="flex flex-col h-full">
-
-      {/* Sub-tabs de Academia */}
+      {/* Sub-tabs */}
       <div className="bg-white border-b border-slate-200 px-4 py-3 shrink-0">
         <div className="flex gap-1">
           {([
-            { key: 'cursos',   label: '📚 Cursos',   desc: 'Gestionar catálogo global' },
-            { key: 'acceso',   label: '🔑 Acceso',   desc: 'Asignar cursos a empresas' },
-            { key: 'exclusivo',label: '⭐ Exclusivo', desc: 'Contenido privado por empresa' },
+            { key: 'cursos',    label: '📚 Cursos',    desc: 'Catálogo global' },
+            { key: 'acceso',    label: '🔑 Acceso',    desc: 'Asignar a empresas' },
+            { key: 'exclusivo', label: '⭐ Exclusivo', desc: 'Contenido privado' },
           ] as const).map(t => (
-            <button
-              key={t.key}
-              onClick={() => setAcademiaTab(t.key)}
-              className={`px-3 py-2 rounded-xl text-xs font-bold transition-all ${
-                academiaTab === t.key
-                  ? 'bg-indigo-600 text-white'
-                  : 'text-slate-500 hover:bg-slate-100'
-              }`}
-            >
+            <button key={t.key} onClick={() => setAcademiaTab(t.key)}
+              className={`px-3 py-2 rounded-xl text-xs font-bold transition-all ${academiaTab === t.key ? 'bg-indigo-600 text-white' : 'text-slate-500 hover:bg-slate-100'}`}>
               {t.label}
             </button>
           ))}
@@ -1081,42 +1101,11 @@ function AcademiaTab({
       <div className="flex-1 overflow-y-auto custom-scrollbar">
       <div className="p-4 space-y-4">
 
-      {/* ── Modals ── */}
-      {/* Video exclusivo form */}
-      {showVideoForm && (
-        <Modal title={editingVideo ? 'Editar video' : 'Nuevo video exclusivo'} onClose={() => { setShowVideoForm(false); setEditingVideo(null) }} onSave={saveVideo} saving={saving} disabled={!videoForm.title.trim() || !videoForm.youtubeUrl.trim()}>
-          <FormField label="Título *">
-            <input autoFocus value={videoForm.title} onChange={e => setVideoForm(p => ({ ...p, title: e.target.value }))} className={inputCls} placeholder="Ej. Sesión especial de liderazgo" />
-          </FormField>
-          <FormField label="URL de YouTube *">
-            <input value={videoForm.youtubeUrl} onChange={e => setVideoForm(p => ({ ...p, youtubeUrl: e.target.value }))} className={inputCls} placeholder="https://youtu.be/..." />
-            {videoForm.youtubeUrl && extractYoutubeId(videoForm.youtubeUrl) && (
-              <p className="text-[11px] text-emerald-600 font-semibold mt-1">✓ ID: {extractYoutubeId(videoForm.youtubeUrl)}</p>
-            )}
-          </FormField>
-          <FormField label="Descripción">
-            <textarea value={videoForm.description} onChange={e => setVideoForm(p => ({ ...p, description: e.target.value }))} rows={2} className={`${inputCls} resize-none`} placeholder="Descripción del video..." />
-          </FormField>
-          <FormField label="Duración (minutos)">
-            <input type="number" value={videoForm.durationMinutes} onChange={e => setVideoForm(p => ({ ...p, durationMinutes: e.target.value }))} className={inputCls} placeholder="Ej. 15" />
-          </FormField>
-          <label className="flex items-center gap-3 cursor-pointer pt-1">
-            <div onClick={() => setVideoForm(p => ({ ...p, published: !p.published }))} className={`w-10 h-6 rounded-full flex items-center px-0.5 transition-colors ${videoForm.published ? 'bg-emerald-500' : 'bg-slate-300'}`}>
-              <div className={`w-5 h-5 rounded-full bg-white shadow transition-transform ${videoForm.published ? 'translate-x-4' : 'translate-x-0'}`} />
-            </div>
-            <span className="text-sm font-semibold text-slate-700">Publicado</span>
-          </label>
-        </Modal>
-      )}
-
-      {formType === 'course' && (
+      {/* ── Modals compartidos ── */}
+      {(formType === 'course') && (
         <Modal title={editingItem ? 'Editar curso' : 'Nuevo curso'} onClose={closeForm} onSave={saveCourse} saving={saving} disabled={!courseForm.title.trim()}>
-          <FormField label="Título *">
-            <input autoFocus value={courseForm.title} onChange={e => setCourseForm(p => ({ ...p, title: e.target.value }))} className={inputCls} placeholder="Ej. Liderazgo Efectivo" />
-          </FormField>
-          <FormField label="Descripción">
-            <textarea value={courseForm.description} onChange={e => setCourseForm(p => ({ ...p, description: e.target.value }))} rows={2} className={`${inputCls} resize-none`} placeholder="¿De qué trata este curso?" />
-          </FormField>
+          <FormField label="Título *"><input autoFocus value={courseForm.title} onChange={e => setCourseForm(p => ({ ...p, title: e.target.value }))} className={inputCls} placeholder="Ej. Liderazgo Efectivo" /></FormField>
+          <FormField label="Descripción"><textarea value={courseForm.description} onChange={e => setCourseForm(p => ({ ...p, description: e.target.value }))} rows={2} className={`${inputCls} resize-none`} placeholder="¿De qué trata?" /></FormField>
           <label className="flex items-center gap-3 cursor-pointer pt-1">
             <div onClick={() => setCourseForm(p => ({ ...p, published: !p.published }))} className={`w-10 h-6 rounded-full flex items-center px-0.5 transition-colors ${courseForm.published ? 'bg-emerald-500' : 'bg-slate-300'}`}>
               <div className={`w-5 h-5 rounded-full bg-white shadow transition-transform ${courseForm.published ? 'translate-x-4' : 'translate-x-0'}`} />
@@ -1125,270 +1114,157 @@ function AcademiaTab({
           </label>
         </Modal>
       )}
-
-      {formType === 'module' && (
+      {(formType === 'module') && (
         <Modal title={editingItem ? 'Editar módulo' : 'Nuevo módulo'} onClose={closeForm} onSave={saveModule} saving={saving} disabled={!moduleForm.title.trim()}>
-          <FormField label="Título del módulo *">
-            <input autoFocus value={moduleForm.title} onChange={e => setModuleForm(p => ({ ...p, title: e.target.value }))} className={inputCls} placeholder="Ej. Módulo 1: Fundamentos" />
-          </FormField>
-          <FormField label="Descripción">
-            <textarea value={moduleForm.description} onChange={e => setModuleForm(p => ({ ...p, description: e.target.value }))} rows={2} className={`${inputCls} resize-none`} placeholder="Descripción del módulo..." />
-          </FormField>
+          <FormField label="Título del módulo *"><input autoFocus value={moduleForm.title} onChange={e => setModuleForm(p => ({ ...p, title: e.target.value }))} className={inputCls} placeholder="Ej. Módulo 1: Fundamentos" /></FormField>
+          <FormField label="Descripción"><textarea value={moduleForm.description} onChange={e => setModuleForm(p => ({ ...p, description: e.target.value }))} rows={2} className={`${inputCls} resize-none`} placeholder="Descripción opcional..." /></FormField>
         </Modal>
       )}
-
-      {formType === 'lesson' && (
-        <Modal
-          title={editingItem ? 'Editar lección' : 'Nueva lección'}
-          onClose={closeForm} onSave={saveLesson} saving={saving}
-          disabled={
-            !lessonForm.title.trim() ||
-            (lessonForm.lessonType === 'video' && !lessonForm.youtubeUrl.trim()) ||
-            (lessonForm.lessonType === 'document' && !lessonForm.documentUrl.trim())
-          }
-        >
-          {/* Tipo de lección */}
-          <div>
-            <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">Tipo de lección</label>
-            <div className="flex gap-2 mt-2">
-              {(['video', 'document'] as const).map(type => (
-                <button
-                  key={type}
-                  type="button"
-                  onClick={() => setLessonForm(p => ({ ...p, lessonType: type }))}
-                  className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl border-2 text-sm font-bold transition-all ${
-                    lessonForm.lessonType === type
-                      ? type === 'video' ? 'border-indigo-500 bg-indigo-50 text-indigo-700' : 'border-emerald-500 bg-emerald-50 text-emerald-700'
-                      : 'border-slate-200 text-slate-500 hover:border-slate-300'
-                  }`}
-                >
-                  {type === 'video' ? <Video size={15} /> : <FileText size={15} />}
-                  {type === 'video' ? 'Video' : 'Documento PDF'}
-                </button>
-              ))}
+      {(formType === 'excContent') && (
+        <Modal title={editingItem ? 'Editar material' : 'Nuevo material exclusivo'} onClose={closeForm} onSave={saveExcContent} saving={saving} disabled={!excContentForm.title.trim()}>
+          <FormField label="Nombre del material *"><input autoFocus value={excContentForm.title} onChange={e => setExcContentForm(p => ({ ...p, title: e.target.value }))} className={inputCls} placeholder="Ej. Programa Mayo 2026" /></FormField>
+          <FormField label="Descripción"><textarea value={excContentForm.description} onChange={e => setExcContentForm(p => ({ ...p, description: e.target.value }))} rows={2} className={`${inputCls} resize-none`} placeholder="Descripción opcional..." /></FormField>
+          <label className="flex items-center gap-3 cursor-pointer pt-1">
+            <div onClick={() => setExcContentForm(p => ({ ...p, published: !p.published }))} className={`w-10 h-6 rounded-full flex items-center px-0.5 transition-colors ${excContentForm.published ? 'bg-emerald-500' : 'bg-slate-300'}`}>
+              <div className={`w-5 h-5 rounded-full bg-white shadow transition-transform ${excContentForm.published ? 'translate-x-4' : 'translate-x-0'}`} />
             </div>
-          </div>
-
-          <FormField label="Título *">
-            <input autoFocus value={lessonForm.title} onChange={e => setLessonForm(p => ({ ...p, title: e.target.value }))} className={inputCls} placeholder={lessonForm.lessonType === 'video' ? 'Ej. Introducción al liderazgo' : 'Ej. Guía de ejercicios'} />
-          </FormField>
-
-          {lessonForm.lessonType === 'video' ? (
-            <FormField label="URL de YouTube *">
-              <input value={lessonForm.youtubeUrl} onChange={e => setLessonForm(p => ({ ...p, youtubeUrl: e.target.value }))} className={inputCls} placeholder="https://youtu.be/..." />
-              {lessonForm.youtubeUrl && extractYoutubeId(lessonForm.youtubeUrl) && (
-                <p className="text-[11px] text-emerald-600 font-semibold mt-1.5">✓ Video detectado: {extractYoutubeId(lessonForm.youtubeUrl)}</p>
-              )}
-            </FormField>
-          ) : (
-            <FormField label="Link de Google Drive *">
-              <input value={lessonForm.documentUrl} onChange={e => setLessonForm(p => ({ ...p, documentUrl: e.target.value }))} className={inputCls} placeholder="https://drive.google.com/file/d/.../view" />
-              {lessonForm.documentUrl && lessonForm.documentUrl.includes('drive.google.com') && (
-                <p className="text-[11px] text-emerald-600 font-semibold mt-1.5">✓ Link de Drive detectado — asegúrate de que sea público</p>
-              )}
-              <p className="text-[10px] text-slate-400 mt-1.5 leading-relaxed">
-                El archivo debe tener permisos <strong>"Cualquier persona con el enlace puede ver"</strong> en Google Drive.
-              </p>
-            </FormField>
-          )}
-
-          <FormField label="Descripción">
-            <textarea value={lessonForm.description} onChange={e => setLessonForm(p => ({ ...p, description: e.target.value }))} rows={2} className={`${inputCls} resize-none`} placeholder="Descripción de la lección..." />
-          </FormField>
-          {lessonForm.lessonType === 'video' && (
-            <FormField label="Duración (minutos)">
-              <input type="number" value={lessonForm.durationMinutes} onChange={e => setLessonForm(p => ({ ...p, durationMinutes: e.target.value }))} className={inputCls} placeholder="Ej. 12" />
-            </FormField>
-          )}
+            <span className="text-sm font-semibold text-slate-700">Publicado</span>
+          </label>
         </Modal>
       )}
+      {(formType === 'excModule') && (
+        <Modal title={editingItem ? 'Editar módulo' : 'Nuevo módulo'} onClose={closeForm} onSave={saveExcModule} saving={saving} disabled={!moduleForm.title.trim()}>
+          <FormField label="Título del módulo *"><input autoFocus value={moduleForm.title} onChange={e => setModuleForm(p => ({ ...p, title: e.target.value }))} className={inputCls} placeholder="Ej. Módulo 1: Fundamentos" /></FormField>
+          <FormField label="Descripción"><textarea value={moduleForm.description} onChange={e => setModuleForm(p => ({ ...p, description: e.target.value }))} rows={2} className={`${inputCls} resize-none`} /></FormField>
+        </Modal>
+      )}
+      {isLessonFormOpen && <LessonFormModal />}
 
-      {/* ── SUB-TAB: CURSOS (global) ── */}
+      {/* ══════════════════════════════════════════════
+          SUB-TAB: CURSOS GLOBALES
+      ══════════════════════════════════════════════ */}
       {academiaTab === 'cursos' && (
         <>
-
-          {/* Nuevo curso */}
-          <button onClick={() => openCourseForm()} className="w-full flex items-center justify-center gap-2 py-3 rounded-2xl bg-indigo-600 text-white font-bold text-sm shadow-md shadow-indigo-100 hover:bg-indigo-700 transition-colors">
+          <button onClick={() => { setEditingItem(null); setCourseForm({ title: '', description: '', published: true }); setFormType('course') }}
+            className="w-full flex items-center justify-center gap-2 py-3 rounded-2xl bg-indigo-600 text-white font-bold text-sm shadow-md shadow-indigo-100 hover:bg-indigo-700 transition-colors">
             <Plus size={16} /> Nuevo curso
           </button>
-
-          {/* ── Lista de cursos globales ── */}
           {courses.length === 0 ? (
-            <div className="text-center py-12 text-slate-400">
-              <BookOpen size={36} className="mx-auto mb-3 opacity-30" />
-              <p className="font-semibold">Sin cursos</p>
-              <p className="text-sm mt-1">Crea el primer curso global de la plataforma</p>
-            </div>
+            <div className="text-center py-12 text-slate-400"><BookOpen size={36} className="mx-auto mb-3 opacity-30" /><p className="font-semibold">Sin cursos</p></div>
           ) : (
             <div className="space-y-2">
               {courses.map(course => {
                 const courseModules = academyModules.filter(m => m.courseId === course.id)
                 const totalLessons  = lessons.filter(l => l.courseId === course.id).length
-                const isCourseOpen  = expandedCourses.has(course.id)
-
+                const isCourseOpen  = expandedItems.has(course.id)
+                const unassigned    = lessons.filter(l => l.courseId === course.id && !l.moduleId)
                 return (
                   <div key={course.id} className="bg-white rounded-2xl border border-slate-200 overflow-hidden">
-
-                    {/* ── NIVEL 1: Curso ── */}
+                    {/* Curso header */}
                     <div className="flex items-center gap-2 px-4 py-3">
-                      <button onClick={() => toggleCourse(course.id)} className="flex items-center gap-3 flex-1 min-w-0 text-left">
-                        <div className="w-8 h-8 rounded-xl bg-indigo-600 flex items-center justify-center shrink-0">
-                          <BookOpen size={14} className="text-white" />
-                        </div>
+                      <button onClick={() => toggleItem(course.id)} className="flex items-center gap-3 flex-1 min-w-0 text-left">
+                        <div className="w-8 h-8 rounded-xl bg-indigo-600 flex items-center justify-center shrink-0"><BookOpen size={14} className="text-white" /></div>
                         <div className="min-w-0 flex-1">
                           <div className="font-black text-slate-800 text-sm truncate">{course.title}</div>
-                          <div className="text-[11px] text-slate-400">
-                            {courseModules.length} módulo{courseModules.length !== 1 ? 's' : ''} · {totalLessons} lección{totalLessons !== 1 ? 'es' : ''}
-                            {!course.published && <span className="ml-2 text-amber-500">· Borrador</span>}
-                          </div>
+                          <div className="text-[11px] text-slate-400">{courseModules.length} mód. · {totalLessons} lecc.{!course.published ? ' · Borrador' : ''}</div>
                         </div>
                         <ChevronRight size={15} className={`text-slate-400 shrink-0 transition-transform ${isCourseOpen ? 'rotate-90' : ''}`} />
                       </button>
-                      <button onClick={() => openCourseForm(course)} className="p-1.5 rounded-lg hover:bg-indigo-50 text-indigo-400 shrink-0"><Edit2 size={13} /></button>
+                      <button onClick={() => { setEditingItem(course); setCourseForm({ title: course.title, description: course.description ?? '', published: course.published }); setFormType('course') }} className="p-1.5 rounded-lg hover:bg-indigo-50 text-indigo-400 shrink-0"><Edit2 size={13} /></button>
                       <button onClick={() => deleteCourse(course.id)} className="p-1.5 rounded-lg hover:bg-red-50 text-red-400 shrink-0"><Trash2 size={13} /></button>
                     </div>
 
-                    {/* ── NIVEL 2: Módulos ── */}
-                    {isCourseOpen && (() => {
-                      const unassigned = lessons.filter(l => l.courseId === course.id && !l.moduleId)
-                      return (
-                        <div className="border-t border-slate-100">
-                          {courseModules.length === 0 && (
-                            <p className="text-xs text-slate-400 px-12 py-3">Sin módulos todavía — crea uno para organizar las lecciones</p>
-                          )}
-
-                          {courseModules.map((mod, modIdx) => {
-                            const modLessons = lessons.filter(l => l.moduleId === mod.id)
-                            const isModOpen  = expandedModules.has(mod.id)
-
-                            return (
-                              <div key={mod.id} className="border-b border-slate-50 last:border-0">
-                                {/* Módulo row */}
-                                <div className="flex items-center gap-1 pl-10 pr-3 py-2.5 bg-slate-50/70">
-                                  <button onClick={() => toggleModule(mod.id)} className="flex items-center gap-2.5 flex-1 min-w-0 text-left">
-                                    <div className="w-6 h-6 rounded-lg bg-indigo-100 flex items-center justify-center shrink-0">
-                                      <ChevronRight size={12} className={`text-indigo-500 transition-transform ${isModOpen ? 'rotate-90' : ''}`} />
-                                    </div>
-                                    <div className="min-w-0 flex-1">
-                                      <div className="font-bold text-slate-700 text-xs truncate">{mod.title}</div>
-                                      <div className="text-[10px] text-slate-400">{modLessons.length} lección{modLessons.length !== 1 ? 'es' : ''}</div>
-                                    </div>
-                                  </button>
-                                  {/* Reordenar módulo */}
-                                  <div className="flex flex-col gap-0.5 shrink-0">
-                                    <button onClick={() => moveModule(courseModules, modIdx, -1)} disabled={modIdx === 0} className="p-0.5 rounded hover:bg-slate-200 text-slate-400 disabled:opacity-20"><ChevronUp size={11} /></button>
-                                    <button onClick={() => moveModule(courseModules, modIdx, 1)} disabled={modIdx === courseModules.length - 1} className="p-0.5 rounded hover:bg-slate-200 text-slate-400 disabled:opacity-20"><ChevronDown size={11} /></button>
+                    {/* Contenido expandido */}
+                    {isCourseOpen && (
+                      <div className="border-t border-slate-100">
+                        {courseModules.map((mod, modIdx) => {
+                          const modLessons = lessons.filter(l => l.moduleId === mod.id)
+                          const isModOpen  = expandedItems.has(mod.id)
+                          return (
+                            <div key={mod.id} className="border-b border-slate-50 last:border-0">
+                              <div className="flex items-center gap-1 pl-10 pr-3 py-2.5 bg-slate-50/70">
+                                <button onClick={() => toggleItem(mod.id)} className="flex items-center gap-2.5 flex-1 min-w-0 text-left">
+                                  <div className="w-6 h-6 rounded-lg bg-indigo-100 flex items-center justify-center shrink-0">
+                                    <ChevronRight size={12} className={`text-indigo-500 transition-transform ${isModOpen ? 'rotate-90' : ''}`} />
                                   </div>
-                                  <button onClick={() => openModuleForm(course.id, mod)} className="p-1.5 rounded-lg hover:bg-indigo-50 text-indigo-400"><Edit2 size={11} /></button>
-                                  <button onClick={() => deleteModule(mod.id)} className="p-1.5 rounded-lg hover:bg-red-50 text-red-400"><Trash2 size={11} /></button>
+                                  <div className="min-w-0 flex-1">
+                                    <div className="font-bold text-slate-700 text-xs truncate">{mod.title}</div>
+                                    <div className="text-[10px] text-slate-400">{modLessons.length} lección{modLessons.length !== 1 ? 'es' : ''}</div>
+                                  </div>
+                                </button>
+                                <div className="flex flex-col gap-0.5 shrink-0">
+                                  <button onClick={() => moveModule(courseModules, modIdx, -1)} disabled={modIdx === 0} className="p-0.5 rounded hover:bg-slate-200 text-slate-400 disabled:opacity-20"><ChevronUp size={11} /></button>
+                                  <button onClick={() => moveModule(courseModules, modIdx, 1)} disabled={modIdx === courseModules.length - 1} className="p-0.5 rounded hover:bg-slate-200 text-slate-400 disabled:opacity-20"><ChevronDown size={11} /></button>
                                 </div>
-
-                                {/* ── NIVEL 3: Lecciones ── */}
-                                {isModOpen && (
-                                  <div className="pl-16 pr-3 py-2 space-y-1.5 bg-white">
-                                    {modLessons.map((lesson, lessonIdx) => {
-                                      const isDoc = lesson.lessonType === 'document'
-                                      const ytId  = !isDoc ? extractYoutubeId(lesson.youtubeUrl ?? '') : null
-                                      return (
-                                        <div key={lesson.id} className="flex items-center gap-2 py-1.5 border-b border-slate-50 last:border-0">
-                                          {isDoc ? (
-                                            <div className="w-12 h-8 rounded-lg bg-emerald-50 border border-emerald-200 flex items-center justify-center shrink-0">
-                                              <FileText size={13} className="text-emerald-600" />
-                                            </div>
-                                          ) : ytId ? (
-                                            <img src={`https://img.youtube.com/vi/${ytId}/default.jpg`} alt="" className="w-12 h-8 rounded-lg object-cover shrink-0" />
-                                          ) : (
-                                            <div className="w-12 h-8 rounded-lg bg-slate-100 flex items-center justify-center shrink-0">
-                                              <Video size={12} className="text-slate-400" />
-                                            </div>
-                                          )}
-                                          <div className="min-w-0 flex-1">
-                                            <div className="flex items-center gap-1">
-                                              <div className="text-[11px] font-bold text-slate-700 truncate">{lessonIdx + 1}. {lesson.title}</div>
-                                              {isDoc && <span className="text-[8px] font-black text-emerald-600 bg-emerald-50 border border-emerald-200 px-1 rounded shrink-0">PDF</span>}
-                                            </div>
-                                            {lesson.durationMinutes && <div className="text-[10px] text-slate-400">{lesson.durationMinutes} min</div>}
-                                          </div>
-                                          <div className="flex items-center gap-0.5 shrink-0">
-                                            {/* Reordenar lección */}
-                                            <div className="flex flex-col gap-0.5">
-                                              <button onClick={() => moveLesson(modLessons, lessonIdx, -1)} disabled={lessonIdx === 0} className="p-0.5 rounded hover:bg-slate-200 text-slate-400 disabled:opacity-20"><ChevronUp size={10} /></button>
-                                              <button onClick={() => moveLesson(modLessons, lessonIdx, 1)} disabled={lessonIdx === modLessons.length - 1} className="p-0.5 rounded hover:bg-slate-200 text-slate-400 disabled:opacity-20"><ChevronDown size={10} /></button>
-                                            </div>
-                                            <button onClick={() => openLessonForm(course.id, mod.id, lesson)} className="p-1 rounded hover:bg-indigo-50 text-indigo-400"><Edit2 size={11} /></button>
-                                            <button onClick={() => deleteLesson(lesson.id)} className="p-1 rounded hover:bg-red-50 text-red-400"><Trash2 size={11} /></button>
-                                            {(ytId || isDoc) && <a href={isDoc ? lesson.documentUrl : lesson.youtubeUrl} target="_blank" rel="noopener noreferrer" className="p-1 rounded hover:bg-slate-100 text-slate-400"><ExternalLink size={11} /></a>}
-                                          </div>
-                                        </div>
-                                      )
-                                    })}
-                                    <button
-                                      onClick={() => openLessonForm(course.id, mod.id)}
-                                      className="w-full flex items-center gap-2 py-2 rounded-xl border border-dashed border-slate-200 text-slate-400 text-[11px] font-bold hover:border-indigo-300 hover:text-indigo-500 hover:bg-indigo-50 transition-colors justify-center"
-                                    >
-                                      <Plus size={11} /> Nueva lección
-                                    </button>
-                                  </div>
-                                )}
+                                <button onClick={() => { setEditingItem(mod); setModuleForm({ title: mod.title, description: mod.description ?? '' }); setFormContext({ courseId: course.id }); setFormType('module') }} className="p-1.5 rounded-lg hover:bg-indigo-50 text-indigo-400"><Edit2 size={11} /></button>
+                                <button onClick={() => deleteModule(mod.id)} className="p-1.5 rounded-lg hover:bg-red-50 text-red-400"><Trash2 size={11} /></button>
                               </div>
-                            )
-                          })}
-
-                          {/* ── Lecciones sin módulo ── */}
-                          {unassigned.length > 0 && (
-                            <div className="border-t-2 border-dashed border-amber-200 bg-amber-50/50">
-                              <div className="flex items-center gap-2 px-10 py-2">
-                                <Link size={12} className="text-amber-500 shrink-0" />
-                                <span className="text-[11px] font-black text-amber-600 uppercase tracking-wide">
-                                  {unassigned.length} lección{unassigned.length !== 1 ? 'es' : ''} sin módulo
-                                </span>
-                              </div>
-                              {unassigned.map(lesson => {
-                                const ytId = lesson.lessonType !== 'document' ? extractYoutubeId(lesson.youtubeUrl ?? '') : null
-                                return (
-                                  <div key={lesson.id} className="flex items-center gap-2.5 pl-12 pr-3 py-2 border-t border-amber-100">
-                                    {ytId ? (
-                                      <img src={`https://img.youtube.com/vi/${ytId}/default.jpg`} alt="" className="w-10 h-7 rounded-lg object-cover shrink-0" />
-                                    ) : (
-                                      <div className="w-10 h-7 rounded-lg bg-amber-100 flex items-center justify-center shrink-0">
-                                        <Video size={11} className="text-amber-400" />
-                                      </div>
-                                    )}
-                                    <div className="min-w-0 flex-1">
-                                      <div className="text-[11px] font-bold text-slate-700 truncate">{lesson.title}</div>
-                                    </div>
-                                    {/* Selector de módulo */}
-                                    {courseModules.length > 0 ? (
-                                      <select
-                                        defaultValue=""
-                                        onChange={e => { if (e.target.value) assignLesson(lesson.id, e.target.value) }}
-                                        className="text-[11px] font-bold text-indigo-600 bg-indigo-50 border border-indigo-200 rounded-lg px-2 py-1 focus:outline-none focus:ring-1 focus:ring-indigo-400 cursor-pointer shrink-0"
-                                      >
-                                        <option value="" disabled>Asignar módulo…</option>
-                                        {courseModules.map(m => (
-                                          <option key={m.id} value={m.id}>{m.title}</option>
-                                        ))}
-                                      </select>
-                                    ) : (
-                                      <span className="text-[10px] text-amber-500 shrink-0">Crea un módulo primero</span>
-                                    )}
-                                    <button onClick={() => deleteLesson(lesson.id)} className="p-1 rounded hover:bg-red-50 text-red-400 shrink-0"><Trash2 size={11} /></button>
-                                  </div>
-                                )
-                              })}
+                              {isModOpen && (
+                                <div className="pl-16 pr-3 py-2 space-y-1.5 bg-white">
+                                  {modLessons.map((lesson, li) => renderLessonRow(lesson, li, modLessons, false,
+                                    () => openLessonForm('lesson', { courseId: course.id, moduleId: mod.id }, lesson),
+                                    () => deleteLesson(lesson.id),
+                                    () => moveLesson(modLessons, li, -1),
+                                    () => moveLesson(modLessons, li, 1)
+                                  ))}
+                                  <button onClick={() => openLessonForm('lesson', { courseId: course.id, moduleId: mod.id })}
+                                    className="w-full flex items-center justify-center gap-2 py-2 rounded-xl border border-dashed border-slate-200 text-slate-400 text-[11px] font-bold hover:border-indigo-300 hover:text-indigo-500 hover:bg-indigo-50 transition-colors">
+                                    <Plus size={11} /> Nueva lección
+                                  </button>
+                                </div>
+                              )}
                             </div>
-                          )}
+                          )
+                        })}
 
-                          {/* Agregar módulo */}
-                          <button
-                            onClick={() => openModuleForm(course.id)}
-                            className="w-full flex items-center gap-2 px-10 py-2.5 text-indigo-500 text-xs font-bold hover:bg-indigo-50 transition-colors border-t border-slate-100"
-                          >
+                        {/* Lecciones sueltas sin módulo */}
+                        {unassigned.length > 0 && (
+                          <div className="border-t-2 border-dashed border-amber-200 bg-amber-50/50">
+                            <div className="flex items-center gap-2 px-10 py-2">
+                              <Link size={12} className="text-amber-500 shrink-0" />
+                              <span className="text-[11px] font-black text-amber-600 uppercase tracking-wide">{unassigned.length} lección{unassigned.length !== 1 ? 'es' : ''} sin módulo</span>
+                            </div>
+                            {unassigned.map(lesson => {
+                              const ytId = lesson.lessonType !== 'document' ? extractYoutubeId(lesson.youtubeUrl ?? '') : null
+                              return (
+                                <div key={lesson.id} className="flex items-center gap-2.5 pl-12 pr-3 py-2 border-t border-amber-100">
+                                  {lesson.lessonType === 'document' ? (
+                                    <div className="w-10 h-7 rounded-lg bg-emerald-50 border border-emerald-200 flex items-center justify-center shrink-0"><FileText size={11} className="text-emerald-600" /></div>
+                                  ) : ytId ? (
+                                    <img src={`https://img.youtube.com/vi/${ytId}/default.jpg`} alt="" className="w-10 h-7 rounded-lg object-cover shrink-0" />
+                                  ) : (
+                                    <div className="w-10 h-7 rounded-lg bg-amber-100 flex items-center justify-center shrink-0"><Video size={11} className="text-amber-400" /></div>
+                                  )}
+                                  <div className="min-w-0 flex-1"><div className="text-[11px] font-bold text-slate-700 truncate">{lesson.title}</div></div>
+                                  {courseModules.length > 0 ? (
+                                    <select defaultValue="" onChange={e => { if (e.target.value) assignLesson(lesson.id, e.target.value) }}
+                                      className="text-[11px] font-bold text-indigo-600 bg-indigo-50 border border-indigo-200 rounded-lg px-2 py-1 focus:outline-none cursor-pointer shrink-0">
+                                      <option value="" disabled>Asignar módulo…</option>
+                                      {courseModules.map(m => <option key={m.id} value={m.id}>{m.title}</option>)}
+                                    </select>
+                                  ) : <span className="text-[10px] text-amber-500 shrink-0">Sin módulos</span>}
+                                  <button onClick={() => openLessonForm('lesson', { courseId: course.id }, lesson)} className="p-1 rounded hover:bg-indigo-50 text-indigo-400 shrink-0"><Edit2 size={11} /></button>
+                                  <button onClick={() => deleteLesson(lesson.id)} className="p-1 rounded hover:bg-red-50 text-red-400 shrink-0"><Trash2 size={11} /></button>
+                                </div>
+                              )
+                            })}
+                          </div>
+                        )}
+
+                        {/* Acciones del curso */}
+                        <div className="flex border-t border-slate-100">
+                          <button onClick={() => { setEditingItem(null); setModuleForm({ title: '', description: '' }); setFormContext({ courseId: course.id }); setFormType('module') }}
+                            className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 text-indigo-500 text-xs font-bold hover:bg-indigo-50 transition-colors">
                             <Plus size={12} /> Agregar módulo
                           </button>
+                          <div className="w-px bg-slate-100" />
+                          <button onClick={() => openLessonForm('courseLesson', { courseId: course.id })}
+                            className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 text-slate-500 text-xs font-bold hover:bg-slate-50 transition-colors">
+                            <Plus size={12} /> Lección suelta
+                          </button>
                         </div>
-                      )
-                    })()}
+                      </div>
+                    )}
                   </div>
                 )
               })}
@@ -1397,20 +1273,15 @@ function AcademiaTab({
         </>
       )}
 
-      {/* ── SUB-TAB: ACCESO empresa-curso ── */}
+      {/* ══════════════════════════════════════════════
+          SUB-TAB: ACCESO
+      ══════════════════════════════════════════════ */}
       {academiaTab === 'acceso' && (
         <div className="space-y-4">
           {companies.length === 0 ? (
-            <div className="text-center py-12 text-slate-400">
-              <GraduationCap size={36} className="mx-auto mb-3 opacity-30" />
-              <p className="font-semibold">No hay empresas</p>
-            </div>
+            <div className="text-center py-12 text-slate-400"><GraduationCap size={36} className="mx-auto mb-3 opacity-30" /><p className="font-semibold">No hay empresas</p></div>
           ) : courses.length === 0 ? (
-            <div className="text-center py-12 text-slate-400">
-              <BookOpen size={36} className="mx-auto mb-3 opacity-30" />
-              <p className="font-semibold">No hay cursos</p>
-              <p className="text-sm mt-1">Crea cursos en la pestaña "Cursos" primero</p>
-            </div>
+            <div className="text-center py-12 text-slate-400"><BookOpen size={36} className="mx-auto mb-3 opacity-30" /><p className="font-semibold">No hay cursos</p><p className="text-sm mt-1">Crea cursos en la pestaña "Cursos" primero</p></div>
           ) : (
             <>
               <div>
@@ -1426,17 +1297,14 @@ function AcademiaTab({
               <div className="space-y-2">
                 {courses.map(course => {
                   const granted = hasAccess(selectedCompany, course.id)
-                  const mods = academyModules.filter(m => m.courseId === course.id)
-                  const lecs = lessons.filter(l => l.courseId === course.id)
                   return (
                     <div key={course.id} className={`flex items-center gap-3 p-4 rounded-2xl border transition-all ${granted ? 'bg-emerald-50 border-emerald-200' : 'bg-white border-slate-200'}`}>
                       <div className="min-w-0 flex-1">
                         <div className="font-bold text-slate-800 text-sm">{course.title}</div>
-                        <div className="text-[11px] text-slate-400 mt-0.5">{mods.length} módulo{mods.length !== 1 ? 's' : ''} · {lecs.length} lección{lecs.length !== 1 ? 'es' : ''}</div>
+                        <div className="text-[11px] text-slate-400 mt-0.5">{lessons.filter(l => l.courseId === course.id).length} lecciones</div>
                       </div>
                       <button onClick={() => toggleAccess(selectedCompany, course.id)}
-                        className={`w-12 h-6 rounded-full transition-colors flex items-center px-0.5 shrink-0 ${granted ? 'bg-emerald-500' : 'bg-slate-300'}`}
-                      >
+                        className={`w-12 h-6 rounded-full transition-colors flex items-center px-0.5 shrink-0 ${granted ? 'bg-emerald-500' : 'bg-slate-300'}`}>
                         <div className={`w-5 h-5 rounded-full bg-white shadow transition-transform ${granted ? 'translate-x-6' : 'translate-x-0'}`} />
                       </button>
                     </div>
@@ -1448,14 +1316,13 @@ function AcademiaTab({
         </div>
       )}
 
-      {/* ── SUB-TAB: EXCLUSIVO por empresa ── */}
+      {/* ══════════════════════════════════════════════
+          SUB-TAB: EXCLUSIVO
+      ══════════════════════════════════════════════ */}
       {academiaTab === 'exclusivo' && (
         <div className="space-y-4">
           {companies.length === 0 ? (
-            <div className="text-center py-12 text-slate-400">
-              <GraduationCap size={36} className="mx-auto mb-3 opacity-30" />
-              <p className="font-semibold">No hay empresas</p>
-            </div>
+            <div className="text-center py-12 text-slate-400"><GraduationCap size={36} className="mx-auto mb-3 opacity-30" /><p className="font-semibold">No hay empresas</p></div>
           ) : (
             <>
               <div>
@@ -1464,38 +1331,126 @@ function AcademiaTab({
                   {companies.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
                 </select>
               </div>
-              <button onClick={() => openVideoForm()} className="w-full flex items-center justify-center gap-2 py-3 rounded-2xl bg-indigo-600 text-white font-bold text-sm hover:bg-indigo-700 transition-colors">
-                <Plus size={16} /> Nuevo video exclusivo
+              <button onClick={() => { setEditingItem(null); setExcContentForm({ title: '', description: '', published: true }); setFormType('excContent') }}
+                className="w-full flex items-center justify-center gap-2 py-3 rounded-2xl bg-amber-500 text-white font-bold text-sm shadow-md shadow-amber-100 hover:bg-amber-600 transition-colors">
+                <Plus size={16} /> Nuevo material exclusivo
               </button>
-              {companyVideos.length === 0 ? (
-                <div className="text-center py-10 text-slate-400">
-                  <Video size={32} className="mx-auto mb-3 opacity-30" />
-                  <p className="font-semibold text-sm">Sin contenido exclusivo</p>
-                  <p className="text-xs mt-1">Agrega videos exclusivos para esta empresa</p>
-                </div>
+              {companyExcContents.length === 0 ? (
+                <div className="text-center py-10 text-slate-400"><Star size={32} className="mx-auto mb-3 opacity-30" /><p className="font-semibold text-sm">Sin material exclusivo</p><p className="text-xs mt-1">Crea el primer material para esta empresa</p></div>
               ) : (
                 <div className="space-y-2">
-                  {companyVideos.map((vid, idx) => {
-                    const ytId = extractYoutubeId(vid.youtubeUrl)
+                  {companyExcContents.map(content => {
+                    const contentMods   = exclusiveMods.filter(m => m.contentId === content.id)
+                    const totalLessons  = exclusiveLessons.filter(l => l.contentId === content.id).length
+                    const isOpen        = expandedItems.has(content.id)
+                    const unassigned    = exclusiveLessons.filter(l => l.contentId === content.id && !l.moduleId)
                     return (
-                      <div key={vid.id} className="flex items-center gap-3 bg-white rounded-2xl border border-slate-200 p-3">
-                        {ytId ? (
-                          <img src={`https://img.youtube.com/vi/${ytId}/default.jpg`} alt="" className="w-14 h-10 rounded-lg object-cover shrink-0" />
-                        ) : (
-                          <div className="w-14 h-10 rounded-lg bg-slate-100 flex items-center justify-center shrink-0">
-                            <Video size={14} className="text-slate-400" />
+                      <div key={content.id} className="bg-white rounded-2xl border border-slate-200 overflow-hidden">
+                        {/* Material header */}
+                        <div className="flex items-center gap-2 px-4 py-3">
+                          <button onClick={() => toggleItem(content.id)} className="flex items-center gap-3 flex-1 min-w-0 text-left">
+                            <div className="w-8 h-8 rounded-xl bg-amber-500 flex items-center justify-center shrink-0"><Star size={14} className="text-white" /></div>
+                            <div className="min-w-0 flex-1">
+                              <div className="font-black text-slate-800 text-sm truncate">{content.title}</div>
+                              <div className="text-[11px] text-slate-400">{contentMods.length} mód. · {totalLessons} lecc.{!content.published ? ' · Borrador' : ''}</div>
+                            </div>
+                            <ChevronRight size={15} className={`text-slate-400 shrink-0 transition-transform ${isOpen ? 'rotate-90' : ''}`} />
+                          </button>
+                          <button onClick={() => { setEditingItem(content); setExcContentForm({ title: content.title, description: content.description ?? '', published: content.published }); setFormType('excContent') }} className="p-1.5 rounded-lg hover:bg-indigo-50 text-indigo-400 shrink-0"><Edit2 size={13} /></button>
+                          <button onClick={() => deleteExcContent(content.id)} className="p-1.5 rounded-lg hover:bg-red-50 text-red-400 shrink-0"><Trash2 size={13} /></button>
+                        </div>
+
+                        {/* Contenido expandido */}
+                        {isOpen && (
+                          <div className="border-t border-slate-100">
+                            {contentMods.map((mod, modIdx) => {
+                              const modLessons = exclusiveLessons.filter(l => l.moduleId === mod.id)
+                              const isModOpen  = expandedItems.has(mod.id)
+                              return (
+                                <div key={mod.id} className="border-b border-slate-50 last:border-0">
+                                  <div className="flex items-center gap-1 pl-10 pr-3 py-2.5 bg-slate-50/70">
+                                    <button onClick={() => toggleItem(mod.id)} className="flex items-center gap-2.5 flex-1 min-w-0 text-left">
+                                      <div className="w-6 h-6 rounded-lg bg-amber-100 flex items-center justify-center shrink-0">
+                                        <ChevronRight size={12} className={`text-amber-600 transition-transform ${isModOpen ? 'rotate-90' : ''}`} />
+                                      </div>
+                                      <div className="min-w-0 flex-1">
+                                        <div className="font-bold text-slate-700 text-xs truncate">{mod.title}</div>
+                                        <div className="text-[10px] text-slate-400">{modLessons.length} lección{modLessons.length !== 1 ? 'es' : ''}</div>
+                                      </div>
+                                    </button>
+                                    <div className="flex flex-col gap-0.5 shrink-0">
+                                      <button onClick={() => moveExcModule(contentMods, modIdx, -1)} disabled={modIdx === 0} className="p-0.5 rounded hover:bg-slate-200 text-slate-400 disabled:opacity-20"><ChevronUp size={11} /></button>
+                                      <button onClick={() => moveExcModule(contentMods, modIdx, 1)} disabled={modIdx === contentMods.length - 1} className="p-0.5 rounded hover:bg-slate-200 text-slate-400 disabled:opacity-20"><ChevronDown size={11} /></button>
+                                    </div>
+                                    <button onClick={() => { setEditingItem(mod); setModuleForm({ title: mod.title, description: mod.description ?? '' }); setFormContext({ contentId: content.id }); setFormType('excModule') }} className="p-1.5 rounded-lg hover:bg-indigo-50 text-indigo-400"><Edit2 size={11} /></button>
+                                    <button onClick={() => deleteExcModule(mod.id)} className="p-1.5 rounded-lg hover:bg-red-50 text-red-400"><Trash2 size={11} /></button>
+                                  </div>
+                                  {isModOpen && (
+                                    <div className="pl-16 pr-3 py-2 space-y-1.5 bg-white">
+                                      {modLessons.map((lesson, li) => renderLessonRow(lesson, li, modLessons, true,
+                                        () => openLessonForm('excLesson', { contentId: content.id, excModuleId: mod.id }, lesson),
+                                        () => deleteExcLesson(lesson.id),
+                                        () => moveExcLesson(modLessons, li, -1),
+                                        () => moveExcLesson(modLessons, li, 1)
+                                      ))}
+                                      <button onClick={() => openLessonForm('excLesson', { contentId: content.id, excModuleId: mod.id })}
+                                        className="w-full flex items-center justify-center gap-2 py-2 rounded-xl border border-dashed border-slate-200 text-slate-400 text-[11px] font-bold hover:border-amber-300 hover:text-amber-500 hover:bg-amber-50 transition-colors">
+                                        <Plus size={11} /> Nueva lección
+                                      </button>
+                                    </div>
+                                  )}
+                                </div>
+                              )
+                            })}
+
+                            {/* Lecciones sueltas */}
+                            {unassigned.length > 0 && (
+                              <div className="border-t-2 border-dashed border-amber-200 bg-amber-50/50">
+                                <div className="flex items-center gap-2 px-10 py-2">
+                                  <Link size={12} className="text-amber-500 shrink-0" />
+                                  <span className="text-[11px] font-black text-amber-600 uppercase tracking-wide">{unassigned.length} lección{unassigned.length !== 1 ? 'es' : ''} sin módulo</span>
+                                </div>
+                                {unassigned.map((lesson, li) => {
+                                  const ytId = lesson.lessonType !== 'document' ? extractYoutubeId(lesson.youtubeUrl ?? '') : null
+                                  return (
+                                    <div key={lesson.id} className="flex items-center gap-2.5 pl-12 pr-3 py-2 border-t border-amber-100">
+                                      {lesson.lessonType === 'document' ? (
+                                        <div className="w-10 h-7 rounded-lg bg-emerald-50 border border-emerald-200 flex items-center justify-center shrink-0"><FileText size={11} className="text-emerald-600" /></div>
+                                      ) : ytId ? (
+                                        <img src={`https://img.youtube.com/vi/${ytId}/default.jpg`} alt="" className="w-10 h-7 rounded-lg object-cover shrink-0" />
+                                      ) : (
+                                        <div className="w-10 h-7 rounded-lg bg-amber-100 flex items-center justify-center shrink-0"><Video size={11} className="text-amber-400" /></div>
+                                      )}
+                                      <div className="min-w-0 flex-1"><div className="text-[11px] font-bold text-slate-700 truncate">{lesson.title}</div></div>
+                                      {contentMods.length > 0 ? (
+                                        <select defaultValue="" onChange={e => { if (e.target.value) assignExcLesson(lesson.id, e.target.value) }}
+                                          className="text-[11px] font-bold text-amber-600 bg-amber-50 border border-amber-200 rounded-lg px-2 py-1 focus:outline-none cursor-pointer shrink-0">
+                                          <option value="" disabled>Asignar módulo…</option>
+                                          {contentMods.map(m => <option key={m.id} value={m.id}>{m.title}</option>)}
+                                        </select>
+                                      ) : <span className="text-[10px] text-amber-500 shrink-0">Sin módulos</span>}
+                                      <button onClick={() => openLessonForm('excLesson', { contentId: content.id }, lesson)} className="p-1 rounded hover:bg-indigo-50 text-indigo-400 shrink-0"><Edit2 size={11} /></button>
+                                      <button onClick={() => deleteExcLesson(lesson.id)} className="p-1 rounded hover:bg-red-50 text-red-400 shrink-0"><Trash2 size={11} /></button>
+                                    </div>
+                                  )
+                                })}
+                              </div>
+                            )}
+
+                            {/* Acciones del material */}
+                            <div className="flex border-t border-slate-100">
+                              <button onClick={() => { setEditingItem(null); setModuleForm({ title: '', description: '' }); setFormContext({ contentId: content.id }); setFormType('excModule') }}
+                                className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 text-amber-600 text-xs font-bold hover:bg-amber-50 transition-colors">
+                                <Plus size={12} /> Agregar módulo
+                              </button>
+                              <div className="w-px bg-slate-100" />
+                              <button onClick={() => openLessonForm('excLesson', { contentId: content.id })}
+                                className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 text-slate-500 text-xs font-bold hover:bg-slate-50 transition-colors">
+                                <Plus size={12} /> Lección suelta
+                              </button>
+                            </div>
                           </div>
                         )}
-                        <div className="min-w-0 flex-1">
-                          <div className="font-bold text-slate-800 text-sm truncate">{vid.title}</div>
-                          <div className="text-[10px] text-slate-400">{vid.durationMinutes ? `${vid.durationMinutes} min · ` : ''}{!vid.published ? 'Borrador' : 'Publicado'}</div>
-                        </div>
-                        <div className="flex flex-col gap-0.5 shrink-0">
-                          <button onClick={() => moveVideo(companyVideos, idx, -1)} disabled={idx === 0} className="p-0.5 rounded hover:bg-slate-200 text-slate-400 disabled:opacity-20"><ChevronUp size={11} /></button>
-                          <button onClick={() => moveVideo(companyVideos, idx, 1)} disabled={idx === companyVideos.length - 1} className="p-0.5 rounded hover:bg-slate-200 text-slate-400 disabled:opacity-20"><ChevronDown size={11} /></button>
-                        </div>
-                        <button onClick={() => openVideoForm(vid)} className="p-1.5 rounded-lg hover:bg-indigo-50 text-indigo-400 shrink-0"><Edit2 size={13} /></button>
-                        <button onClick={() => deleteVideo(vid.id)} className="p-1.5 rounded-lg hover:bg-red-50 text-red-400 shrink-0"><Trash2 size={13} /></button>
                       </div>
                     )
                   })}
