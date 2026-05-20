@@ -285,6 +285,50 @@ export interface CompanyCourseAccess {
   grantedAt: string
 }
 
+// ── Contenido exclusivo estructurado (reemplaza ExclusiveVideo) ───────────────
+
+export interface ExclusiveContent {
+  id: string
+  companyId: string
+  title: string
+  description?: string
+  sortOrder: number
+  published: boolean
+  createdAt: string
+}
+
+export interface ExclusiveModule {
+  id: string
+  contentId: string
+  title: string
+  description?: string
+  sortOrder: number
+  createdAt: string
+}
+
+export interface ExclusiveLesson {
+  id: string
+  contentId: string
+  moduleId?: string          // null = lección suelta
+  lessonType: LessonType
+  title: string
+  youtubeUrl?: string
+  documentUrl?: string
+  description?: string
+  durationMinutes?: number
+  sortOrder: number
+  createdAt: string
+}
+
+export interface ExclusiveLessonProgress {
+  id: string
+  userId: string
+  lessonId: string
+  completed: boolean
+  completedAt?: string
+}
+
+// Mantenido por compatibilidad con datos existentes
 export interface ExclusiveVideo {
   id: string
   companyId: string

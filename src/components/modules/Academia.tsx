@@ -4,7 +4,7 @@ import {
   ChevronLeft, ChevronRight, ChevronDown, Clock, BarChart3, Layers, ExternalLink,
 } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
-import type { AcademyCourse, AcademyModule, AcademyLesson, AcademyProgress, ExclusiveVideo, ExclusiveVideoProgress, LessonType } from '../../types'
+import type { AcademyCourse, AcademyModule, AcademyLesson, AcademyProgress, ExclusiveContent, ExclusiveModule, ExclusiveLesson, ExclusiveLessonProgress, LessonType } from '../../types'
 import { generateId } from '../../lib/utils'
 import { useAuth } from '../../hooks/useAuth'
 
@@ -24,12 +24,14 @@ function getDriveEmbedUrl(url: string): string | null {
   return `https://drive.google.com/file/d/${match[1]}/preview`
 }
 
-function formatDuration(minutes?: number): string {
-  if (!minutes) return ''
-  if (minutes < 60) return `${minutes} min`
-  const h = Math.floor(minutes / 60)
-  const m = minutes % 60
-  return m ? `${h}h ${m}m` : `${h}h`
+function formatDuration(seconds?: number): string {
+  if (!seconds || seconds <= 0) return ''
+  const h = Math.floor(seconds / 3600)
+  const m = Math.floor((seconds % 3600) / 60)
+  const s = seconds % 60
+  if (h > 0) return s > 0 ? `${h}h ${m}m ${s}s` : m > 0 ? `${h}h ${m}m` : `${h}h`
+  if (m > 0) return s > 0 ? `${m}m ${s}s` : `${m}m`
+  return `${s}s`
 }
 
 // ── Main Component ─────────────────────────────────────────────────────────────
@@ -41,11 +43,14 @@ export default function Academia() {
   const [modules, setModules]         = useState<AcademyModule[]>([])
   const [lessons, setLessons]         = useState<AcademyLesson[]>([])
   const [progress, setProgress]       = useState<AcademyProgress[]>([])
-  const [exclusiveVideos, setExclusiveVideos] = useState<ExclusiveVideo[]>([])
-  const [exclusiveProgress, setExclusiveProgress] = useState<ExclusiveVideoProgress[]>([])
+  const [exclusiveContents, setExclusiveContents] = useState<ExclusiveContent[]>([])
+  const [exclusiveMods, setExclusiveMods]         = useState<ExclusiveModule[]>([])
+  const [exclusiveLessons, setExclusiveLessons]   = useState<ExclusiveLesson[]>([])
+  const [exclusiveLessonProg, setExclusiveLessonProg] = useState<ExclusiveLessonProgress[]>([])
+  const [selectedExcContent, setSelectedExcContent] = useState<ExclusiveContent | null>(null)
+  const [selectedExcLesson, setSelectedExcLesson]   = useState<ExclusiveLesson | null>(null)
   const [companyId, setCompanyId]     = useState<string | null>(null)
   const [loading, setLoading]         = useState(true)
-  const [selectedExclusive, setSelectedExclusive] = useState<ExclusiveVideo | null>(null)
 
   // Navigation
   const [selectedCourse, setSelectedCourse] = useState<AcademyCourse | null>(null)
@@ -69,15 +74,17 @@ export default function Academia() {
         .from('company_course_access').select('course_id').in('company_id', companyIds)
       const accessibleCourseIds = (accessRows ?? []).map((r: any) => r.course_id as string)
 
-      const [{ data: cors }, { data: mods }, { data: less }, { data: prog }, { data: excl }, { data: exprog }] = await Promise.all([
+      const [{ data: cors }, { data: mods }, { data: less }, { data: prog }, { data: excContents }, { data: excMods }, { data: excLessons }, { data: excProg }] = await Promise.all([
         accessibleCourseIds.length
           ? supabase.from('academy_courses').select('*').in('id', accessibleCourseIds).eq('published', true).order('sort_order')
           : Promise.resolve({ data: [] as any[] }),
         supabase.from('academy_modules').select('*').order('sort_order'),
         supabase.from('academy_lessons').select('*').order('sort_order'),
         supabase.from('academy_progress').select('*').eq('user_id', user.id),
-        supabase.from('company_exclusive_videos').select('*').in('company_id', companyIds).eq('published', true).order('sort_order'),
-        supabase.from('exclusive_video_progress').select('*').eq('user_id', user.id),
+        supabase.from('exclusive_content').select('*').in('company_id', companyIds).eq('published', true).order('sort_order'),
+        supabase.from('exclusive_modules').select('*').order('sort_order'),
+        supabase.from('exclusive_lessons').select('*').order('sort_order'),
+        supabase.from('exclusive_lesson_progress').select('*').eq('user_id', user.id),
       ])
 
       const mappedCourses  = (cors ?? []).map(rowToCourse)
@@ -85,15 +92,19 @@ export default function Academia() {
       const mappedModules  = (mods ?? []).map(rowToModule).filter(m => courseIds.includes(m.courseId))
       const mappedLessons  = (less ?? []).map(rowToLesson).filter(l => courseIds.includes(l.courseId))
       const mappedProgress = (prog ?? []).map(rowToProgress)
-      const mappedExcl     = (excl ?? []).map((r: any): ExclusiveVideo => ({ id: r.id, companyId: r.company_id, title: r.title, youtubeUrl: r.youtube_url, description: r.description, durationMinutes: r.duration_minutes, sortOrder: r.sort_order, published: r.published, createdAt: r.created_at }))
-      const mappedExProg   = (exprog ?? []).map((r: any): ExclusiveVideoProgress => ({ id: r.id, userId: r.user_id, videoId: r.video_id, completed: r.completed, completedAt: r.completed_at }))
+      const mappedExContents = (excContents ?? []).map((r: any): ExclusiveContent => ({ id: r.id, companyId: r.company_id, title: r.title, description: r.description, sortOrder: r.sort_order, published: r.published, createdAt: r.created_at }))
+      const mappedExMods     = (excMods ?? []).map((r: any): ExclusiveModule => ({ id: r.id, contentId: r.content_id, title: r.title, description: r.description, sortOrder: r.sort_order, createdAt: r.created_at }))
+      const mappedExLessons  = (excLessons ?? []).map((r: any): ExclusiveLesson => ({ id: r.id, contentId: r.content_id, moduleId: r.module_id ?? undefined, lessonType: (r.lesson_type ?? 'video') as LessonType, title: r.title, youtubeUrl: r.youtube_url ?? undefined, documentUrl: r.document_url ?? undefined, description: r.description, durationMinutes: r.duration_minutes, sortOrder: r.sort_order, createdAt: r.created_at }))
+      const mappedExProg     = (excProg ?? []).map((r: any): ExclusiveLessonProgress => ({ id: r.id, userId: r.user_id, lessonId: r.lesson_id, completed: r.completed, completedAt: r.completed_at }))
 
       setCourses(mappedCourses)
       setModules(mappedModules)
       setLessons(mappedLessons)
       setProgress(mappedProgress)
-      setExclusiveVideos(mappedExcl)
-      setExclusiveProgress(mappedExProg)
+      setExclusiveContents(mappedExContents)
+      setExclusiveMods(mappedExMods)
+      setExclusiveLessons(mappedExLessons)
+      setExclusiveLessonProg(mappedExProg)
     } finally {
       setLoading(false)
     }
@@ -711,56 +722,57 @@ export default function Academia() {
           })}
         </div>
 
-        {/* ── Videos exclusivos — carrusel horizontal ── */}
-        {exclusiveVideos.length > 0 && (
+        {/* ── Contenido exclusivo — cards grid ── */}
+        {exclusiveContents.length > 0 && (
           <div className="mt-6">
-            {/* Header */}
             <div className="flex items-center gap-2 mb-3 px-1">
               <div className="w-6 h-6 rounded-lg bg-amber-500 flex items-center justify-center shrink-0">
                 <span className="text-white text-[11px] font-black">⭐</span>
               </div>
               <h2 className="text-sm font-black text-slate-700 uppercase tracking-wide flex-1">Contenido exclusivo</h2>
-              <span className="text-[11px] text-slate-400 font-medium">{exclusiveVideos.length} video{exclusiveVideos.length !== 1 ? 's' : ''}</span>
+              <span className="text-[11px] text-slate-400 font-medium">{exclusiveContents.length} material{exclusiveContents.length !== 1 ? 'es' : ''}</span>
             </div>
-            {/* Carrusel */}
-            <div className="flex gap-3 overflow-x-auto scrollbar-hide pb-2 -mx-5 px-5">
-              {exclusiveVideos.map(vid => {
-                const ytId = extractYoutubeId(vid.youtubeUrl)
-                const done = exclusiveProgress.some(p => p.videoId === vid.id && p.completed)
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+              {exclusiveContents.map(content => {
+                const contentLessons = exclusiveLessons.filter(l => l.contentId === content.id)
+                const totalL   = contentLessons.length
+                const doneL    = contentLessons.filter(l => exclusiveLessonProg.some(p => p.lessonId === l.id && p.completed)).length
+                const pct      = totalL > 0 ? Math.round((doneL / totalL) * 100) : 0
+                const contentMods = exclusiveMods.filter(m => m.contentId === content.id)
+                const firstVid = contentLessons.find(l => l.lessonType === 'video' && l.youtubeUrl)
+                const firstYtId = firstVid ? extractYoutubeId(firstVid.youtubeUrl) : null
                 return (
-                  <button
-                    key={vid.id}
-                    onClick={() => setSelectedExclusive(vid)}
-                    className="shrink-0 w-52 bg-white rounded-2xl border border-amber-200 overflow-hidden hover:border-amber-400 hover:shadow-md hover:shadow-amber-50 transition-all text-left group flex flex-col"
+                  <button key={content.id}
+                    onClick={() => { setSelectedExcContent(content); setExpandedMods([]) }}
+                    className="bg-white rounded-2xl border border-amber-200 overflow-hidden hover:border-amber-400 hover:shadow-md hover:shadow-amber-50 transition-all text-left group flex flex-col"
                   >
-                    {/* Thumbnail */}
-                    {ytId ? (
-                      <div className="relative h-[116px] overflow-hidden shrink-0">
-                        <img src={`https://img.youtube.com/vi/${ytId}/mqdefault.jpg`} alt="" className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />
+                    {firstYtId ? (
+                      <div className="relative h-36 overflow-hidden shrink-0">
+                        <img src={`https://img.youtube.com/vi/${firstYtId}/mqdefault.jpg`} alt="" className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />
                         <div className="absolute inset-0 bg-gradient-to-t from-black/50 to-transparent" />
-                        <div className="absolute top-1.5 left-1.5 bg-amber-500 text-white text-[8px] font-black px-1.5 py-0.5 rounded-full tracking-wide">EXCLUSIVO</div>
-                        {done && (
-                          <div className="absolute top-1.5 right-1.5 bg-emerald-500 text-white text-[8px] font-black px-1.5 py-0.5 rounded-full flex items-center gap-0.5">
-                            <CheckCircle2 size={8} /> Visto
-                          </div>
-                        )}
-                        <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
-                          <div className="bg-black/30 backdrop-blur-sm rounded-full p-2.5">
-                            <Play size={16} className="text-white" fill="white" />
-                          </div>
-                        </div>
+                        <div className="absolute top-2 left-2 bg-amber-500 text-white text-[9px] font-black px-1.5 py-0.5 rounded-full">EXCLUSIVO</div>
+                        {pct === 100 && <div className="absolute top-2 right-2 bg-emerald-500 text-white text-[9px] font-black px-1.5 py-0.5 rounded-full">✓ Completado</div>}
                       </div>
                     ) : (
-                      <div className="h-[116px] bg-amber-50 flex items-center justify-center shrink-0">
-                        <Video size={28} className="text-amber-300" />
+                      <div className="h-36 bg-gradient-to-br from-amber-50 to-orange-50 flex items-center justify-center shrink-0">
+                        <span className="text-4xl">⭐</span>
                       </div>
                     )}
-                    {/* Info */}
-                    <div className="p-2.5 flex-1">
-                      <div className="text-xs font-black text-slate-800 leading-tight line-clamp-2">{vid.title}</div>
-                      {vid.durationMinutes && (
-                        <div className="flex items-center gap-1 text-[10px] text-slate-400 mt-1">
-                          <Clock size={9} /> {formatDuration(vid.durationMinutes)}
+                    <div className="p-3.5 flex flex-col flex-1">
+                      <h3 className="text-sm font-black text-slate-800 leading-tight line-clamp-2 mb-1.5">{content.title}</h3>
+                      <div className="flex items-center gap-3 text-[11px] text-slate-400 mb-auto">
+                        {contentMods.length > 0 && <span>{contentMods.length} mód.</span>}
+                        <span>{totalL} lecc.</span>
+                      </div>
+                      {totalL > 0 && (
+                        <div className="mt-3">
+                          <div className="flex items-center justify-between text-[10px] text-slate-400 mb-1">
+                            <span>{doneL}/{totalL} completadas</span>
+                            <span className={`font-bold ${pct === 100 ? 'text-emerald-500' : 'text-amber-500'}`}>{pct}%</span>
+                          </div>
+                          <div className="h-1 rounded-full bg-slate-100 overflow-hidden">
+                            <div className={`h-full rounded-full transition-all ${pct === 100 ? 'bg-emerald-400' : 'bg-amber-400'}`} style={{ width: `${pct}%` }} />
+                          </div>
                         </div>
                       )}
                     </div>
@@ -772,58 +784,224 @@ export default function Academia() {
         )}
       </div>
 
-      {/* ── Player de video exclusivo (overlay fixed) ── */}
-      {selectedExclusive && (() => {
-      const ytId = extractYoutubeId(selectedExclusive.youtubeUrl)
-      const done = exclusiveProgress.some(p => p.videoId === selectedExclusive.id && p.completed)
-      const toggleExclusiveDone = async () => {
-        if (!user) return
-        const existing = exclusiveProgress.find(p => p.videoId === selectedExclusive.id)
-        const nowDone = !done
-        if (existing) {
-          await supabase.from('exclusive_video_progress').update({ completed: nowDone, completed_at: nowDone ? new Date().toISOString() : null }).eq('id', existing.id)
-          setExclusiveProgress(prev => prev.map(p => p.id === existing.id ? { ...p, completed: nowDone } : p))
-        } else {
-          const np: ExclusiveVideoProgress = { id: generateId(), userId: user.id, videoId: selectedExclusive.id, completed: true, completedAt: new Date().toISOString() }
-          await supabase.from('exclusive_video_progress').insert({ id: np.id, user_id: np.userId, video_id: np.videoId, completed: true, completed_at: np.completedAt })
-          setExclusiveProgress(prev => [...prev, np])
+      {/* ── Detalle de contenido exclusivo ── */}
+      {selectedExcContent && !selectedExcLesson && (() => {
+        const contentLessons = exclusiveLessons.filter(l => l.contentId === selectedExcContent.id)
+        const contentMods    = exclusiveMods.filter(m => m.contentId === selectedExcContent.id)
+        const totalL  = contentLessons.length
+        const doneL   = contentLessons.filter(l => exclusiveLessonProg.some(p => p.lessonId === l.id && p.completed)).length
+        const pct     = totalL > 0 ? Math.round((doneL / totalL) * 100) : 0
+
+        const getOrderedExcLessons = (): ExclusiveLesson[] => {
+          const ordered: ExclusiveLesson[] = []
+          for (const mod of contentMods) ordered.push(...exclusiveLessons.filter(l => l.moduleId === mod.id))
+          ordered.push(...exclusiveLessons.filter(l => l.contentId === selectedExcContent.id && !l.moduleId))
+          return ordered
         }
-      }
-      return (
-        <div className="fixed inset-0 z-[300] flex flex-col bg-slate-900">
-          {/* Top bar */}
-          <div className="flex items-center gap-3 px-4 py-3 bg-slate-900 border-b border-slate-800 shrink-0">
-            <button onClick={() => setSelectedExclusive(null)} className="p-2 rounded-xl hover:bg-slate-800 text-slate-400">
-              <ChevronLeft size={20} />
-            </button>
-            <div className="min-w-0 flex-1">
-              <div className="text-sm font-black text-white truncate">{selectedExclusive.title}</div>
-              <div className="text-[10px] text-amber-400 font-bold uppercase">Contenido Exclusivo</div>
+
+        return (
+          <div className="fixed inset-0 z-[200] flex flex-col bg-white overflow-hidden">
+            {/* Header */}
+            <div className="bg-indigo-950 px-4 pt-4 pb-6 shrink-0">
+              <button onClick={() => { setSelectedExcContent(null); setExpandedMods([]) }}
+                className="flex items-center gap-1.5 text-indigo-300 text-sm font-bold mb-4 hover:text-white transition-colors">
+                <ChevronLeft size={16} /> Inicio
+              </button>
+              <div className="flex items-center gap-2 mb-1">
+                <span className="text-lg">⭐</span>
+                <h1 className="text-xl font-black text-white">{selectedExcContent.title}</h1>
+              </div>
+              {selectedExcContent.description && <p className="text-indigo-300 text-sm mb-3">{selectedExcContent.description}</p>}
+              <div className="flex items-center justify-between text-xs text-indigo-300 mb-1.5">
+                <span>{doneL} de {totalL} completadas</span>
+                <span className="font-black text-white">{pct}%</span>
+              </div>
+              <div className="h-2 rounded-full bg-white/20 overflow-hidden">
+                <div className="h-full rounded-full bg-amber-400 transition-all duration-500" style={{ width: `${pct}%` }} />
+              </div>
             </div>
-            <button onClick={toggleExclusiveDone}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all shrink-0 ${done ? 'bg-emerald-500/20 text-emerald-400' : 'bg-slate-800 text-slate-400 hover:bg-slate-700'}`}
-            >
-              {done ? <CheckCircle2 size={13} /> : <Circle size={13} />}
-              <span className="hidden sm:inline">{done ? 'Visto' : 'Marcar visto'}</span>
-            </button>
+
+            {/* Lecciones */}
+            <div className="flex-1 overflow-y-auto custom-scrollbar py-3 px-3 space-y-2 bg-slate-50">
+              {/* Módulos */}
+              {contentMods.map((mod, modIdx) => {
+                const modLessons = exclusiveLessons.filter(l => l.moduleId === mod.id)
+                const mDone = modLessons.filter(l => exclusiveLessonProg.some(p => p.lessonId === l.id && p.completed)).length
+                const mTotal = modLessons.length
+                const mPct = mTotal > 0 ? Math.round((mDone / mTotal) * 100) : 0
+                const isOpen = expandedMods.includes(mod.id)
+                return (
+                  <div key={mod.id} className={`rounded-2xl overflow-hidden border transition-all ${isOpen ? 'bg-white border-amber-200 shadow-sm' : 'bg-white border-slate-200 hover:border-slate-300'}`}>
+                    <button onClick={() => setExpandedMods(prev => prev.includes(mod.id) ? prev.filter(x => x !== mod.id) : [...prev, mod.id])}
+                      className={`w-full flex items-center gap-3 px-4 py-3.5 text-left transition-colors ${isOpen ? 'bg-amber-50/70' : 'hover:bg-slate-50'}`}>
+                      <div className={`w-8 h-8 rounded-xl flex items-center justify-center shrink-0 font-black text-sm ${mPct === 100 ? 'bg-emerald-100 text-emerald-600' : isOpen ? 'bg-amber-500 text-white' : 'bg-slate-100 text-slate-600'}`}>
+                        {mPct === 100 ? <CheckCircle2 size={16} /> : modIdx + 1}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="font-black text-sm text-slate-800 truncate">{mod.title}</div>
+                        <div className="flex items-center gap-2 mt-1">
+                          <span className="text-[11px] text-slate-400">{mDone}/{mTotal} completadas</span>
+                          {!mPct && mDone > 0 && <div className="flex-1 max-w-[80px] h-1 rounded-full bg-slate-200 overflow-hidden"><div className="h-full rounded-full bg-amber-400" style={{ width: `${mPct}%` }} /></div>}
+                        </div>
+                      </div>
+                      <div className={`shrink-0 w-7 h-7 rounded-lg flex items-center justify-center transition-all duration-200 ${isOpen ? 'bg-amber-100 text-amber-600 rotate-180' : 'bg-slate-100 text-slate-400'}`}>
+                        <ChevronDown size={15} />
+                      </div>
+                    </button>
+                    {isOpen && (
+                      <div className="border-t border-amber-100">
+                        {modLessons.map((lesson, i) => {
+                          const lIsDoc = lesson.lessonType === 'document'
+                          const ytId   = !lIsDoc ? extractYoutubeId(lesson.youtubeUrl ?? '') : null
+                          const lDone  = exclusiveLessonProg.some(p => p.lessonId === lesson.id && p.completed)
+                          return (
+                            <button key={lesson.id} onClick={() => setSelectedExcLesson(lesson)}
+                              className="w-full flex items-center gap-3 px-4 py-3 hover:bg-amber-50 transition-colors text-left group border-b border-slate-50 last:border-0">
+                              <div className={`w-6 h-6 rounded-full flex items-center justify-center shrink-0 text-[10px] font-black ${lDone ? 'bg-emerald-100 text-emerald-600' : 'bg-slate-100 text-slate-500'}`}>
+                                {lDone ? <CheckCircle2 size={13} /> : i + 1}
+                              </div>
+                              {lIsDoc ? <div className="w-14 h-10 rounded-lg bg-emerald-50 border border-emerald-200 flex items-center justify-center shrink-0"><FileText size={16} className="text-emerald-500" /></div>
+                                : ytId ? <div className="relative w-14 h-10 rounded-lg overflow-hidden shrink-0"><img src={`https://img.youtube.com/vi/${ytId}/mqdefault.jpg`} alt="" className="w-full h-full object-cover" /><div className="absolute inset-0 bg-black/30 flex items-center justify-center opacity-0 group-hover:opacity-100"><Play size={12} className="text-white" fill="white" /></div></div>
+                                : <div className="w-14 h-10 rounded-lg bg-slate-100 flex items-center justify-center shrink-0"><Video size={14} className="text-slate-400" /></div>}
+                              <div className="min-w-0 flex-1">
+                                <div className="font-bold text-sm text-slate-800 line-clamp-1">{lesson.title}</div>
+                                {lIsDoc ? <span className="text-[10px] font-black text-emerald-500">PDF</span> : lesson.durationMinutes ? <div className="flex items-center gap-1 text-[11px] text-slate-400 mt-0.5"><Clock size={10}/>{formatDuration(lesson.durationMinutes)}</div> : null}
+                              </div>
+                            </button>
+                          )
+                        })}
+                      </div>
+                    )}
+                  </div>
+                )
+              })}
+
+              {/* Lecciones sueltas */}
+              {exclusiveLessons.filter(l => l.contentId === selectedExcContent.id && !l.moduleId).map((lesson, i) => {
+                const lIsDoc = lesson.lessonType === 'document'
+                const ytId   = !lIsDoc ? extractYoutubeId(lesson.youtubeUrl ?? '') : null
+                const lDone  = exclusiveLessonProg.some(p => p.lessonId === lesson.id && p.completed)
+                return (
+                  <button key={lesson.id} onClick={() => setSelectedExcLesson(lesson)}
+                    className="w-full flex items-center gap-4 px-4 py-3 bg-white rounded-2xl border border-slate-200 hover:border-amber-300 hover:bg-amber-50/50 transition-all text-left group">
+                    <div className={`w-6 h-6 rounded-full flex items-center justify-center shrink-0 text-[10px] font-black ${lDone ? 'bg-emerald-100 text-emerald-600' : 'bg-slate-100 text-slate-500'}`}>
+                      {lDone ? <CheckCircle2 size={13} /> : i + 1}
+                    </div>
+                    {lIsDoc ? <div className="w-14 h-10 rounded-lg bg-emerald-50 border border-emerald-200 flex items-center justify-center shrink-0"><FileText size={16} className="text-emerald-500" /></div>
+                      : ytId ? <div className="relative w-14 h-10 rounded-lg overflow-hidden shrink-0"><img src={`https://img.youtube.com/vi/${ytId}/mqdefault.jpg`} alt="" className="w-full h-full object-cover" /><div className="absolute inset-0 bg-black/30 flex items-center justify-center opacity-0 group-hover:opacity-100"><Play size={14} className="text-white" fill="white" /></div></div>
+                      : <div className="w-14 h-10 rounded-lg bg-slate-100 flex items-center justify-center shrink-0"><Video size={14} className="text-slate-400" /></div>}
+                    <div className="min-w-0 flex-1">
+                      <div className="font-bold text-sm text-slate-800 line-clamp-1">{lesson.title}</div>
+                      {lIsDoc ? <span className="text-[10px] font-black text-emerald-500">PDF</span> : lesson.durationMinutes ? <div className="flex items-center gap-1 text-[11px] text-slate-400 mt-0.5"><Clock size={10}/>{formatDuration(lesson.durationMinutes)}</div> : null}
+                    </div>
+                  </button>
+                )
+              })}
+            </div>
           </div>
-          {/* Video */}
-          <div className="relative w-full" style={{ paddingBottom: '56.25%' }}>
-            {ytId ? (
-              <iframe className="absolute inset-0 w-full h-full" src={`https://www.youtube.com/embed/${ytId}?rel=0&modestbranding=1`} title={selectedExclusive.title} allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowFullScreen />
-            ) : (
-              <div className="absolute inset-0 flex items-center justify-center bg-slate-800 text-slate-500"><Video size={36} /></div>
-            )}
+        )
+      })()}
+
+      {/* ── Player de lección exclusiva ── */}
+      {selectedExcContent && selectedExcLesson && (() => {
+        const isDoc      = selectedExcLesson.lessonType === 'document'
+        const ytId       = !isDoc ? extractYoutubeId(selectedExcLesson.youtubeUrl ?? '') : null
+        const driveEmbed = isDoc ? getDriveEmbedUrl(selectedExcLesson.documentUrl ?? '') : null
+        const done       = exclusiveLessonProg.some(p => p.lessonId === selectedExcLesson.id && p.completed)
+        const ordered    = (() => {
+          const mods = exclusiveMods.filter(m => m.contentId === selectedExcContent.id)
+          const arr: ExclusiveLesson[] = []
+          for (const mod of mods) arr.push(...exclusiveLessons.filter(l => l.moduleId === mod.id))
+          arr.push(...exclusiveLessons.filter(l => l.contentId === selectedExcContent.id && !l.moduleId))
+          return arr
+        })()
+        const idx      = ordered.findIndex(l => l.id === selectedExcLesson.id)
+        const prevL    = idx > 0 ? ordered[idx - 1] : null
+        const nextL    = idx < ordered.length - 1 ? ordered[idx + 1] : null
+
+        const toggleDone = async () => {
+          if (!user) return
+          const existing = exclusiveLessonProg.find(p => p.lessonId === selectedExcLesson.id)
+          const nowDone  = !done
+          if (existing) {
+            await supabase.from('exclusive_lesson_progress').update({ completed: nowDone, completed_at: nowDone ? new Date().toISOString() : null }).eq('id', existing.id)
+            setExclusiveLessonProg(prev => prev.map(p => p.id === existing.id ? { ...p, completed: nowDone } : p))
+          } else {
+            const np: ExclusiveLessonProgress = { id: generateId(), userId: user.id, lessonId: selectedExcLesson.id, completed: true, completedAt: new Date().toISOString() }
+            await supabase.from('exclusive_lesson_progress').insert({ id: np.id, user_id: np.userId, lesson_id: np.lessonId, completed: true, completed_at: np.completedAt })
+            setExclusiveLessonProg(prev => [...prev, np])
+          }
+        }
+
+        return (
+          <div className="fixed inset-0 z-[200] flex flex-col bg-slate-900">
+            {/* Top bar */}
+            <div className="flex items-center gap-3 px-4 py-3 bg-slate-900 border-b border-slate-800 shrink-0 sticky top-0 z-10">
+              <button onClick={() => setSelectedExcLesson(null)} className="flex items-center gap-1.5 text-indigo-300 hover:text-white transition-colors font-bold text-sm">
+                <ChevronLeft size={20} strokeWidth={2.5} /><span className="hidden sm:inline">Volver</span>
+              </button>
+              <div className="min-w-0 flex-1">
+                <div className="text-sm font-black text-white truncate">{selectedExcLesson.title}</div>
+                <div className="text-[11px] text-amber-400 font-bold">⭐ {selectedExcContent.title}</div>
+              </div>
+              <button onClick={toggleDone}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all shrink-0 ${done ? 'bg-emerald-500/20 text-emerald-400' : 'bg-slate-800 text-slate-400 hover:bg-slate-700'}`}>
+                {done ? <CheckCircle2 size={13} /> : <Circle size={13} />}
+                <span className="hidden sm:inline">{done ? 'Listo' : 'Marcar'}</span>
+              </button>
+            </div>
+
+            {/* Contenido */}
+            <div className="flex-1 overflow-y-auto custom-scrollbar">
+              {isDoc ? (
+                <div className="bg-slate-100 flex flex-col" style={{ height: 'min(75svh, 800px)' }}>
+                  {driveEmbed ? (
+                    <>
+                      <iframe className="w-full flex-1 border-0 min-h-0" src={driveEmbed} title={selectedExcLesson.title} allow="autoplay" />
+                      <div className="bg-white border-t border-slate-200 px-4 py-2.5 shrink-0 flex items-center justify-between">
+                        <div className="flex items-center gap-2 text-xs text-slate-500"><FileText size={13} className="text-emerald-500" /><span className="font-bold">Documento PDF</span></div>
+                        <a href={selectedExcLesson.documentUrl} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1.5 text-xs font-black text-indigo-600 hover:text-indigo-800 bg-indigo-50 px-3 py-1.5 rounded-lg">
+                          <ExternalLink size={12} /> Abrir en Drive
+                        </a>
+                      </div>
+                    </>
+                  ) : (
+                    <div className="flex-1 flex flex-col items-center justify-center gap-4 p-8 text-center">
+                      <FileText size={36} className="text-slate-300" />
+                      <p className="text-slate-500 font-bold">Link no válido o archivo no público</p>
+                      {selectedExcLesson.documentUrl && <a href={selectedExcLesson.documentUrl} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 px-5 py-2.5 bg-indigo-600 text-white rounded-xl text-sm font-bold"><ExternalLink size={14} /> Abrir en Drive</a>}
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div className="w-full bg-black shrink-0" style={{ aspectRatio: '16/9' }}>
+                  {ytId ? <iframe className="w-full h-full" src={`https://www.youtube.com/embed/${ytId}?rel=0&modestbranding=1`} title={selectedExcLesson.title} allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowFullScreen />
+                    : <div className="w-full h-full flex items-center justify-center text-slate-500"><Video size={36} /></div>}
+                </div>
+              )}
+
+              {/* Info + nav */}
+              <div className="bg-white">
+                <div className="p-4 border-b border-slate-100">
+                  <h2 className="text-base font-black text-slate-800">{selectedExcLesson.title}</h2>
+                  {selectedExcLesson.durationMinutes && <div className="flex items-center gap-1.5 text-sm text-slate-400 mt-1"><Clock size={13}/>{formatDuration(selectedExcLesson.durationMinutes)}</div>}
+                  {selectedExcLesson.description && <p className="text-sm text-slate-600 mt-2">{selectedExcLesson.description}</p>}
+                </div>
+                <div className="flex gap-3 p-4">
+                  <button onClick={() => prevL && setSelectedExcLesson(prevL)} disabled={!prevL}
+                    className="flex-1 flex items-center justify-center gap-2 py-3 rounded-xl border border-slate-200 text-sm font-bold text-slate-600 hover:bg-slate-50 disabled:opacity-30">
+                    <ChevronLeft size={16} /> Anterior
+                  </button>
+                  <button onClick={() => nextL && setSelectedExcLesson(nextL)} disabled={!nextL}
+                    className="flex-1 flex items-center justify-center gap-2 py-3 rounded-xl bg-amber-500 text-white text-sm font-bold hover:bg-amber-600 disabled:opacity-30">
+                    Siguiente <ChevronRight size={16} />
+                  </button>
+                </div>
+              </div>
+            </div>
           </div>
-          {/* Info */}
-          <div className="flex-1 overflow-y-auto bg-white p-4">
-            <h2 className="text-lg font-black text-slate-800">{selectedExclusive.title}</h2>
-            {selectedExclusive.durationMinutes && <div className="flex items-center gap-1.5 text-sm text-slate-400 mt-1"><Clock size={14}/>{formatDuration(selectedExclusive.durationMinutes)}</div>}
-            {selectedExclusive.description && <p className="text-sm text-slate-600 mt-3 leading-relaxed">{selectedExclusive.description}</p>}
-          </div>
-        </div>
-      )
-    })()}
+        )
+      })()}
     </div>
   )
 }

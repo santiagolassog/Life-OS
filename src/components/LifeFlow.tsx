@@ -324,7 +324,8 @@ const App = () => {
   const [categories, setCategories] = useState(INITIAL_CATEGORIES);
   const [modalData, setModalData] = useState(null);
   const [catModal, setCatModal] = useState(null);
-  const [sidebarOpen, setSidebarOpen] = useState(true);
+  // Desktop: abierto por defecto. Mobile: cerrado por defecto (muestra el calendario directo)
+  const [sidebarOpen, setSidebarOpen] = useState(() => window.innerWidth >= 1024);
   const [draggedItem, setDraggedItem] = useState(null);
   const [mobileDayOffset, setMobileDayOffset] = useState(() => {
     const day = new Date().getDay();
