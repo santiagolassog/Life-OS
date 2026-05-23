@@ -10,6 +10,7 @@ import {
   PieChart as PieChartIcon, Trash2, CalendarDays, Menu, Copy, CheckCircle2, Circle, Edit2, Palette,
   Download, ListPlus, Target, BarChart3, History, DollarSign, Star, ChevronDown, LogOut, CheckSquare,
   Sparkles, Keyboard, Home, MoreHorizontal, Search, GripVertical, Flame, GraduationCap, Shield, KeyRound, Eye, EyeOff,
+  ListTodo,
 } from 'lucide-react';
 import Dinero from './modules/Dinero';
 import Objetivos from './modules/Objetivos';
@@ -201,6 +202,20 @@ const CustomTimePicker = ({ label, hour, minute, onTimeChange, minTime = "00:00"
 
 type SectionKey = 'hoy' | 'tiempo' | 'dinero' | 'objetivos' | 'lista' | 'revision' | 'habitos' | 'academia' | 'admin';
 
+// Hash routing: slug ↔ sectionKey
+const SLUG_TO_SECTION: Record<string, SectionKey> = {
+  inicio: 'hoy', agenda: 'tiempo', dinero: 'dinero', objetivos: 'objetivos',
+  tareas: 'lista', revision: 'revision', habitos: 'habitos', academia: 'academia', admin: 'admin',
+};
+const SECTION_TO_SLUG: Record<SectionKey, string> = Object.fromEntries(
+  Object.entries(SLUG_TO_SECTION).map(([slug, key]) => [key, slug])
+) as Record<SectionKey, string>;
+
+const getSectionFromHash = (): SectionKey => {
+  const hash = window.location.hash.replace('#/', '').replace('#', '').toLowerCase();
+  return SLUG_TO_SECTION[hash] || 'hoy';
+};
+
 const SECTIONS: Array<{ key: SectionKey; label: string; Icon: React.FC<{ size?: number }> }> = [
   { key: 'hoy',      label: 'Inicio',   Icon: Home },
   { key: 'dinero',   label: 'Dinero',   Icon: DollarSign },
@@ -327,6 +342,22 @@ const App = () => {
   // Desktop: abierto por defecto. Mobile: cerrado por defecto (muestra el calendario directo)
   const [sidebarOpen, setSidebarOpen] = useState(() => window.innerWidth >= 1024);
   const [draggedItem, setDraggedItem] = useState(null);
+  const [draggedTask, setDraggedTask] = useState<Task | null>(null);
+  // Drag ghost preview
+  const [dragPreview, setDragPreview] = useState<{ dateId: string; startIdx: number; span: number; label: string; color: string } | null>(null);
+  const dragGrabOffset = useRef(0);
+  // Resize state (arrastrar borde inferior de evento)
+  const [resizingEvent, setResizingEvent] = useState<{ event: EventEntry; dateId: string; startY: number; originalEndIdx: number } | null>(null);
+  const [resizePreviewEndIdx, setResizePreviewEndIdx] = useState<number | null>(null);
+  // Current time indicator
+  const [currentTimePos, setCurrentTimePos] = useState<number>(0);
+  // Tasks panel
+  const [showTasksPanel, setShowTasksPanel] = useState(false);
+  // Mini calendar sidebar
+  const [miniCalMonth, setMiniCalMonth] = useState(() => new Date());
+  // Public holidays by country (auto-detected)
+  const [holidays, setHolidays] = useState<Record<string, string>>({}); // dateStr → holiday name
+  const [userCountry, setUserCountry] = useState<string>('');
   const [mobileDayOffset, setMobileDayOffset] = useState(() => {
     const day = new Date().getDay();
     return day === 0 ? 7 : day;
@@ -337,7 +368,30 @@ const App = () => {
   const [isExporting, setIsExporting] = useState(false);
   const reportRef = useRef<HTMLDivElement>(null);
 
-  const [section, setSection] = useState<SectionKey>('hoy');
+  const [section, setSectionRaw] = useState<SectionKey>(getSectionFromHash);
+
+  // Wrap setSection to also update the hash
+  const setSection = (s: SectionKey | ((prev: SectionKey) => SectionKey)) => {
+    setSectionRaw(prev => {
+      const next = typeof s === 'function' ? s(prev) : s;
+      const slug = SECTION_TO_SLUG[next] || 'inicio';
+      if (window.location.hash !== `#/${slug}`) {
+        window.history.pushState(null, '', `#/${slug}`);
+      }
+      return next;
+    });
+  };
+
+  // Listen for back/forward navigation
+  useEffect(() => {
+    const onHashChange = () => setSectionRaw(getSectionFromHash());
+    window.addEventListener('hashchange', onHashChange);
+    // Set initial hash if empty
+    if (!window.location.hash) {
+      window.history.replaceState(null, '', `#/${SECTION_TO_SLUG['hoy']}`);
+    }
+    return () => window.removeEventListener('hashchange', onHashChange);
+  }, []);
   const [showShortcuts, setShowShortcuts] = useState(false);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [finCategories, setFinCategories] = useState<FinCategory[]>(INITIAL_FIN_CATEGORIES);
@@ -867,6 +921,71 @@ const App = () => {
     }
   }, [section, loading]);
 
+  // Current time line position — updated every minute
+  useEffect(() => {
+    const calcPos = () => {
+      const now = new Date();
+      const totalMinutes = now.getHours() * 60 + now.getMinutes();
+      // Each segment is 15 min, position = (totalMinutes / 15) * SEGMENT_HEIGHT
+      setCurrentTimePos((totalMinutes / 15) * SEGMENT_HEIGHT);
+    };
+    calcPos();
+    const interval = setInterval(calcPos, 60_000);
+    return () => clearInterval(interval);
+  }, []);
+
+  // Detect user country from timezone and load public holidays
+  useEffect(() => {
+    const tzToCountry: Record<string, string> = {
+      'America/Bogota': 'CO', 'America/Medellin': 'CO',
+      'America/Mexico_City': 'MX', 'America/Monterrey': 'MX', 'America/Cancun': 'MX', 'America/Tijuana': 'MX',
+      'America/Argentina/Buenos_Aires': 'AR', 'America/Cordoba': 'AR',
+      'America/Santiago': 'CL',
+      'America/Lima': 'PE',
+      'America/Guayaquil': 'EC',
+      'America/Caracas': 'VE',
+      'America/La_Paz': 'BO',
+      'America/Asuncion': 'PY',
+      'America/Montevideo': 'UY',
+      'America/Panama': 'PA',
+      'America/Costa_Rica': 'CR',
+      'America/Guatemala': 'GT',
+      'America/El_Salvador': 'SV',
+      'America/Tegucigalpa': 'HN',
+      'America/Managua': 'NI',
+      'America/Santo_Domingo': 'DO',
+      'America/Havana': 'CU',
+      'America/New_York': 'US', 'America/Chicago': 'US', 'America/Denver': 'US', 'America/Los_Angeles': 'US',
+      'America/Toronto': 'CA', 'America/Vancouver': 'CA',
+      'America/Sao_Paulo': 'BR', 'America/Fortaleza': 'BR',
+      'Europe/Madrid': 'ES', 'Atlantic/Canary': 'ES',
+      'Europe/London': 'GB',
+      'Europe/Paris': 'FR',
+      'Europe/Berlin': 'DE',
+      'Europe/Rome': 'IT',
+      'Europe/Lisbon': 'PT',
+    };
+    const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    const country = tzToCountry[tz] || 'US';
+    setUserCountry(country);
+  }, []);
+
+  useEffect(() => {
+    if (!userCountry) return;
+    const year = miniCalMonth.getFullYear();
+    const fetchHolidays = async () => {
+      try {
+        const res = await fetch(`https://date.nager.at/api/v3/PublicHolidays/${year}/${userCountry}`);
+        if (!res.ok) return;
+        const data: Array<{ date: string; localName: string }> = await res.json();
+        const map: Record<string, string> = {};
+        data.forEach(h => { map[h.date] = h.localName; });
+        setHolidays(prev => ({ ...prev, ...map }));
+      } catch { /* silently fail */ }
+    };
+    fetchHolidays();
+  }, [userCountry, miniCalMonth]);
+
   // Auto-expandir el grupo correcto al cambiar de sección
   useEffect(() => {
     const g = SECTION_TO_GROUP[section as SectionKey];
@@ -1131,11 +1250,70 @@ const App = () => {
   const handleDragStart = (e, event, dateId) => {
     setDraggedItem({ ...event, sourceDateId: dateId });
     e.dataTransfer.effectAllowed = 'move';
+    // Store the offset within the event where the user grabbed it
+    const rect = e.currentTarget.getBoundingClientRect();
+    const offsetY = e.clientY - rect.top;
+    dragGrabOffset.current = offsetY;
+    e.dataTransfer.setData('text/plain', JSON.stringify({ offsetY }));
+    // Use a tiny transparent image so only our ghost preview shows
+    const img = new Image();
+    img.src = 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7';
+    e.dataTransfer.setDragImage(img, 0, 0);
   };
 
-  const handleDrop = (e, targetDateId, targetHour) => {
+  // Calculate target segment index from drag/drop position relative to the day column
+  const getSegmentIdxFromEvent = (e) => {
+    let columnEl = e.currentTarget as HTMLElement;
+    while (columnEl && !columnEl.dataset.dayCol && columnEl.parentElement) {
+      columnEl = columnEl.parentElement;
+    }
+    const rect = columnEl.getBoundingClientRect();
+    const y = e.clientY - rect.top;
+    // Use ref offset (works in dragover); fallback to dataTransfer (works in drop)
+    let offsetY = dragGrabOffset.current;
+    if (!offsetY) {
+      try { offsetY = JSON.parse(e.dataTransfer.getData('text/plain'))?.offsetY || 0; } catch {}
+    }
+    const adjustedY = y - offsetY;
+    return Math.max(0, Math.min(Math.round(adjustedY / SEGMENT_HEIGHT), GRID_HOURS.length - 2));
+  };
+
+  const getHourFromDropEvent = (e) => GRID_HOURS[getSegmentIdxFromEvent(e)];
+
+  const handleDrop = (e, targetDateId) => {
     e.preventDefault();
+    // Handle task drop from tasks panel
+    const taskData = e.dataTransfer.getData('application/task');
+    if (taskData) {
+      try {
+        const task = JSON.parse(taskData);
+        const targetHour = getHourFromDropEvent(e);
+        const startIdx = GRID_HOURS.indexOf(targetHour);
+        const endIdx = Math.min(startIdx + 4, GRID_HOURS.length - 1); // 1 hour default
+        const cat = task.categoryId && categories[task.categoryId] ? task.categoryId : Object.keys(categories)[0];
+        const newEvent: EventEntry = {
+          id: generateId(),
+          startHour: GRID_HOURS[startIdx],
+          endHour: GRID_HOURS[endIdx],
+          category: cat,
+          task: task.title,
+          completed: false,
+        };
+        setEvents(prev => {
+          const next = { ...prev };
+          if (!next[targetDateId]) next[targetDateId] = [];
+          next[targetDateId] = [...next[targetDateId], newEvent];
+          return next;
+        });
+        toast.success(`"${task.title}" agendada`);
+      } catch {}
+      setDragPreview(null);
+      setDraggedTask(null);
+      dragGrabOffset.current = 0;
+      return;
+    }
     if (!draggedItem) return;
+    const targetHour = getHourFromDropEvent(e);
     const startIdx = GRID_HOURS.indexOf(draggedItem.startHour);
     const endIdx = GRID_HOURS.indexOf(draggedItem.endHour);
     const duration = endIdx - startIdx;
@@ -1153,6 +1331,48 @@ const App = () => {
       return { ...nextEvents };
     });
     setDraggedItem(null);
+    setDragPreview(null);
+    dragGrabOffset.current = 0;
+  };
+
+  // ── Resize event by dragging bottom edge ──────────────────────────────────
+  const handleResizeStart = (e: React.MouseEvent, event: EventEntry, dateId: string) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const originalEndIdx = GRID_HOURS.indexOf(event.endHour);
+    const startY = e.clientY;
+    setResizingEvent({ event, dateId, startY, originalEndIdx });
+    setResizePreviewEndIdx(originalEndIdx);
+
+    const handleMouseMove = (me: MouseEvent) => {
+      const deltaY = me.clientY - startY;
+      const deltaSegments = Math.round(deltaY / SEGMENT_HEIGHT);
+      const startIdx = GRID_HOURS.indexOf(event.startHour);
+      const newEndIdx = Math.max(startIdx + 1, Math.min(originalEndIdx + deltaSegments, GRID_HOURS.length - 1));
+      setResizePreviewEndIdx(newEndIdx);
+    };
+
+    const handleMouseUp = () => {
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseup', handleMouseUp);
+      setResizingEvent(null);
+      setResizePreviewEndIdx(prev => {
+        if (prev !== null && prev !== originalEndIdx) {
+          const newEndHour = GRID_HOURS[prev];
+          setEvents(evPrev => {
+            const next = { ...evPrev };
+            next[dateId] = (next[dateId] || []).map(ev =>
+              ev.id === event.id ? { ...ev, endHour: newEndHour } : ev
+            );
+            return next;
+          });
+        }
+        return null;
+      });
+    };
+
+    document.addEventListener('mousemove', handleMouseMove);
+    document.addEventListener('mouseup', handleMouseUp);
   };
 
     const stats = useMemo(() => {
@@ -1606,6 +1826,65 @@ const App = () => {
         {section === 'tiempo' && (
           <aside className={`fixed inset-y-0 left-0 z-[120] w-80 bg-white border-r transform transition-transform lg:relative lg:inset-y-auto lg:left-auto ${sidebarOpen ? 'translate-x-0' : '-translate-x-full lg:-translate-x-full lg:w-0 lg:opacity-0 lg:overflow-hidden'} flex flex-col shrink-0 overflow-y-auto custom-scrollbar`}>
             <div className="p-6 space-y-8 pb-24 lg:pb-6">
+              {/* Mini Calendar */}
+              <section>
+                {(() => {
+                  const mcYear = miniCalMonth.getFullYear();
+                  const mcMonth = miniCalMonth.getMonth();
+                  const firstDay = new Date(mcYear, mcMonth, 1);
+                  const startOffset = (firstDay.getDay() + 6) % 7; // Monday = 0
+                  const daysInMonth = new Date(mcYear, mcMonth + 1, 0).getDate();
+                  const today = new Date();
+                  const todayStr = fmtDateId(today);
+                  // Which days are in the current week?
+                  const weekDateIds = new Set(weekDays.map(d => fmtDateId(d)));
+
+                  return (
+                    <div>
+                      <div className="flex items-center justify-between mb-3 px-1">
+                        <button onClick={() => setMiniCalMonth(new Date(mcYear, mcMonth - 1, 1))} className="p-1 hover:bg-slate-100 rounded-full transition-all"><ChevronLeft size={14} className="text-slate-400" /></button>
+                        <span className="text-[11px] font-black text-slate-600 capitalize">
+                          {miniCalMonth.toLocaleDateString('es-ES', { month: 'long', year: 'numeric' })}
+                        </span>
+                        <button onClick={() => setMiniCalMonth(new Date(mcYear, mcMonth + 1, 1))} className="p-1 hover:bg-slate-100 rounded-full transition-all"><ChevronRight size={14} className="text-slate-400" /></button>
+                      </div>
+                      <div className="grid grid-cols-7 gap-0 text-center">
+                        {['L','M','X','J','V','S','D'].map(d => (
+                          <div key={d} className="text-[8px] font-black text-slate-400 uppercase py-1">{d}</div>
+                        ))}
+                        {Array.from({ length: startOffset }).map((_, i) => <div key={`e-${i}`} />)}
+                        {Array.from({ length: daysInMonth }, (_, i) => {
+                          const day = i + 1;
+                          const dateObj = new Date(mcYear, mcMonth, day);
+                          const dateStr = fmtDateId(dateObj);
+                          const isToday = dateStr === todayStr;
+                          const isInWeek = weekDateIds.has(dateStr);
+                          const hasEvents = (events[dateStr] || []).length > 0;
+                          const holidayName = holidays[dateStr];
+                          return (
+                            <button
+                              key={day}
+                              onClick={() => { setCurrentDate(dateObj); }}
+                              title={holidayName || undefined}
+                              className={`text-[11px] w-7 h-7 mx-auto rounded-full flex items-center justify-center transition-all
+                                ${isToday ? 'bg-indigo-600 text-white font-black'
+                                  : holidayName && isInWeek ? 'bg-red-100 text-red-600 font-black ring-1 ring-red-200'
+                                  : holidayName ? 'text-red-500 font-black'
+                                  : isInWeek ? 'bg-indigo-50 text-indigo-700 font-black'
+                                  : hasEvents ? 'text-slate-800 font-black'
+                                  : 'text-slate-400 font-medium hover:bg-slate-100'}
+                              `}
+                            >
+                              {day}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  );
+                })()}
+              </section>
+
               <section>
                 <div className="flex items-center justify-between mb-4 px-1">
                   <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] flex items-center gap-2"><Palette size={14} className="text-indigo-600" /> Mis Áreas</h3>
@@ -1921,13 +2200,22 @@ const App = () => {
                       <button onClick={() => { const d = new Date(currentDate); d.setDate(d.getDate() + 7); setCurrentDate(d); }} className="p-1.5 hover:bg-slate-100 rounded-full transition-all"><ChevronRight size={14} className="text-slate-500"/></button>
                     </div>
                   </div>
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-3">
                     <span className="text-[9px] text-slate-400 font-black uppercase tracking-widest">Total Real</span>
                     <span className="text-lg font-black text-indigo-600">{stats.total}h</span>
+                    <div className="w-px h-5 bg-slate-200" />
+                    <button
+                      onClick={() => setShowTasksPanel(v => !v)}
+                      className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[10px] font-black uppercase tracking-wide transition-all border ${showTasksPanel ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-slate-500 border-slate-200 hover:border-indigo-300 hover:text-indigo-600'}`}
+                    >
+                      <ListTodo size={13} />
+                      Tareas
+                    </button>
                   </div>
                 </div>
               )}
 
+              <div className="flex-1 flex overflow-hidden">
               <div ref={scrollContainerRef} className="flex-1 overflow-auto custom-scrollbar scroll-smooth">
                 <div className={`${isMobile ? 'px-3' : 'px-6'}`}>
                   <div className="min-w-full relative">
@@ -1964,23 +2252,78 @@ const App = () => {
                       {currentVisibleDays.map((date) => {
                         const dateId = formatDateId(date);
                         const dayEvents = events[dateId] || [];
+                        const isToday = date.toDateString() === new Date().toDateString();
                         return (
-                          <div key={dateId} className="border-r h-full relative" onDragOver={(e) => e.preventDefault()} onDrop={(e) => handleDrop(e, dateId, draggedItem?.startHour)}>
+                          <div key={dateId} data-day-col="1" className={`border-r h-full relative ${isToday ? 'bg-blue-50/30' : ''}`}
+                            onDragOver={(e) => {
+                              e.preventDefault();
+                              const isTask = e.dataTransfer.types.includes('application/task');
+                              e.dataTransfer.dropEffect = isTask ? 'copy' : 'move';
+                              // Calculate ghost preview
+                              const segIdx = getSegmentIdxFromEvent(e);
+                              if (isTask && draggedTask) {
+                                const cat = draggedTask.categoryId && categories[draggedTask.categoryId] ? categories[draggedTask.categoryId] : null;
+                                setDragPreview({ dateId, startIdx: segIdx, span: 4, label: draggedTask.title, color: cat?.color || '#6366f1' });
+                              } else if (draggedItem) {
+                                const duration = GRID_HOURS.indexOf(draggedItem.endHour) - GRID_HOURS.indexOf(draggedItem.startHour);
+                                const cat = categories[draggedItem.category] || { color: '#cbd5e1' };
+                                setDragPreview({ dateId, startIdx: segIdx, span: duration, label: draggedItem.task, color: cat.color });
+                              }
+                            }}
+                            onDragLeave={(e) => {
+                              // Only clear if leaving the column (not entering a child)
+                              if (!e.currentTarget.contains(e.relatedTarget as Node)) {
+                                setDragPreview(null);
+                              }
+                            }}
+                            onDrop={(e) => handleDrop(e, dateId)}
+                          >
                             <div className="absolute inset-0 z-0">
                               {GRID_HOURS.slice(0, -1).filter(h => h.endsWith(':00') || h.endsWith(':30')).map((hour) => (
-                                <div key={hour} onClick={() => handleOpenModal(date, hour)} style={{ height: `${FIELD_HEIGHT}px` }} className={`transition-colors cursor-pointer flex items-center justify-center group/cell border-slate-100 ${hour.endsWith(':30') ? 'border-b border-dashed opacity-30' : 'border-b'}`}><Plus size={14} className="text-indigo-200 opacity-0 group-hover/cell:opacity-100 scale-75" /></div>
+                                <div key={hour} onClick={() => handleOpenModal(date, hour)} onDragOver={(e) => { e.preventDefault(); }} onDrop={(e) => { e.stopPropagation(); handleDrop(e, dateId); }} style={{ height: `${FIELD_HEIGHT}px` }} className={`transition-colors cursor-pointer flex items-center justify-center group/cell border-slate-100 ${hour.endsWith(':30') ? 'border-b border-dashed opacity-30' : 'border-b'}`}><Plus size={14} className="text-indigo-200 opacity-0 group-hover/cell:opacity-100 scale-75" /></div>
                               ))}
                             </div>
+                            {/* Current time line */}
+                            {isToday && (
+                              <div className="absolute left-0 right-0 z-30 pointer-events-none" style={{ top: `${currentTimePos}px` }}>
+                                <div className="relative flex items-center">
+                                  <div className="w-2.5 h-2.5 rounded-full bg-red-500 -ml-1 shrink-0 shadow-sm" />
+                                  <div className="flex-1 h-[2px] bg-red-500" />
+                                </div>
+                              </div>
+                            )}
+                            {/* Drag ghost preview */}
+                            {dragPreview && dragPreview.dateId === dateId && (
+                              <div
+                                className="absolute inset-x-1 z-20 rounded-xl pointer-events-none overflow-hidden"
+                                style={{
+                                  top: `${dragPreview.startIdx * SEGMENT_HEIGHT + 2}px`,
+                                  height: `${dragPreview.span * SEGMENT_HEIGHT - 4}px`,
+                                  backgroundColor: `${dragPreview.color}20`,
+                                  border: `2px dashed ${dragPreview.color}80`,
+                                  borderLeft: `3px solid ${dragPreview.color}`,
+                                }}
+                              >
+                                <div className="px-2.5 pt-1.5 h-full flex flex-col">
+                                  <span className="text-[10px] font-black leading-tight truncate" style={{ color: `${dragPreview.color}cc` }}>{dragPreview.label}</span>
+                                  <span className="text-[8px] font-bold mt-auto pb-1" style={{ color: `${dragPreview.color}99` }}>
+                                    {GRID_HOURS[dragPreview.startIdx]} – {GRID_HOURS[Math.min(dragPreview.startIdx + dragPreview.span, GRID_HOURS.length - 1)]}
+                                  </span>
+                                </div>
+                              </div>
+                            )}
                             {dayEvents.map((event) => {
                               const sIdx = GRID_HOURS.indexOf(event.startHour);
-                              const eIdx = GRID_HOURS.indexOf(event.endHour);
+                              const isResizing = resizingEvent?.event.id === event.id;
+                              const eIdx = isResizing && resizePreviewEndIdx !== null ? resizePreviewEndIdx : GRID_HOURS.indexOf(event.endHour);
                               const span = eIdx - sIdx;
                               const cat = categories[event.category] || { color: '#cbd5e1', short: '??' };
                               const isSmall = span <= 2;
+                              const displayEndHour = isResizing && resizePreviewEndIdx !== null ? GRID_HOURS[resizePreviewEndIdx] : event.endHour;
                               return (
-                                <div key={event.id} draggable onDragStart={(e) => handleDragStart(e, event, dateId)} onClick={(e) => { e.stopPropagation(); handleOpenModal(date, event.startHour, event); }}
-                                  className={`absolute inset-x-1 z-10 rounded-xl overflow-hidden cursor-pointer transition-all ${draggedItem?.id === event.id ? 'opacity-20 scale-95' : 'hover:brightness-95 active:scale-[0.98]'}`}
-                                  style={{ top: `${sIdx * SEGMENT_HEIGHT + 2}px`, height: `${(eIdx - sIdx) * SEGMENT_HEIGHT - 4}px`, backgroundColor: event.completed ? `${cat.color}18` : 'white', border: `1px solid ${event.completed ? cat.color + '40' : '#e2e8f0'}`, borderLeft: `3px solid ${cat.color}`, boxShadow: '0 1px 3px rgba(0,0,0,0.06)' }}>
+                                <div key={event.id} draggable={!isResizing} onDragStart={(e) => handleDragStart(e, event, dateId)} onDragEnd={() => { setDraggedItem(null); setDragPreview(null); dragGrabOffset.current = 0; }} onClick={(e) => { e.stopPropagation(); if (!isResizing) handleOpenModal(date, event.startHour, event); }}
+                                  className={`absolute inset-x-1 z-10 rounded-xl overflow-hidden cursor-pointer transition-colors ${draggedItem?.id === event.id ? 'opacity-20 scale-95' : 'hover:brightness-95'} ${isResizing ? 'ring-2 ring-indigo-400 shadow-lg' : ''}`}
+                                  style={{ top: `${sIdx * SEGMENT_HEIGHT + 2}px`, height: `${span * SEGMENT_HEIGHT - 4}px`, backgroundColor: event.completed ? `${cat.color}18` : 'white', border: `1px solid ${event.completed ? cat.color + '40' : '#e2e8f0'}`, borderLeft: `3px solid ${cat.color}`, boxShadow: '0 1px 3px rgba(0,0,0,0.06)', userSelect: 'none' }}>
                                   <div className={`h-full flex flex-col overflow-hidden relative ${span === 1 ? 'px-2 py-0 justify-center' : isSmall ? 'px-2 py-1' : 'px-2.5 pt-1.5 pb-1.5'}`}>
                                     <div className={`flex items-start gap-1 overflow-hidden ${event.completed ? 'pr-4' : ''}`}>
                                       <span className={`font-black leading-tight flex-1 overflow-hidden ${isSmall ? 'text-[9px]' : 'text-[10px]'} ${event.completed ? 'text-slate-600' : 'text-slate-800'} ${span === 1 ? 'leading-[1.1]' : ''}`}>{event.task}</span>
@@ -1990,8 +2333,24 @@ const App = () => {
                                         <CheckCircle2 size={12} className="text-emerald-500 bg-white/20 rounded-full" />
                                       </div>
                                     )}
-                                    {!isSmall && <span className="text-[8px] font-bold mt-auto leading-none" style={{ color: `${cat.color}bb` }}>{event.startHour} – {event.endHour}</span>}
+                                    {!isSmall && <span className="text-[8px] font-bold mt-auto leading-none" style={{ color: `${cat.color}bb` }}>{event.startHour} – {displayEndHour}</span>}
+                                    {/* Resize handle — bottom edge */}
+                                    {!isMobile && (
+                                      <div
+                                        onMouseDown={(e) => handleResizeStart(e, event, dateId)}
+                                        className="absolute bottom-0 left-0 right-0 h-2 cursor-s-resize group/resize z-20"
+                                        onClick={(e) => e.stopPropagation()}
+                                      >
+                                        <div className="mx-auto w-6 h-1 rounded-full bg-slate-300 opacity-0 group-hover/resize:opacity-100 transition-opacity mt-0.5" />
+                                      </div>
+                                    )}
                                   </div>
+                                  {/* Resize preview tooltip */}
+                                  {isResizing && resizePreviewEndIdx !== null && (
+                                    <div className="absolute -bottom-7 left-1/2 -translate-x-1/2 bg-indigo-600 text-white text-[9px] font-black px-2 py-1 rounded-md shadow-lg whitespace-nowrap z-50">
+                                      {GRID_HOURS[resizePreviewEndIdx]} ({Math.round((resizePreviewEndIdx - sIdx) * 15)}min)
+                                    </div>
+                                  )}
                                 </div>
                               );
                             })}
@@ -2003,6 +2362,56 @@ const App = () => {
                   </div>
                 </div>
               </div>
+
+              {/* Tasks Panel — right sidebar */}
+              {showTasksPanel && !isMobile && (
+                <div className="w-72 border-l border-slate-200 bg-white shrink-0 overflow-y-auto custom-scrollbar">
+                  <div className="p-4">
+                    <div className="flex items-center justify-between mb-4">
+                      <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] flex items-center gap-2">
+                        <ListTodo size={14} className="text-indigo-600" /> Por Hacer
+                      </h3>
+                      <button onClick={() => setShowTasksPanel(false)} className="p-1 hover:bg-slate-100 rounded-full transition-all">
+                        <X size={14} className="text-slate-400" />
+                      </button>
+                    </div>
+                    <div className="space-y-1.5">
+                      {tasks.filter(t => t.status === 'todo').length === 0 && (
+                        <p className="text-[10px] text-slate-400 italic text-center py-6">No hay tareas por hacer</p>
+                      )}
+                      {tasks.filter(t => t.status === 'todo').sort((a, b) => (a.sortOrder - b.sortOrder)).map(task => {
+                        const taskCat = task.categoryId ? categories[task.categoryId] : null;
+                        return (
+                          <div
+                            key={task.id}
+                            draggable
+                            onDragStart={(e) => {
+                              e.dataTransfer.setData('application/task', JSON.stringify(task));
+                              e.dataTransfer.setData('text/plain', '{}');
+                              e.dataTransfer.effectAllowed = 'copyMove';
+                              setDraggedTask(task);
+                              dragGrabOffset.current = 0;
+                              const img = new Image();
+                              img.src = 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7';
+                              e.dataTransfer.setDragImage(img, 0, 0);
+                            }}
+                            onDragEnd={() => { setDraggedTask(null); setDragPreview(null); }}
+                            className="flex items-start gap-2 p-2.5 rounded-xl border border-slate-100 bg-slate-50 hover:bg-indigo-50 hover:border-indigo-200 cursor-grab active:cursor-grabbing transition-all group"
+                          >
+                            {taskCat && <div className="w-2 h-2 rounded-full mt-1 shrink-0" style={{ backgroundColor: taskCat.color }} />}
+                            <div className="flex-1 min-w-0">
+                              <p className="text-[10px] font-bold text-slate-700 leading-tight truncate">{task.title}</p>
+                              {task.deadline && <p className="text-[8px] text-slate-400 mt-0.5">{task.deadline}</p>}
+                            </div>
+                            <GripVertical size={10} className="text-slate-300 opacity-0 group-hover:opacity-100 transition-opacity mt-0.5 shrink-0" />
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </div>
+              )}
+              </div>{/* close flex-1 flex wrapper */}
 
               {/* Floating Action Button for Tiempo */}
               <button
