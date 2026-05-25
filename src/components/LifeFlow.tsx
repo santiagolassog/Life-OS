@@ -10,7 +10,7 @@ import {
   PieChart as PieChartIcon, Trash2, CalendarDays, Menu, Copy, CheckCircle2, Circle, Edit2, Palette,
   Download, ListPlus, Target, BarChart3, History, DollarSign, Star, ChevronDown, LogOut, CheckSquare,
   Sparkles, Keyboard, Home, MoreHorizontal, Search, GripVertical, Flame, GraduationCap, Shield, KeyRound, Eye, EyeOff,
-  ListTodo,
+  ListTodo, Bell, BellRing, AlarmClock,
 } from 'lucide-react';
 import Dinero from './modules/Dinero';
 import Objetivos from './modules/Objetivos';
@@ -21,7 +21,7 @@ import Habitos from './modules/Habitos';
 import Admin from './modules/Admin';
 import Academia from './modules/Academia';
 import SearchModal, { type SearchResult } from './SearchModal';
-import type { Transaction, FinCategory, Goal, Savings, MonthBalance, SavingsWithdrawal, SavingsPocket, PocketFunding, SavingsYearBalance, Loan, LoanPayment, Budget, Task, ChecklistItem, EventEntry, Habit, HabitLog } from '../types';
+import type { Transaction, FinCategory, Goal, Savings, MonthBalance, SavingsWithdrawal, SavingsPocket, PocketFunding, SavingsYearBalance, Loan, LoanPayment, Budget, Task, ChecklistItem, EventEntry, Habit, HabitLog, Reminder } from '../types';
 import { LOAN_OUT_CAT_ID, LOAN_IN_CAT_ID } from '../types';
 import { generateId, formatDateId as fmtDateId, getWeekDays, GRID_HOURS, fmtCurrency, getWeekId } from '../lib/utils';
 import {
@@ -33,7 +33,7 @@ import {
   syncEvents, syncCategories, syncTransactions, syncFinCategories, syncGoals,
   syncSavings, syncMonthBalances, syncSavingsWithdrawals, syncSavingsPockets,
   syncPocketFundings, syncSavingsYearBalances, syncLoans, syncLoanPayments, syncBudgets,
-  syncTasks, syncChecklistItems, syncHabits, syncHabitLogs,
+  syncTasks, syncChecklistItems, syncHabits, syncHabitLogs, loadReminders, syncReminders,
 } from '../lib/db';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../hooks/useAuth';
@@ -94,6 +94,10 @@ const INITIAL_FIN_CATEGORIES: FinCategory[] = [
   { id: LOAN_OUT_CAT_ID, label: 'Préstamos',  color: '#f97316', type: 'expense', description: 'Dinero prestado a otras personas que esperas que se devuelva' },
   { id: LOAN_IN_CAT_ID,  label: 'Reintegros', color: '#22c55e', type: 'income',  description: 'Devoluciones de préstamos recibidas' },
 ];
+
+// Imagen transparente precargada para drag & drop (evita el ícono fantasma del navegador)
+const TRANSPARENT_IMG = new Image();
+TRANSPARENT_IMG.src = 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7';
 
 const MIN_OPTIONS = ['00', '15', '30', '45'];
 const HOUR_OPTIONS = Array.from({ length: 24 }, (_, i) => i.toString().padStart(2, '0'));
@@ -409,6 +413,10 @@ const App = () => {
   const [checklistItems, setChecklistItems]         = useState<ChecklistItem[]>([]);
   const [habits, setHabits]                         = useState<Habit[]>([]);
   const [habitLogs, setHabitLogs]                   = useState<HabitLog[]>([]);
+  const [reminders, setReminders]                   = useState<Reminder[]>([]);
+  const [reminderPopup, setReminderPopup]           = useState<Reminder | null>(null);
+  const [reminderSnoozeOpen, setReminderSnoozeOpen] = useState(false);
+  const [reminderSnoozeTime, setReminderSnoozeTime] = useState('');
 
   // ── Carga inicial desde Supabase (con migración automática de localStorage) ─
   useEffect(() => {
@@ -472,6 +480,7 @@ const App = () => {
         setChecklistItems(d.checklistItems ?? []);
         setHabits(d.habits ?? []);
         setHabitLogs(d.habitLogs ?? []);
+        setReminders(d.reminders ?? []);
 
         // Sincronizar refs con los datos cargados ANTES de setLoading(false).
         // Así los sync-effects ven prev === curr y no re-suben nada a Supabase.
@@ -493,6 +502,7 @@ const App = () => {
         prevChecklistItems.current     = d.checklistItems ?? [];
         prevHabits.current             = d.habits ?? [];
         prevHabitLogs.current          = d.habitLogs ?? [];
+        prevReminders.current          = d.reminders ?? [];
 
       } catch (err) {
         console.error('Error al cargar datos de Supabase:', err);
@@ -523,6 +533,7 @@ const App = () => {
   const prevChecklistItems      = useRef(checklistItems);
   const prevHabits              = useRef(habits);
   const prevHabitLogs           = useRef(habitLogs);
+  const prevReminders           = useRef(reminders);
 
   // Flag por tabla: true cuando el cambio vino de RT (no de acción local).
   // El sync-effect lo detecta, actualiza prevXxx y omite el upsert a Supabase,
@@ -692,6 +703,14 @@ const App = () => {
     prevHabitLogs.current = habitLogs;
   }, [habitLogs, loading, userId]);
 
+  useEffect(() => {
+    if (loading || !userId) return;
+    if (skipIfRT('reminders', prevReminders, reminders)) return;
+    markSaving();
+    syncReminders(prevReminders.current, reminders, userId).catch(console.error);
+    prevReminders.current = reminders;
+  }, [reminders, loading, userId]);
+
   // ── Real-time: recibe cambios de otros dispositivos/tabs ─────────────────────
   // El flag isRTUpdate marca el update como "venido de RT" para que el
   // sync-effect lo salte sin upload. No hay cooldown → cada evento RT
@@ -777,6 +796,10 @@ const App = () => {
         const fresh = await loadHabitLogs();
         rt['habit_logs'] = true; prevHabitLogs.current = fresh; setHabitLogs(fresh);
       })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'reminders', filter: f }, async () => {
+        const fresh = await loadReminders();
+        rt['reminders'] = true; prevReminders.current = fresh; setReminders(fresh);
+      })
 
       .subscribe();
 
@@ -813,6 +836,63 @@ const App = () => {
     localStorage.setItem(key, JSON.stringify({ lastVisit: todayStr, streak: newStreak }));
     setStreak(newStreak);
   }, [userId, loading]);
+
+  // ── Recordatorios: verificar cada 30s si hay alguno pendiente ────────────────
+  useEffect(() => {
+    if (loading || reminders.length === 0) return;
+    const firedIds = new Set<string>();
+    const check = () => {
+      const now = new Date();
+      reminders.forEach(r => {
+        if (r.done || firedIds.has(r.id)) return;
+        // Si fue snoozed, comparar contra snoozedTo
+        const triggerTime = r.snoozedTo ? new Date(r.snoozedTo) : new Date(`${r.date}T${r.time}:00`);
+        if (now >= triggerTime) {
+          firedIds.add(r.id);
+          setReminderPopup(r);
+        }
+      });
+    };
+    check();
+    const interval = setInterval(check, 30_000);
+    return () => clearInterval(interval);
+  }, [reminders, loading]);
+
+  // ── Recordatorios: CRUD helpers ─────────────────────────────────────────────
+  const handleSaveReminder = (title: string, date: string, time: string, id?: string) => {
+    if (id) {
+      setReminders(prev => prev.map(r => r.id === id ? { ...r, title, date, time, snoozedTo: undefined } : r));
+    } else {
+      const newR: Reminder = { id: generateId(), title, date, time, done: false, createdAt: new Date().toISOString() };
+      setReminders(prev => [...prev, newR]);
+    }
+    setModalData(null);
+  };
+
+  const handleDeleteReminder = (id: string) => {
+    setReminders(prev => prev.filter(r => r.id !== id));
+    setModalData(null);
+    setReminderPopup(null);
+  };
+
+  const handleReminderDone = (id: string) => {
+    setReminders(prev => prev.map(r => r.id === id ? { ...r, done: true } : r));
+    setReminderPopup(null);
+  };
+
+  const handleReminderSnooze = (id: string, newTime: string) => {
+    if (!newTime) return;
+    // newTime is "HH:MM" — snooze to today at that time, or tomorrow if time already passed
+    const now = new Date();
+    const [h, m] = newTime.split(':').map(Number);
+    const target = new Date(now.getFullYear(), now.getMonth(), now.getDate(), h, m, 0);
+    if (target <= now) target.setDate(target.getDate() + 1);
+    setReminders(prev => prev.map(r => r.id === id ? { ...r, snoozedTo: target.toISOString() } : r));
+    setReminderPopup(null);
+    setReminderSnoozeOpen(false);
+    setReminderSnoozeTime('');
+    toast.success('Recordatorio pospuesto', { description: `Se te notificará a las ${newTime}`, duration: 3000 });
+  };
 
   const handleSaveName = async (name: string, isOnboarding = false) => {
     if (!name.trim()) {
@@ -1068,16 +1148,26 @@ const App = () => {
 
   // ── Autocompletado inteligente de actividades ────────────────────────────────
   const getFilteredPresets = (categoryId: string, searchText: string) => {
+    const presets = categories[categoryId]?.presets ?? [];
+
     if (!searchText.trim()) {
-      // Si no hay búsqueda, mostrar todos
+      // Sin búsqueda: mostrar los 4 presets más usados del área
+      const usageCount: Record<string, number> = {};
+      presets.forEach(p => { usageCount[p] = 0; });
+      Object.values(events).flat().forEach((ev: EventEntry) => {
+        if (ev.category === categoryId && usageCount[ev.task] !== undefined) {
+          usageCount[ev.task]++;
+        }
+      });
+      const sorted = [...presets].sort((a, b) => (usageCount[b] || 0) - (usageCount[a] || 0));
       return {
-        matches: categories[categoryId]?.presets ?? [],
+        matches: sorted.slice(0, 4),
         exactMatch: false,
-        canCreate: false
+        canCreate: false,
+        hasMore: presets.length > 4
       };
     }
 
-    const presets = categories[categoryId]?.presets ?? [];
     const trimmed = searchText.trim();
     const lowerTrimmed = trimmed.toLowerCase();
 
@@ -1090,7 +1180,7 @@ const App = () => {
     // ¿Puede crear? Solo si no existe exactamente y el texto no está vacío
     const canCreate = !exactMatch && trimmed.length > 0;
 
-    return { matches, exactMatch, canCreate };
+    return { matches, exactMatch, canCreate, hasMore: false };
   };
 
   const createPresetDynamically = (categoryId: string, presetName: string) => {
@@ -1127,15 +1217,24 @@ const App = () => {
     setCatModal(null);
   };
 
-    const handleOpenModal = (dayDate: Date, hour: string, existingEvent: EventEntry | null = null) => {
+    const handleOpenModal = (dayDate: Date, hour: string, existingEvent: EventEntry | null = null, openAsReminder?: Reminder) => {
     const dateId = formatDateId(dayDate);
-    if (existingEvent) {
+    if (openAsReminder) {
+      // Abrir modal en modo recordatorio (editar)
+      const [h, m] = openAsReminder.time.split(':');
+      setModalData({
+        id: openAsReminder.id, dateId: openAsReminder.date,
+        startHour: h, startMin: m || '00', endHour: h, endMin: m || '00',
+        category: '', task: openAsReminder.title, isEditing: true, mode: 'edit', completed: false, selectedDays: [],
+        isReminder: true, reminderId: openAsReminder.id
+      });
+    } else if (existingEvent) {
       const [startH, startM] = existingEvent.startHour.split(':');
       const [endH, endM] = existingEvent.endHour.split(':');
       setModalData({
         ...existingEvent,
         startHour: startH, startMin: startM, endHour: endH, endMin: endM,
-        dateId, isEditing: true, mode: 'edit', selectedDays: []
+        dateId, isEditing: true, mode: 'edit', selectedDays: [], isReminder: false
       });
     } else {
       const [h, m] = hour.split(':');
@@ -1144,7 +1243,7 @@ const App = () => {
       setModalData({
         id: generateId(), dateId,
         startHour: h, startMin: m, endHour: endH, endMin: m,
-        category: Object.keys(categories)[0] || '', task: '', isEditing: false, mode: 'edit', completed: false, selectedDays: [], energy: undefined, impact: undefined, habitId: undefined
+        category: Object.keys(categories)[0] || '', task: '', isEditing: false, mode: 'edit', completed: false, selectedDays: [], energy: undefined, impact: undefined, habitId: undefined, isReminder: false
       });
     }
   };
@@ -1255,10 +1354,8 @@ const App = () => {
     const offsetY = e.clientY - rect.top;
     dragGrabOffset.current = offsetY;
     e.dataTransfer.setData('text/plain', JSON.stringify({ offsetY }));
-    // Use a tiny transparent image so only our ghost preview shows
-    const img = new Image();
-    img.src = 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7';
-    e.dataTransfer.setDragImage(img, 0, 0);
+    // Use pre-loaded transparent image so the browser never shows the default globe icon
+    e.dataTransfer.setDragImage(TRANSPARENT_IMG, 0, 0);
   };
 
   // Calculate target segment index from drag/drop position relative to the day column
@@ -2354,6 +2451,22 @@ const App = () => {
                                 </div>
                               );
                             })}
+                            {/* ── Recordatorios del día ── */}
+                            {reminders.filter(r => r.date === dateId && !r.done).map(rem => {
+                              const timeIdx = GRID_HOURS.indexOf(rem.time);
+                              const idx = timeIdx >= 0 ? timeIdx : (() => { const [h, m] = rem.time.split(':').map(Number); return Math.round((h * 60 + m) / 15); })();
+                              return (
+                                <div key={rem.id} onClick={(e) => { e.stopPropagation(); handleOpenModal(date, rem.time, null, rem); }}
+                                  className="absolute right-1 z-20 cursor-pointer group/rem"
+                                  style={{ top: `${idx * SEGMENT_HEIGHT}px` }}>
+                                  <div className="flex items-center gap-1 bg-amber-50 border border-amber-300 rounded-lg px-2 py-0.5 shadow-sm hover:shadow-md hover:bg-amber-100 transition-all">
+                                    <Bell size={10} className="text-amber-600 shrink-0" />
+                                    <span className="text-[9px] font-black text-amber-800 truncate max-w-[80px]">{rem.title}</span>
+                                    <span className="text-[7px] font-bold text-amber-500">{rem.time}</span>
+                                  </div>
+                                </div>
+                              );
+                            })}
                           </div>
                         );
                       })}
@@ -2391,9 +2504,7 @@ const App = () => {
                               e.dataTransfer.effectAllowed = 'copyMove';
                               setDraggedTask(task);
                               dragGrabOffset.current = 0;
-                              const img = new Image();
-                              img.src = 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7';
-                              e.dataTransfer.setDragImage(img, 0, 0);
+                              e.dataTransfer.setDragImage(TRANSPARENT_IMG, 0, 0);
                             }}
                             onDragEnd={() => { setDraggedTask(null); setDragPreview(null); }}
                             className="flex items-start gap-2 p-2.5 rounded-xl border border-slate-100 bg-slate-50 hover:bg-indigo-50 hover:border-indigo-200 cursor-grab active:cursor-grabbing transition-all group"
@@ -2921,23 +3032,76 @@ const App = () => {
             {/* Header */}
             <div className="px-5 py-4 md:px-8 md:py-5 flex justify-between items-center shrink-0 border-b border-slate-100">
               <div className="flex gap-3 items-center">
-                <div className={`w-10 h-10 rounded-2xl flex items-center justify-center shadow-md transition-colors ${modalData.completed ? 'bg-emerald-500' : 'bg-indigo-600'}`}>
-                  <Zap className="text-white" size={18} />
+                <div className={`w-10 h-10 rounded-2xl flex items-center justify-center shadow-md transition-colors ${modalData.isReminder ? 'bg-amber-500' : modalData.completed ? 'bg-emerald-500' : 'bg-indigo-600'}`}>
+                  {modalData.isReminder ? <Bell className="text-white" size={18} /> : <Zap className="text-white" size={18} />}
                 </div>
                 <div>
-                  <h2 className="text-base font-black text-slate-800 uppercase italic leading-tight">{modalData.mode === 'duplicate' ? 'Clonar Bloque' : 'Seguimiento'}</h2>
-                  <p className={`text-[9px] font-black uppercase tracking-widest ${modalData.completed ? 'text-emerald-500' : 'text-indigo-400'}`}>{modalData.completed ? 'Actividad completada' : 'Planificando'}</p>
+                  <h2 className="text-base font-black text-slate-800 uppercase italic leading-tight">{modalData.isReminder ? 'Recordatorio' : modalData.mode === 'duplicate' ? 'Clonar Bloque' : 'Seguimiento'}</h2>
+                  <p className={`text-[9px] font-black uppercase tracking-widest ${modalData.isReminder ? 'text-amber-500' : modalData.completed ? 'text-emerald-500' : 'text-indigo-400'}`}>
+                    {modalData.isReminder ? 'Te notificaremos a tiempo' : modalData.completed ? 'Actividad completada' : 'Planificando'}
+                  </p>
                 </div>
               </div>
               <button onClick={() => setModalData(null)} className="p-2.5 hover:bg-slate-100 rounded-full transition-all"><X size={18}/></button>
             </div>
 
+            {/* Toggle Actividad / Recordatorio — solo en creación */}
+            {!modalData.isEditing && (
+              <div className="px-5 md:px-8 pt-4">
+                <div className="flex bg-slate-100 rounded-2xl p-1 gap-1">
+                  <button onClick={() => setModalData({...modalData, isReminder: false})}
+                    className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${!modalData.isReminder ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}>
+                    <Zap size={13} /> Actividad
+                  </button>
+                  <button onClick={() => setModalData({...modalData, isReminder: true})}
+                    className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${modalData.isReminder ? 'bg-white text-amber-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}>
+                    <Bell size={13} /> Recordatorio
+                  </button>
+                </div>
+              </div>
+            )}
+
             {/* Scrollable body */}
             <div className="flex-1 overflow-y-auto custom-scrollbar">
               <div className="p-5 md:p-8 space-y-5">
 
+                {/* ══════ MODO RECORDATORIO ══════ */}
+                {modalData.isReminder && (
+                  <>
+                    <div className="space-y-2.5">
+                      <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block">¿Qué quieres recordar?</label>
+                      <input type="text" placeholder="Ej: Llamar al cliente, Enviar email, Cumpleaños..."
+                        className="w-full bg-slate-50 border-2 border-transparent focus:border-amber-300 rounded-2xl px-4 py-4 text-base font-black outline-none transition-all"
+                        value={modalData.task} onChange={(e) => setModalData({...modalData, task: e.target.value})} autoFocus />
+                    </div>
+                    <div className="space-y-2.5">
+                      <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block">Fecha y hora</label>
+                      <div className="bg-slate-50 rounded-2xl overflow-hidden border-2 border-transparent">
+                        <div className="date-picker-container relative h-14 cursor-pointer group">
+                          <div className="absolute inset-0 px-4 flex items-center justify-between pointer-events-none group-hover:bg-slate-100 transition-all">
+                            <span className="text-sm font-black text-slate-700 capitalize">
+                              {new Date(modalData.dateId + "T00:00").toLocaleDateString('es-ES', { weekday: 'short', day: '2-digit', month: 'long' })}
+                            </span>
+                            <CalendarDays size={16} className="text-amber-400" />
+                          </div>
+                          <input type="date" className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10 native-date-input"
+                            value={modalData.dateId} onChange={(e) => setModalData({...modalData, dateId: e.target.value})} />
+                        </div>
+                        <div className="h-px bg-slate-200 mx-3" />
+                        <div className="flex items-center justify-center p-4 gap-3">
+                          <AlarmClock size={16} className="text-amber-500" />
+                          <input type="time" value={`${modalData.startHour}:${modalData.startMin}`}
+                            onChange={(e) => { const [h, m] = e.target.value.split(':'); setModalData({...modalData, startHour: h, startMin: m}); }}
+                            className="bg-white border-2 border-slate-200 focus:border-amber-300 rounded-xl px-4 py-3 font-black text-sm outline-none transition-all text-center" />
+                        </div>
+                      </div>
+                    </div>
+                  </>
+                )}
+
+                {/* ══════ MODO ACTIVIDAD ══════ */}
                 {/* Completed toggle */}
-                {modalData.isEditing && modalData.mode === 'edit' && (
+                {!modalData.isReminder && modalData.isEditing && modalData.mode === 'edit' && (
                   <button onClick={() => setModalData({...modalData, completed: !modalData.completed})}
                     className={`w-full px-4 py-3.5 rounded-2xl border-2 flex items-center justify-between transition-all active:scale-[0.99] ${modalData.completed ? 'bg-emerald-50 border-emerald-400' : 'bg-slate-50 border-slate-200 hover:border-indigo-200'}`}>
                     <div className="flex items-center gap-3">
@@ -2955,7 +3119,7 @@ const App = () => {
                 )}
 
                 {/* Energy + Impact */}
-                {modalData.completed && (
+                {!modalData.isReminder && modalData.completed && (
                   <div className="grid grid-cols-2 gap-2.5 animate-in fade-in slide-in-from-top-1 duration-200">
                     <div className={`p-3.5 rounded-2xl border-2 flex flex-col items-center gap-2 transition-all ${(modalData.energy || 0) > 0 ? 'bg-amber-50 border-amber-200' : 'bg-slate-50 border-slate-100'}`}>
                       <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Energía invertida</span>
@@ -2983,7 +3147,7 @@ const App = () => {
                 )}
 
                 {/* Area selector */}
-                <div className="space-y-2.5">
+                {!modalData.isReminder && (<><div className="space-y-2.5">
                   <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block">Área</label>
                   <div className="grid grid-cols-3 md:grid-cols-5 gap-2">
                     {sortedCategories.map((cat) => {
@@ -3006,11 +3170,11 @@ const App = () => {
                     className="w-full bg-slate-50 border-2 border-transparent focus:border-indigo-200 rounded-2xl px-4 py-4 text-base font-black outline-none transition-all"
                     value={modalData.task} onChange={(e) => setModalData({...modalData, task: e.target.value})} />
                   {(() => {
-                    const { matches, canCreate } = getFilteredPresets(modalData.category, modalData.task);
+                    const { matches, canCreate, hasMore } = getFilteredPresets(modalData.category, modalData.task);
                     const hasMatches = matches.length > 0 || canCreate;
 
                     return hasMatches && (
-                      <div className="flex flex-wrap gap-1.5 animate-in fade-in">
+                      <div className="flex flex-wrap items-center gap-1.5 animate-in fade-in">
                         {/* Presets filtrados */}
                         {matches.map((preset, i) => (
                           <button
@@ -3024,6 +3188,11 @@ const App = () => {
                             {preset}
                           </button>
                         ))}
+
+                        {/* Indicador de que hay más sugerencias */}
+                        {hasMore && (
+                          <span className="text-[9px] font-bold text-slate-300 italic pl-1">Escribe para ver más...</span>
+                        )}
 
                         {/* Botón para crear nuevo preset */}
                         {canCreate && (
@@ -3108,22 +3277,40 @@ const App = () => {
                     </div>
                   </div>
                 )}
+                </>)}
               </div>
             </div>
 
             {/* Footer */}
-            <div className={`px-5 py-4 md:px-8 flex gap-3 shrink-0 border-t transition-colors duration-300 md:rounded-b-[2.5rem] ${modalData.completed ? 'bg-emerald-600 border-emerald-500' : 'bg-indigo-950 border-indigo-900'}`}
+            <div className={`px-5 py-4 md:px-8 flex gap-3 shrink-0 border-t transition-colors duration-300 md:rounded-b-[2.5rem] ${modalData.isReminder ? 'bg-amber-600 border-amber-500' : modalData.completed ? 'bg-emerald-600 border-emerald-500' : 'bg-indigo-950 border-indigo-900'}`}
               style={{ paddingBottom: 'max(1rem, env(safe-area-inset-bottom, 1rem))' }}>
-              {modalData.isEditing && (
-                <div className="flex gap-2">
-                  <button onClick={deleteActivity} className="p-3.5 rounded-2xl text-red-400 hover:bg-white/10 border border-red-500/20 transition-all active:scale-90"><Trash2 size={18} /></button>
-                  <button onClick={() => setModalData({...modalData, mode: 'duplicate', selectedDays: []})} className="p-3.5 rounded-2xl text-slate-300 hover:bg-white/10 border border-white/10 transition-all active:scale-90"><Copy size={18} /></button>
-                </div>
+              {modalData.isReminder ? (
+                <>
+                  {modalData.isEditing && (
+                    <button onClick={() => handleDeleteReminder(modalData.reminderId!)} className="p-3.5 rounded-2xl text-red-300 hover:bg-white/10 border border-red-400/20 transition-all active:scale-90"><Trash2 size={18} /></button>
+                  )}
+                  <button onClick={() => {
+                    if (!modalData.task.trim()) return;
+                    handleSaveReminder(modalData.task.trim(), modalData.dateId, `${modalData.startHour}:${modalData.startMin}`, modalData.isEditing ? modalData.reminderId : undefined);
+                  }}
+                    className="flex-1 py-4 rounded-2xl font-black shadow-lg active:scale-[0.98] uppercase text-xs tracking-widest transition-all bg-white text-amber-600 hover:bg-amber-50">
+                    {modalData.isEditing ? 'Guardar' : 'Crear Recordatorio'}
+                  </button>
+                </>
+              ) : (
+                <>
+                  {modalData.isEditing && (
+                    <div className="flex gap-2">
+                      <button onClick={deleteActivity} className="p-3.5 rounded-2xl text-red-400 hover:bg-white/10 border border-red-500/20 transition-all active:scale-90"><Trash2 size={18} /></button>
+                      <button onClick={() => setModalData({...modalData, mode: 'duplicate', selectedDays: []})} className="p-3.5 rounded-2xl text-slate-300 hover:bg-white/10 border border-white/10 transition-all active:scale-90"><Copy size={18} /></button>
+                    </div>
+                  )}
+                  <button onClick={saveActivity}
+                    className={`flex-1 py-4 rounded-2xl font-black shadow-lg active:scale-[0.98] uppercase text-xs tracking-widest transition-all ${modalData.completed ? 'bg-white text-emerald-600 hover:bg-emerald-50' : 'bg-indigo-500 text-white hover:bg-indigo-400'}`}>
+                    Confirmar
+                  </button>
+                </>
               )}
-              <button onClick={saveActivity}
-                className={`flex-1 py-4 rounded-2xl font-black shadow-lg active:scale-[0.98] uppercase text-xs tracking-widest transition-all ${modalData.completed ? 'bg-white text-emerald-600 hover:bg-emerald-50' : 'bg-indigo-500 text-white hover:bg-indigo-400'}`}>
-                Confirmar
-              </button>
             </div>
           </div>
         </div>
@@ -3179,6 +3366,56 @@ const App = () => {
         </div>
       )}
 
+
+      {/* ══════ REMINDER NOTIFICATION POPUP ══════ */}
+      {reminderPopup && (
+        <div className="fixed inset-0 bg-black/50 z-[300] flex items-center justify-center p-4 backdrop-blur-sm animate-in fade-in">
+          <div className="bg-white rounded-[2.5rem] shadow-2xl w-full max-w-sm overflow-hidden animate-in zoom-in-95">
+            {/* Header animado */}
+            <div className="bg-gradient-to-br from-amber-400 via-orange-500 to-red-500 px-6 py-8 text-center relative overflow-hidden">
+              <div className="absolute inset-0 opacity-10" style={{ backgroundImage: 'radial-gradient(circle at 30% 50%, white 1px, transparent 1px), radial-gradient(circle at 70% 80%, white 1px, transparent 1px)', backgroundSize: '20px 20px' }} />
+              <div className="relative">
+                <div className="w-16 h-16 bg-white/20 rounded-3xl flex items-center justify-center mx-auto mb-4 backdrop-blur-sm shadow-lg">
+                  <BellRing size={32} className="text-white" />
+                </div>
+                <h2 className="text-white font-black text-lg tracking-wide">¡Recordatorio!</h2>
+                <p className="text-white/70 text-[10px] font-bold uppercase tracking-widest mt-1">{reminderPopup.time} — {new Date(reminderPopup.date + 'T12:00:00').toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric', month: 'short' })}</p>
+              </div>
+            </div>
+            <div className="p-6 space-y-5">
+              <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 text-center">
+                <p className="text-base font-black text-slate-800">{reminderPopup.title}</p>
+              </div>
+              {/* Acciones */}
+              <div className="space-y-3">
+                <button onClick={() => handleReminderDone(reminderPopup.id)}
+                  className="w-full flex items-center justify-center gap-2 bg-emerald-500 text-white font-black rounded-2xl py-4 hover:bg-emerald-600 shadow-md text-xs uppercase tracking-widest transition-all active:scale-[0.98]">
+                  <CheckCircle2 size={16} /> Hecho
+                </button>
+                {!reminderSnoozeOpen ? (
+                  <button onClick={() => { setReminderSnoozeOpen(true); const now = new Date(); now.setMinutes(now.getMinutes() + 30); setReminderSnoozeTime(`${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}`); }}
+                    className="w-full flex items-center justify-center gap-2 bg-slate-100 text-slate-600 font-black rounded-2xl py-4 hover:bg-slate-200 text-xs uppercase tracking-widest transition-all active:scale-[0.98]">
+                    <AlarmClock size={16} /> Posponer
+                  </button>
+                ) : (
+                  <div className="flex gap-2">
+                    <input type="time" value={reminderSnoozeTime} onChange={e => setReminderSnoozeTime(e.target.value)}
+                      className="flex-1 bg-slate-50 border-2 border-amber-300 rounded-2xl px-4 py-3 font-bold outline-none text-sm text-center" />
+                    <button onClick={() => handleReminderSnooze(reminderPopup.id, reminderSnoozeTime)}
+                      className="bg-amber-500 text-white font-black rounded-2xl px-5 py-3 hover:bg-amber-600 text-[10px] uppercase tracking-widest transition-all active:scale-95">
+                      OK
+                    </button>
+                  </div>
+                )}
+                <button onClick={() => { setReminderPopup(null); setReminderSnoozeOpen(false); }}
+                  className="w-full text-[10px] font-bold text-slate-400 hover:text-slate-600 py-2 transition-all">
+                  Cerrar sin acción
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       <style>{`
         .custom-scrollbar::-webkit-scrollbar { width: 4px; height: 4px; }
