@@ -171,6 +171,7 @@ export interface Habit {
   target: number          // días por semana (1-7)
   color: string           // 'bg-indigo-500', 'bg-emerald-500', etc.
   startDate: string       // "YYYY-MM-DD"
+  sortOrder: number       // orden manual definido por el usuario
   createdAt: string       // ISO timestamp
 }
 
@@ -178,6 +179,20 @@ export interface HabitLog {
   id: string
   habitId: string
   date: string            // "YYYY-MM-DD"
+}
+
+// ────────────────────────────────────────────────────────
+// RECORDATORIOS
+// ────────────────────────────────────────────────────────
+
+export interface Reminder {
+  id: string
+  title: string
+  date: string              // "YYYY-MM-DD"
+  time: string              // "HH:MM"
+  done: boolean
+  snoozedTo?: string        // ISO timestamp si fue pospuesto
+  createdAt: string         // ISO timestamp
 }
 
 // ────────────────────────────────────────────────────────

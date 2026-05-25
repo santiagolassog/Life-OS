@@ -17,7 +17,7 @@ import type {
   Savings, MonthBalance, SavingsWithdrawal,
   SavingsPocket, PocketFunding, SavingsYearBalance,
   Loan, LoanPayment, Budget, Task, ChecklistItem,
-  Habit, HabitLog,
+  Habit, HabitLog, Reminder,
 } from '../types'
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -230,6 +230,7 @@ const rowToHabit = (row: Record<string, unknown>): Habit => ({
   target:    Number(row.target),
   color:     row.color as string,
   startDate: row.start_date as string,
+  sortOrder: row.sort_order != null ? Number(row.sort_order) : 0,
   createdAt: row.created_at as string,
 })
 
@@ -239,6 +240,7 @@ const habitToDb = (h: Habit) => ({
   target:     h.target,
   color:      h.color,
   start_date: h.startDate,
+  sort_order: h.sortOrder ?? 0,
   created_at: h.createdAt,
 })
 
@@ -594,21 +596,21 @@ export async function loadAllData() {
     events, categories, transactions, finCategories, goals,
     savings, monthBalances, savingsWithdrawals, savingsPockets,
     pocketFundings, savingsYearBalances, loans, loanPayments, budgets,
-    tasks, checklistItems, habits, habitLogs,
+    tasks, checklistItems, habits, habitLogs, reminders,
   ] = await Promise.all([
     loadEvents(), loadCategories(), loadTransactions(), loadFinCategories(),
     loadGoals(), loadSavings(), loadMonthBalances(), loadSavingsWithdrawals(),
     loadSavingsPockets(), loadPocketFundings(), loadSavingsYearBalances(),
     loadLoans(), loadLoanPayments(), loadBudgets(),
     loadTasks(), loadChecklistItems(),
-    loadHabits(), loadHabitLogs(),
+    loadHabits(), loadHabitLogs(), loadReminders(),
   ])
 
   return {
     events, categories, transactions, finCategories, goals,
     savings, monthBalances, savingsWithdrawals, savingsPockets,
     pocketFundings, savingsYearBalances, loans, loanPayments, budgets,
-    tasks, checklistItems, habits, habitLogs,
+    tasks, checklistItems, habits, habitLogs, reminders,
   }
 }
 
@@ -714,6 +716,46 @@ export async function syncHabitLogs(prev: HabitLog[], curr: HabitLog[], userId: 
     ops.push(supabase.from('habit_logs').delete().in('id', deletedIds).then(({ error }) => { if (error) console.error('syncHabitLogs delete:', error) }))
   if (upserted.length > 0)
     ops.push(supabase.from('habit_logs').upsert(upserted.map(l => withUser(habitLogToDb(l), userId))).then(({ error }) => { if (error) console.error('syncHabitLogs upsert:', error) }))
+  await Promise.all(ops)
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// REMINDERS
+// ─────────────────────────────────────────────────────────────────────────────
+
+const rowToReminder = (row: Record<string, unknown>): Reminder => ({
+  id:        row.id as string,
+  title:     row.title as string,
+  date:      row.date as string,
+  time:      row.time as string,
+  done:      row.done as boolean,
+  snoozedTo: row.snoozed_to as string | undefined,
+  createdAt: row.created_at as string,
+})
+
+const reminderToDb = (r: Reminder) => ({
+  id:         r.id,
+  title:      r.title,
+  date:       r.date,
+  time:       r.time,
+  done:       r.done,
+  snoozed_to: r.snoozedTo ?? null,
+  created_at: r.createdAt,
+})
+
+export async function loadReminders(): Promise<Reminder[]> {
+  const { data, error } = await supabase.from('reminders').select('*')
+  if (error) { console.error('loadReminders:', error); return [] }
+  return data?.map(rowToReminder) ?? []
+}
+
+export async function syncReminders(prev: Reminder[], curr: Reminder[], userId: string) {
+  const { upserted, deletedIds } = diffArrays(prev, curr)
+  const ops: Promise<unknown>[] = []
+  if (deletedIds.length > 0)
+    ops.push(supabase.from('reminders').delete().in('id', deletedIds).then(({ error }) => { if (error) console.error('syncReminders delete:', error) }))
+  if (upserted.length > 0)
+    ops.push(supabase.from('reminders').upsert(upserted.map(r => withUser(reminderToDb(r), userId))).then(({ error }) => { if (error) console.error('syncReminders upsert:', error) }))
   await Promise.all(ops)
 }
 
