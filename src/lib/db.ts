@@ -11,6 +11,7 @@
  */
 
 import { supabase } from './supabase'
+import { toast } from 'sonner'
 import type {
   Events, Categories, EventEntry, Category,
   Transaction, FinCategory, Goal,
@@ -625,9 +626,13 @@ export async function syncEvents(prev: Events, curr: Events, userId: string) {
 
   const ops: Promise<unknown>[] = []
   if (deletedIds.length > 0)
-    ops.push(supabase.from('events').delete().in('id', deletedIds).then(({ error }) => { if (error) console.error('syncEvents delete:', error) }))
+    ops.push(supabase.from('events').delete().in('id', deletedIds).then(({ error }) => {
+      if (error) { console.error('syncEvents delete:', error); toast.error('Error al eliminar actividad: ' + error.message) }
+    }))
   if (upserted.length > 0)
-    ops.push(supabase.from('events').upsert(upserted.map(e => withUser(eventToDb(e), userId))).then(({ error }) => { if (error) console.error('syncEvents upsert:', error) }))
+    ops.push(supabase.from('events').upsert(upserted.map(e => withUser(eventToDb(e), userId))).then(({ error }) => {
+      if (error) { console.error('syncEvents upsert:', error); toast.error('Error al guardar actividad: ' + error.message) }
+    }))
 
   await Promise.all(ops)
 }
