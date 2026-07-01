@@ -7,7 +7,7 @@ import {
   CheckCircle2, AlertTriangle,
   ChevronLeft, ChevronRight, Zap, Star, Download, Flame
 } from 'lucide-react';
-import type { Events, Categories, Transaction, FinCategory, Goal, Task, Habit, HabitLog } from '../../types';
+import type { Events, Categories, Transaction, FinCategory, Goal, Task, Habit, HabitLog, ReportData } from '../../types';
 import { LOAN_IN_CAT_ID, LOAN_OUT_CAT_ID } from '../../types';
 import { getWeekId, getWeekDays, formatDateId, GRID_HOURS, fmtCurrency as fmt } from '../../lib/utils';
 
@@ -30,7 +30,7 @@ interface RevisionProps {
   habits: Habit[];
   habitLogs: HabitLog[];
   currentDate: Date;
-  onDownloadReport: () => void;
+  onDownloadReport: (data: ReportData) => void;
   isExporting: boolean;
   isModuleEnabled?: (key: string) => boolean;
 }
@@ -135,28 +135,87 @@ const Revision: React.FC<RevisionProps> = ({
     return { main, total, completionRate, avgEnergy, avgImpact, topTasks, dayBar, totalEvents, completedEvents, bestDay };
   }, [events, categories, isInRange, weekDays]);
 
+  // Detalle de tiempo por área: sub-actividades (presets) vs. otras actividades no registradas como preset
+  const timeDetail = useMemo(() => {
+    const byCat: Record<string, Record<string, number>> = {};
+
+    Object.keys(events).forEach(dayId => {
+      if (!isInRange(dayId)) return;
+      (events[dayId] || []).forEach(ev => {
+        if (!ev.completed || !categories[ev.category]) return;
+        const si = GRID_HOURS.indexOf(ev.startHour);
+        const ei = GRID_HOURS.indexOf(ev.endHour);
+        const dur = Math.max(0, (ei - si) * 0.25);
+        const taskName = String(ev.task || 'Sin nombre');
+        if (!byCat[ev.category]) byCat[ev.category] = {};
+        byCat[ev.category][taskName] = (byCat[ev.category][taskName] || 0) + dur;
+      });
+    });
+
+    return Object.entries(byCat).map(([catId, taskHours]) => {
+      const cat = categories[catId];
+      const presetSet = new Set(cat.presets ?? []);
+      const presets: { name: string; hours: number }[] = [];
+      const others: { name: string; hours: number }[] = [];
+      Object.entries(taskHours).forEach(([name, hours]) => {
+        (presetSet.has(name) ? presets : others).push({ name, hours });
+      });
+      presets.sort((a, b) => b.hours - a.hours);
+      others.sort((a, b) => b.hours - a.hours);
+      return { id: catId, name: cat.label, color: cat.color, presets, others };
+    });
+  }, [events, categories, isInRange]);
+
   const financialStats = useMemo(() => {
     let income = 0, expenses = 0, count = 0;
-    const byCategory: Record<string, { label: string; color: string; total: number }> = {};
+    const incomeByCategory: Record<string, { label: string; color: string; total: number }> = {};
+    const expenseByCategory: Record<string, { label: string; color: string; total: number }> = {};
 
     transactions.forEach(tx => {
       if (!isInRange(tx.date)) return;
       count++;
-      if (tx.type === 'income' && tx.finCategoryId !== LOAN_IN_CAT_ID) income += tx.amount;
-      else if (tx.type === 'expense' && tx.finCategoryId !== LOAN_OUT_CAT_ID) expenses += tx.amount;
       const cat = finCategories.find(c => c.id === tx.finCategoryId);
-      if (cat) {
-        if (!byCategory[tx.finCategoryId]) byCategory[tx.finCategoryId] = { label: cat.label, color: cat.color, total: 0 };
-        byCategory[tx.finCategoryId].total += tx.amount;
+      if (tx.type === 'income' && tx.finCategoryId !== LOAN_IN_CAT_ID) {
+        income += tx.amount;
+        if (cat) {
+          if (!incomeByCategory[tx.finCategoryId]) incomeByCategory[tx.finCategoryId] = { label: cat.label, color: cat.color, total: 0 };
+          incomeByCategory[tx.finCategoryId].total += tx.amount;
+        }
+      } else if (tx.type === 'expense' && tx.finCategoryId !== LOAN_OUT_CAT_ID) {
+        expenses += tx.amount;
+        if (cat) {
+          if (!expenseByCategory[tx.finCategoryId]) expenseByCategory[tx.finCategoryId] = { label: cat.label, color: cat.color, total: 0 };
+          expenseByCategory[tx.finCategoryId].total += tx.amount;
+        }
       }
     });
 
-    const topExpenses = Object.values(byCategory).sort((a, b) => b.total - a.total).slice(0, 4);
-    return { income, expenses, balance: income - expenses, topExpenses, count };
+    const incomeCats = Object.values(incomeByCategory).sort((a, b) => b.total - a.total);
+    const expenseCats = Object.values(expenseByCategory).sort((a, b) => b.total - a.total);
+    const topExpenses = expenseCats.slice(0, 4);
+    return { income, expenses, balance: income - expenses, topExpenses, incomeCats, expenseCats, count };
   }, [transactions, finCategories, isInRange]);
 
+  // Set de weekIds (ISO) que caen dentro del período seleccionado (semana/mes/año)
+  const periodWeekIds = useMemo(() => {
+    if (range === 'week') return new Set([weekId]);
+    const set = new Set<string>();
+    if (range === 'month') {
+      const y = viewDate.getFullYear(), m = viewDate.getMonth();
+      const daysInMonth = new Date(y, m + 1, 0).getDate();
+      for (let d = 1; d <= daysInMonth; d++) set.add(getWeekId(new Date(y, m, d)));
+    } else {
+      const y = viewDate.getFullYear();
+      for (let m = 0; m < 12; m++) {
+        const daysInMonth = new Date(y, m + 1, 0).getDate();
+        for (let d = 1; d <= daysInMonth; d++) set.add(getWeekId(new Date(y, m, d)));
+      }
+    }
+    return set;
+  }, [range, viewDate, weekId]);
+
   const goalStats = useMemo(() => {
-    const weekGoals = goals.filter(g => g.weekId === weekId);
+    const weekGoals = goals.filter(g => periodWeekIds.has(g.weekId));
     const completed = weekGoals.filter(g => g.completed).length;
     const total = weekGoals.length;
     const rate = total > 0 ? Math.round((completed / total) * 100) : 0;
@@ -180,7 +239,7 @@ const Revision: React.FC<RevisionProps> = ({
       : null;
 
     return { total, completed, rate, highIncomplete, weekGoals, withDeadline: withDeadline.length, metOnTime, late, overdue, avgDays };
-  }, [goals, weekId]);
+  }, [goals, periodWeekIds]);
 
   // Tasks completed in period grouped by área
   const taskStats = useMemo(() => {
@@ -467,6 +526,55 @@ const Revision: React.FC<RevisionProps> = ({
     return { catStats, taskStats, leverage, worthit, drain, noise, overallE, overallI, totalRated: rated.length, behaviorInsights };
   }, [events, categories, isInRange]);
 
+  // ── Ensamblado de datos para el reporte PDF exportable ─────────────────────
+  const reportData: ReportData = useMemo(() => ({
+    range,
+    periodLabel,
+    generatedAt: new Date().toISOString(),
+    time: {
+      totalHours: timeStats.total,
+      completionRate: timeStats.completionRate,
+      avgEnergy: timeStats.avgEnergy,
+      avgImpact: timeStats.avgImpact,
+      categories: timeStats.main.map(s => {
+        const detail = timeDetail.find(d => d.id === s.id);
+        return {
+          id: s.id, name: s.name, color: s.color,
+          hours: s.hours, percentage: s.percentage,
+          presets: detail?.presets ?? [],
+          others: detail?.others ?? [],
+        };
+      }),
+    },
+    finance: {
+      income: financialStats.income,
+      expenses: financialStats.expenses,
+      balance: financialStats.balance,
+      incomeCats: financialStats.incomeCats,
+      expenseCats: financialStats.expenseCats,
+    },
+    goals: {
+      total: goalStats.total,
+      completed: goalStats.completed,
+      rate: goalStats.rate,
+      withDeadline: goalStats.withDeadline,
+      metOnTime: goalStats.metOnTime,
+      late: goalStats.late,
+      overdue: goalStats.overdue,
+      avgDays: goalStats.avgDays,
+      list: goalStats.weekGoals.map(g => ({
+        title: g.title, priority: g.priority, completed: g.completed, deadline: g.deadline,
+      })),
+    },
+    habits: {
+      overallPct: habitStats.overallPct,
+      bestStreak: habitStats.bestStreak,
+      list: habitStats.perHabit.map(h => ({
+        name: h.name, color: h.color, doneCount: h.doneCount, periodTarget: h.periodTarget, pct: h.pct, streak: h.streak,
+      })),
+    },
+  }), [range, periodLabel, timeStats, timeDetail, financialStats, goalStats, habitStats]);
+
   return (
     <div className="flex-1 overflow-y-auto custom-scrollbar">
       <div className="w-full p-4 md:p-8 space-y-6 pb-28 md:pb-12">
@@ -498,7 +606,7 @@ const Revision: React.FC<RevisionProps> = ({
               <button onClick={nextPeriod} className="p-1.5 hover:bg-white rounded-full transition-all"><ChevronRight size={14} /></button>
             </div>
             <button
-              onClick={onDownloadReport}
+              onClick={() => onDownloadReport(reportData)}
               disabled={isExporting}
               className={`flex items-center gap-2 px-4 py-2 rounded-full text-[10px] font-black uppercase transition-all ${isExporting ? 'bg-slate-200 text-slate-400' : 'bg-indigo-600 text-white hover:bg-indigo-700 shadow-lg active:scale-95'}`}
             >

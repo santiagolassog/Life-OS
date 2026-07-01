@@ -954,12 +954,19 @@ const Dinero: React.FC<DineroProps> = ({
                     </button>
                   </div>
                 ) : (
-                  Object.entries(grouped).map(([date, txs]) => (
+                  Object.entries(grouped).map(([date, txs]) => {
+                    const dayIncome = txs.filter(t => t.type === 'income' && t.finCategoryId !== LOAN_IN_CAT_ID).reduce((s, t) => s + t.amount, 0);
+                    const dayExpenses = txs.filter(t => t.type === 'expense').reduce((s, t) => s + t.amount, 0);
+                    return (
                     <div key={date} className="bg-white rounded-2xl border border-slate-100 overflow-hidden shadow-sm">
-                      <div className="px-4 py-2.5 bg-slate-50 border-b border-slate-100">
+                      <div className="px-4 py-2.5 bg-slate-50 border-b border-slate-100 flex items-center justify-between gap-2">
                         <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest capitalize">
                           {new Date(date + 'T00:00').toLocaleDateString('es-ES', { weekday: 'long', day: '2-digit', month: 'long' })}
                         </span>
+                        <div className="flex items-center gap-2 shrink-0">
+                          {dayIncome > 0 && <span className="text-[9px] font-black text-emerald-600">+${fmt(dayIncome)}</span>}
+                          {dayExpenses > 0 && <span className="text-[9px] font-black text-red-500">-${fmt(dayExpenses)}</span>}
+                        </div>
                       </div>
                       <div className="divide-y divide-slate-50">
                         {txs.map(tx => {
@@ -981,7 +988,8 @@ const Dinero: React.FC<DineroProps> = ({
                         })}
                       </div>
                     </div>
-                  ))
+                    );
+                  })
                 )}
             </div>
 

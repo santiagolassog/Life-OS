@@ -363,3 +363,75 @@ export interface ExclusiveVideoProgress {
   completed: boolean
   completedAt?: string
 }
+
+// ────────────────────────────────────────────────────────
+// REPORTE DE REVISIÓN (PDF)
+// ────────────────────────────────────────────────────────
+
+export interface ReportTimeCategoryDetail {
+  id: string
+  name: string
+  color: string
+  hours: number
+  percentage: number
+  presets: { name: string; hours: number }[]
+  others: { name: string; hours: number }[]
+}
+
+export interface ReportFinCategoryDetail {
+  label: string
+  color: string
+  total: number
+}
+
+export interface ReportGoalDetail {
+  title: string
+  priority: 'high' | 'medium' | 'low'
+  completed: boolean
+  deadline?: string
+}
+
+export interface ReportHabitDetail {
+  name: string
+  color: string
+  doneCount: number
+  periodTarget: number
+  pct: number
+  streak: number
+}
+
+export interface ReportData {
+  range: 'week' | 'month' | 'year'
+  periodLabel: string
+  generatedAt: string
+  time: {
+    totalHours: number
+    completionRate: number
+    avgEnergy: number | null
+    avgImpact: number | null
+    categories: ReportTimeCategoryDetail[]
+  }
+  finance: {
+    income: number
+    expenses: number
+    balance: number
+    incomeCats: ReportFinCategoryDetail[]
+    expenseCats: ReportFinCategoryDetail[]
+  }
+  goals: {
+    total: number
+    completed: number
+    rate: number
+    withDeadline: number
+    metOnTime: number
+    late: number
+    overdue: number
+    avgDays: number | null
+    list: ReportGoalDetail[]
+  }
+  habits: {
+    overallPct: number
+    bestStreak: number
+    list: ReportHabitDetail[]
+  }
+}

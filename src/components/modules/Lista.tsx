@@ -1653,7 +1653,7 @@ const HistorialView: React.FC<HistorialViewProps> = ({ tasks, categories }) => {
   return (
     <div className="space-y-6">
       {byWeek.map(([weekId, weekTasks]) => {
-        const refDate = new Date(weekTasks[0].completedAt! + 'T12:00:00');
+        const refDate = safeDate(weekTasks[0].completedAt!);
         const days = getWeekDays(refDate);
         const label = `${days[0].toLocaleDateString('es-ES', { day: '2-digit', month: 'short' })} – ${days[6].toLocaleDateString('es-ES', { day: '2-digit', month: 'short', year: 'numeric' })}`;
 

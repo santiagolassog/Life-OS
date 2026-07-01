@@ -21,7 +21,7 @@ import Habitos from './modules/Habitos';
 import Admin from './modules/Admin';
 import Academia from './modules/Academia';
 import SearchModal, { type SearchResult } from './SearchModal';
-import type { Transaction, FinCategory, Goal, Savings, MonthBalance, SavingsWithdrawal, SavingsPocket, PocketFunding, SavingsYearBalance, Loan, LoanPayment, Budget, Task, ChecklistItem, EventEntry, Habit, HabitLog, Reminder } from '../types';
+import type { Transaction, FinCategory, Goal, Savings, MonthBalance, SavingsWithdrawal, SavingsPocket, PocketFunding, SavingsYearBalance, Loan, LoanPayment, Budget, Task, ChecklistItem, EventEntry, Habit, HabitLog, Reminder, ReportData } from '../types';
 import { LOAN_OUT_CAT_ID, LOAN_IN_CAT_ID } from '../types';
 import { generateId, formatDateId as fmtDateId, getWeekDays, GRID_HOURS, fmtCurrency, getWeekId } from '../lib/utils';
 import {
@@ -370,7 +370,9 @@ const App = () => {
   const [newPreset, setNewPreset] = useState("");
   const [reportRange, setReportRange] = useState('week');
   const [isExporting, setIsExporting] = useState(false);
+  const [reportData, setReportData] = useState<ReportData | null>(null);
   const reportRef = useRef<HTMLDivElement>(null);
+  const reportSectionRefs = useRef<HTMLDivElement[]>([]);
 
   const [section, setSectionRaw] = useState<SectionKey>(getSectionFromHash);
 
@@ -540,6 +542,14 @@ const App = () => {
   // evitando el loop local SIN bloquear eventos RT posteriores de otros dispositivos.
   const isRTUpdate = useRef<Record<string, boolean>>({});
 
+  // Marca de tiempo del último sync LOCAL disparado por tabla. El handler RT usa esto
+  // para ignorar el eco de sus propios cambios recién enviados: Supabase Realtime puede
+  // notificar el cambio antes de que una lectura fresca (loadX) refleje el commit,
+  // y ese snapshot stale sobreescribiría el estado local haciéndolo "desaparecer".
+  // Solo se activa en escrituras locales propias — nunca bloquea cambios remotos reales.
+  const lastLocalSyncAt = useRef<Record<string, number>>({});
+  const RT_ECHO_GRACE_MS = 2500;
+
   // Refs para funciones de apertura de modales en componentes hijos
   const listOpenEditRef = useRef<(task: Task) => void>(null);
   const objetivosOpenEditRef = useRef<(goal: Goal) => void>(null);
@@ -563,6 +573,7 @@ const App = () => {
     if (loading || !userId) return;
     if (skipIfRT('events', prevEvents, events)) return;
     markSaving();
+    lastLocalSyncAt.current['events'] = Date.now();
     syncEvents(prevEvents.current, events, userId).catch(console.error);
     prevEvents.current = events;
   }, [events, loading, userId]);
@@ -571,6 +582,7 @@ const App = () => {
     if (loading || !userId) return;
     if (skipIfRT('categories', prevCategories, categories)) return;
     markSaving();
+    lastLocalSyncAt.current['categories'] = Date.now();
     syncCategories(prevCategories.current, categories, userId).catch(console.error);
     prevCategories.current = categories;
   }, [categories, loading, userId]);
@@ -579,6 +591,7 @@ const App = () => {
     if (loading || !userId) return;
     if (skipIfRT('transactions', prevTransactions, transactions)) return;
     markSaving();
+    lastLocalSyncAt.current['transactions'] = Date.now();
     syncTransactions(prevTransactions.current, transactions, userId).catch(console.error);
     prevTransactions.current = transactions;
   }, [transactions, loading, userId]);
@@ -587,6 +600,7 @@ const App = () => {
     if (loading || !userId) return;
     if (skipIfRT('fin_categories', prevFinCategories, finCategories)) return;
     markSaving();
+    lastLocalSyncAt.current['fin_categories'] = Date.now();
     syncFinCategories(prevFinCategories.current, finCategories, userId).catch(console.error);
     prevFinCategories.current = finCategories;
   }, [finCategories, loading, userId]);
@@ -595,6 +609,7 @@ const App = () => {
     if (loading || !userId) return;
     if (skipIfRT('goals', prevGoals, goals)) return;
     markSaving();
+    lastLocalSyncAt.current['goals'] = Date.now();
     syncGoals(prevGoals.current, goals, userId).catch(console.error);
     prevGoals.current = goals;
   }, [goals, loading, userId]);
@@ -603,6 +618,7 @@ const App = () => {
     if (loading || !userId) return;
     if (skipIfRT('savings', prevSavings, savings)) return;
     markSaving();
+    lastLocalSyncAt.current['savings'] = Date.now();
     syncSavings(prevSavings.current, savings, userId).catch(console.error);
     prevSavings.current = savings;
   }, [savings, loading, userId]);
@@ -611,6 +627,7 @@ const App = () => {
     if (loading || !userId) return;
     if (skipIfRT('month_balances', prevMonthBalances, monthBalances)) return;
     markSaving();
+    lastLocalSyncAt.current['month_balances'] = Date.now();
     syncMonthBalances(prevMonthBalances.current, monthBalances, userId).catch(console.error);
     prevMonthBalances.current = monthBalances;
   }, [monthBalances, loading, userId]);
@@ -619,6 +636,7 @@ const App = () => {
     if (loading || !userId) return;
     if (skipIfRT('savings_withdrawals', prevSavingsWithdrawals, savingsWithdrawals)) return;
     markSaving();
+    lastLocalSyncAt.current['savings_withdrawals'] = Date.now();
     syncSavingsWithdrawals(prevSavingsWithdrawals.current, savingsWithdrawals, userId).catch(console.error);
     prevSavingsWithdrawals.current = savingsWithdrawals;
   }, [savingsWithdrawals, loading, userId]);
@@ -627,6 +645,7 @@ const App = () => {
     if (loading || !userId) return;
     if (skipIfRT('savings_pockets', prevSavingsPockets, savingsPockets)) return;
     markSaving();
+    lastLocalSyncAt.current['savings_pockets'] = Date.now();
     syncSavingsPockets(prevSavingsPockets.current, savingsPockets, userId).catch(console.error);
     prevSavingsPockets.current = savingsPockets;
   }, [savingsPockets, loading, userId]);
@@ -635,6 +654,7 @@ const App = () => {
     if (loading || !userId) return;
     if (skipIfRT('pocket_fundings', prevPocketFundings, pocketFundings)) return;
     markSaving();
+    lastLocalSyncAt.current['pocket_fundings'] = Date.now();
     syncPocketFundings(prevPocketFundings.current, pocketFundings, userId).catch(console.error);
     prevPocketFundings.current = pocketFundings;
   }, [pocketFundings, loading, userId]);
@@ -643,6 +663,7 @@ const App = () => {
     if (loading || !userId) return;
     if (skipIfRT('savings_year_balances', prevSavingsYearBalances, savingsYearBalances)) return;
     markSaving();
+    lastLocalSyncAt.current['savings_year_balances'] = Date.now();
     syncSavingsYearBalances(prevSavingsYearBalances.current, savingsYearBalances, userId).catch(console.error);
     prevSavingsYearBalances.current = savingsYearBalances;
   }, [savingsYearBalances, loading, userId]);
@@ -651,6 +672,7 @@ const App = () => {
     if (loading || !userId) return;
     if (skipIfRT('loans', prevLoans, loans)) return;
     markSaving();
+    lastLocalSyncAt.current['loans'] = Date.now();
     syncLoans(prevLoans.current, loans, userId).catch(console.error);
     prevLoans.current = loans;
   }, [loans, loading, userId]);
@@ -659,6 +681,7 @@ const App = () => {
     if (loading || !userId) return;
     if (skipIfRT('loan_payments', prevLoanPayments, loanPayments)) return;
     markSaving();
+    lastLocalSyncAt.current['loan_payments'] = Date.now();
     syncLoanPayments(prevLoanPayments.current, loanPayments, userId).catch(console.error);
     prevLoanPayments.current = loanPayments;
   }, [loanPayments, loading, userId]);
@@ -667,6 +690,7 @@ const App = () => {
     if (loading || !userId) return;
     if (skipIfRT('budgets', prevBudgets, budgets)) return;
     markSaving();
+    lastLocalSyncAt.current['budgets'] = Date.now();
     syncBudgets(prevBudgets.current, budgets, userId).catch(console.error);
     prevBudgets.current = budgets;
   }, [budgets, loading, userId]);
@@ -675,6 +699,7 @@ const App = () => {
     if (loading || !userId) return;
     if (skipIfRT('tasks', prevTasks, tasks)) return;
     markSaving();
+    lastLocalSyncAt.current['tasks'] = Date.now();
     syncTasks(prevTasks.current, tasks, userId).catch(console.error);
     prevTasks.current = tasks;
   }, [tasks, loading, userId]);
@@ -683,6 +708,7 @@ const App = () => {
     if (loading || !userId) return;
     if (skipIfRT('checklist_items', prevChecklistItems, checklistItems)) return;
     markSaving();
+    lastLocalSyncAt.current['checklist_items'] = Date.now();
     syncChecklistItems(prevChecklistItems.current, checklistItems, userId).catch(console.error);
     prevChecklistItems.current = checklistItems;
   }, [checklistItems, loading, userId]);
@@ -691,6 +717,7 @@ const App = () => {
     if (loading || !userId) return;
     if (skipIfRT('habits', prevHabits, habits)) return;
     markSaving();
+    lastLocalSyncAt.current['habits'] = Date.now();
     syncHabits(prevHabits.current, habits, userId).catch(console.error);
     prevHabits.current = habits;
   }, [habits, loading, userId]);
@@ -699,6 +726,7 @@ const App = () => {
     if (loading || !userId) return;
     if (skipIfRT('habit_logs', prevHabitLogs, habitLogs)) return;
     markSaving();
+    lastLocalSyncAt.current['habit_logs'] = Date.now();
     syncHabitLogs(prevHabitLogs.current, habitLogs, userId).catch(console.error);
     prevHabitLogs.current = habitLogs;
   }, [habitLogs, loading, userId]);
@@ -707,6 +735,7 @@ const App = () => {
     if (loading || !userId) return;
     if (skipIfRT('reminders', prevReminders, reminders)) return;
     markSaving();
+    lastLocalSyncAt.current['reminders'] = Date.now();
     syncReminders(prevReminders.current, reminders, userId).catch(console.error);
     prevReminders.current = reminders;
   }, [reminders, loading, userId]);
@@ -725,78 +754,97 @@ const App = () => {
       .channel(`lifeos-rt-${userId}`)
 
       .on('postgres_changes', { event: '*', schema: 'public', table: 'events', filter: f }, async () => {
+        if (Date.now() - (lastLocalSyncAt.current['events'] ?? 0) < RT_ECHO_GRACE_MS) return; // eco del propio cambio local
         const fresh = await loadEvents();
         rt['events'] = true; prevEvents.current = fresh; setEvents(fresh);
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'categories', filter: f }, async () => {
+        if (Date.now() - (lastLocalSyncAt.current['categories'] ?? 0) < RT_ECHO_GRACE_MS) return; // eco del propio cambio local
         const fresh = await loadCategories();
         rt['categories'] = true; prevCategories.current = fresh; setCategories(fresh);
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'transactions', filter: f }, async () => {
+        if (Date.now() - (lastLocalSyncAt.current['transactions'] ?? 0) < RT_ECHO_GRACE_MS) return; // eco del propio cambio local
         const fresh = await loadTransactions();
         rt['transactions'] = true; prevTransactions.current = fresh; setTransactions(fresh);
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'fin_categories', filter: f }, async () => {
+        if (Date.now() - (lastLocalSyncAt.current['fin_categories'] ?? 0) < RT_ECHO_GRACE_MS) return; // eco del propio cambio local
         const fresh = await loadFinCategories();
         rt['fin_categories'] = true; prevFinCategories.current = fresh; setFinCategories(fresh);
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'goals', filter: f }, async () => {
+        if (Date.now() - (lastLocalSyncAt.current['goals'] ?? 0) < RT_ECHO_GRACE_MS) return; // eco del propio cambio local
         const fresh = await loadGoals();
         rt['goals'] = true; prevGoals.current = fresh; setGoals(fresh);
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'savings', filter: f }, async () => {
+        if (Date.now() - (lastLocalSyncAt.current['savings'] ?? 0) < RT_ECHO_GRACE_MS) return; // eco del propio cambio local
         const fresh = await loadSavings();
         rt['savings'] = true; prevSavings.current = fresh; setSavings(fresh);
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'month_balances', filter: f }, async () => {
+        if (Date.now() - (lastLocalSyncAt.current['month_balances'] ?? 0) < RT_ECHO_GRACE_MS) return; // eco del propio cambio local
         const fresh = await loadMonthBalances();
         rt['month_balances'] = true; prevMonthBalances.current = fresh; setMonthBalances(fresh);
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'savings_withdrawals', filter: f }, async () => {
+        if (Date.now() - (lastLocalSyncAt.current['savings_withdrawals'] ?? 0) < RT_ECHO_GRACE_MS) return; // eco del propio cambio local
         const fresh = await loadSavingsWithdrawals();
         rt['savings_withdrawals'] = true; prevSavingsWithdrawals.current = fresh; setSavingsWithdrawals(fresh);
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'savings_pockets', filter: f }, async () => {
+        if (Date.now() - (lastLocalSyncAt.current['savings_pockets'] ?? 0) < RT_ECHO_GRACE_MS) return; // eco del propio cambio local
         const fresh = await loadSavingsPockets();
         rt['savings_pockets'] = true; prevSavingsPockets.current = fresh; setSavingsPockets(fresh);
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'pocket_fundings', filter: f }, async () => {
+        if (Date.now() - (lastLocalSyncAt.current['pocket_fundings'] ?? 0) < RT_ECHO_GRACE_MS) return; // eco del propio cambio local
         const fresh = await loadPocketFundings();
         rt['pocket_fundings'] = true; prevPocketFundings.current = fresh; setPocketFundings(fresh);
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'savings_year_balances', filter: f }, async () => {
+        if (Date.now() - (lastLocalSyncAt.current['savings_year_balances'] ?? 0) < RT_ECHO_GRACE_MS) return; // eco del propio cambio local
         const fresh = await loadSavingsYearBalances();
         rt['savings_year_balances'] = true; prevSavingsYearBalances.current = fresh; setSavingsYearBalances(fresh);
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'loans', filter: f }, async () => {
+        if (Date.now() - (lastLocalSyncAt.current['loans'] ?? 0) < RT_ECHO_GRACE_MS) return; // eco del propio cambio local
         const fresh = await loadLoans();
         rt['loans'] = true; prevLoans.current = fresh; setLoans(fresh);
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'loan_payments', filter: f }, async () => {
+        if (Date.now() - (lastLocalSyncAt.current['loan_payments'] ?? 0) < RT_ECHO_GRACE_MS) return; // eco del propio cambio local
         const fresh = await loadLoanPayments();
         rt['loan_payments'] = true; prevLoanPayments.current = fresh; setLoanPayments(fresh);
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'budgets', filter: f }, async () => {
+        if (Date.now() - (lastLocalSyncAt.current['budgets'] ?? 0) < RT_ECHO_GRACE_MS) return; // eco del propio cambio local
         const fresh = await loadBudgets();
         rt['budgets'] = true; prevBudgets.current = fresh; setBudgets(fresh);
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'tasks', filter: f }, async () => {
+        if (Date.now() - (lastLocalSyncAt.current['tasks'] ?? 0) < RT_ECHO_GRACE_MS) return; // eco del propio cambio local
         const fresh = await loadTasks();
         rt['tasks'] = true; prevTasks.current = fresh; setTasks(fresh);
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'checklist_items', filter: f }, async () => {
+        if (Date.now() - (lastLocalSyncAt.current['checklist_items'] ?? 0) < RT_ECHO_GRACE_MS) return; // eco del propio cambio local
         const fresh = await loadChecklistItems();
         rt['checklist_items'] = true; prevChecklistItems.current = fresh; setChecklistItems(fresh);
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'habits', filter: f }, async () => {
+        if (Date.now() - (lastLocalSyncAt.current['habits'] ?? 0) < RT_ECHO_GRACE_MS) return; // eco del propio cambio local
         const fresh = await loadHabits();
         rt['habits'] = true; prevHabits.current = fresh; setHabits(fresh);
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'habit_logs', filter: f }, async () => {
+        if (Date.now() - (lastLocalSyncAt.current['habit_logs'] ?? 0) < RT_ECHO_GRACE_MS) return; // eco del propio cambio local
         const fresh = await loadHabitLogs();
         rt['habit_logs'] = true; prevHabitLogs.current = fresh; setHabitLogs(fresh);
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'reminders', filter: f }, async () => {
+        if (Date.now() - (lastLocalSyncAt.current['reminders'] ?? 0) < RT_ECHO_GRACE_MS) return; // eco del propio cambio local
         const fresh = await loadReminders();
         rt['reminders'] = true; prevReminders.current = fresh; setReminders(fresh);
       })
@@ -1512,33 +1560,80 @@ const App = () => {
     return { main: mainStats, sub: subStats, total };
   }, [events, categories, currentDate, reportRange, weekDays]);
 
-  const downloadReport = async () => {
-    if (!reportRef.current) return;
+  const downloadReport = async (data: ReportData) => {
+    setReportData(data);
     setIsExporting(true);
-    
-    // Pequeña espera para asegurar que el DOM esté listo y las animaciones terminadas
+
+    // Pequeña espera para que React renderice la plantilla con los nuevos datos antes de capturarla
     setTimeout(async () => {
+      const sections = reportSectionRefs.current;
+      if (sections.length === 0) { setIsExporting(false); return; }
       try {
-        const canvas = await html2canvas(reportRef.current!, {
-          scale: 2,
-          useCORS: true,
-          backgroundColor: '#f8fafc',
-          logging: false,
-        });
-        
-        const imgData = canvas.toDataURL('image/png');
         const pdf = new jsPDF('p', 'mm', 'a4');
-        const pdfWidth = pdf.internal.pageSize.getWidth();
-        const pdfHeight = (canvas.height * pdfWidth) / canvas.width;
-        
-        pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, pdfHeight);
-        pdf.save(`LifeOS-Reporte-${reportRange}-${new Date().toISOString().split('T')[0]}.pdf`);
+        const pageWidthMm = pdf.internal.pageSize.getWidth();
+        const pageHeightMm = pdf.internal.pageSize.getHeight();
+        const marginMm = 10;
+        const usableWidthMm = pageWidthMm - marginMm * 2;
+        const usableHeightMm = pageHeightMm - marginMm * 2;
+        const gapMm = 5;
+
+        let cursorYMm = marginMm;
+        let isFirstImageOnPage = true;
+
+        for (const el of sections) {
+          const canvas = await html2canvas(el, {
+            scale: 2,
+            useCORS: true,
+            backgroundColor: '#f8fafc',
+            logging: false,
+          });
+          const imgHeightMm = (canvas.height * usableWidthMm) / canvas.width;
+
+          if (imgHeightMm > usableHeightMm) {
+            // Caso extremo: la tarjeta por sí sola es más alta que una página → se rebana
+            if (!isFirstImageOnPage) { pdf.addPage(); cursorYMm = marginMm; }
+            const pageHeightPx = (usableHeightMm * canvas.width) / usableWidthMm;
+            let renderedPx = 0;
+            let firstSlice = true;
+            while (renderedPx < canvas.height) {
+              const sliceHeightPx = Math.min(pageHeightPx, canvas.height - renderedPx);
+              const sliceCanvas = document.createElement('canvas');
+              sliceCanvas.width = canvas.width;
+              sliceCanvas.height = sliceHeightPx;
+              const ctx = sliceCanvas.getContext('2d')!;
+              ctx.drawImage(canvas, 0, renderedPx, canvas.width, sliceHeightPx, 0, 0, canvas.width, sliceHeightPx);
+              const sliceImgData = sliceCanvas.toDataURL('image/png');
+              const sliceHeightMm = (sliceHeightPx * usableWidthMm) / canvas.width;
+              if (!firstSlice) pdf.addPage();
+              pdf.addImage(sliceImgData, 'PNG', marginMm, marginMm, usableWidthMm, sliceHeightMm);
+              renderedPx += sliceHeightPx;
+              firstSlice = false;
+            }
+            cursorYMm = pageHeightMm; // fuerza salto de página para la siguiente tarjeta
+            isFirstImageOnPage = false;
+            continue;
+          }
+
+          // Si no cabe en el espacio restante de la página actual, saltar de página (nunca corta una tarjeta)
+          if (!isFirstImageOnPage && cursorYMm + imgHeightMm > pageHeightMm - marginMm) {
+            pdf.addPage();
+            cursorYMm = marginMm;
+            isFirstImageOnPage = true;
+          }
+
+          const imgData = canvas.toDataURL('image/png');
+          pdf.addImage(imgData, 'PNG', marginMm, cursorYMm, usableWidthMm, imgHeightMm);
+          cursorYMm += imgHeightMm + gapMm;
+          isFirstImageOnPage = false;
+        }
+
+        pdf.save(`LifeOS-Reporte-${data.range}-${new Date().toISOString().split('T')[0]}.pdf`);
       } catch (error) {
         console.error('Error al generar PDF:', error);
       } finally {
         setIsExporting(false);
       }
-    }, 100);
+    }, 150);
   };
 
   // ── Grupos colapsables del sidebar ───────────────────────────────────────────
@@ -1985,7 +2080,7 @@ const App = () => {
               <section>
                 <div className="flex items-center justify-between mb-4 px-1">
                   <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] flex items-center gap-2"><Palette size={14} className="text-indigo-600" /> Mis Áreas</h3>
-                  <button onClick={() => setCatModal({ id: generateId(), label: '', short: '', color: '#6366f1', presets: [], sortOrder: Date.now() })} className="p-1.5 bg-indigo-50 text-indigo-600 rounded-lg hover:bg-indigo-600 hover:text-white transition-all"><Plus size={14} /></button>
+                  <button onClick={() => setCatModal({ id: generateId(), label: '', short: '', color: '#6366f1', presets: [], sortOrder: (Object.keys(categories).length + 1) * 1000 })} className="p-1.5 bg-indigo-50 text-indigo-600 rounded-lg hover:bg-indigo-600 hover:text-white transition-all"><Plus size={14} /></button>
                 </div>
                 <div className="space-y-1">
                   {sortedCategories.map(cat => (
@@ -2092,151 +2187,275 @@ const App = () => {
 
           {/* Template oculto para exportación PDF (A4 optimizado) */}
           <div style={{ position: 'absolute', left: '-9999px', top: 0 }}>
-            <div ref={reportRef} className="w-[210mm] p-[20mm] bg-slate-50 font-sans text-slate-900">
-              <div className="flex justify-between items-start border-b-2 border-indigo-600 pb-6 mb-8">
-                <div>
-                  <div className="flex items-center gap-2 mb-2">
-                    <div className="bg-indigo-600 p-2 rounded-lg"><Zap size={24} className="text-white" fill="white" /></div>
-                    <h1 className="text-3xl font-black italic uppercase tracking-tighter text-indigo-950">LifeOS</h1>
-                  </div>
-                  <p className="text-sm font-bold text-slate-500 uppercase tracking-widest text-indigo-600">Reporte de Revisión Integral</p>
-                </div>
-                <div className="text-right">
-                  <p className="text-xs font-black text-slate-400 uppercase">Periodo de Análisis</p>
-                  <p className="text-lg font-black text-slate-800 capitalize">
-                    {reportRange === 'week' ? 'Semana Actual' : reportRange === 'month' ? 'Mes Actual' : 'Año Actual'}
-                  </p>
-                  <p className="text-xs font-bold text-slate-500">{new Date().toLocaleDateString('es-ES', { day: 'numeric', month: 'long', year: 'numeric' })}</p>
-                </div>
-              </div>
-
-              {/* Grid Principal: Tiempo y Dinero */}
-              <div className="grid grid-cols-2 gap-10 mb-10">
-                {/* Columna Izquierda: Gestión del Tiempo */}
-                <div className="space-y-8">
-                  <div className="bg-white p-8 rounded-[2rem] shadow-sm border border-slate-100">
-                    <h3 className="text-xs font-black text-slate-400 uppercase tracking-widest mb-6 border-b border-slate-100 pb-2">Distribución del Tiempo</h3>
-                    <div className="space-y-4">
-                      {stats.main.map(s => (
-                        <div key={s.id} className="space-y-2">
-                          <div className="flex items-center justify-between text-xs font-black uppercase gap-4">
-                            <span className="text-slate-600 flex-1">{s.name}</span>
-                            <span className="text-indigo-600 shrink-0">{s.hours}h ({s.percentage}%)</span>
-                          </div>
-                          <div className="w-full h-2 bg-slate-100 rounded-full overflow-hidden">
-                            <div className="h-full" style={{ backgroundColor: s.color, width: `${s.percentage}%` }} />
-                          </div>
+            <div ref={reportRef} className="w-[210mm] p-[14mm] bg-slate-50 font-sans text-slate-900">
+              {reportData && (() => {
+                const rangeLabel = reportData.range === 'week' ? 'Semana' : reportData.range === 'month' ? 'Mes' : 'Año';
+                const goalPriorityCfg = {
+                  high:   { label: 'Alta',  color: '#ef4444' },
+                  medium: { label: 'Media', color: '#f59e0b' },
+                  low:    { label: 'Baja',  color: '#94a3b8' },
+                } as const;
+                // Reinicia el registro de bloques exportables en cada render de la plantilla,
+                // para que downloadReport capture cada tarjeta por separado y nunca corte una a la mitad entre páginas.
+                reportSectionRefs.current = [];
+                const registerSection = (el: HTMLDivElement | null) => { if (el) reportSectionRefs.current.push(el); };
+                return (
+                  <>
+                    <div ref={registerSection}>
+                    {/* ── Header ── */}
+                    <div className="flex justify-between items-start border-b-2 border-indigo-600 pb-5 mb-6">
+                      <div>
+                        <div className="flex items-center gap-2 mb-1.5">
+                          <div className="bg-indigo-600 p-1.5 rounded-lg"><Zap size={20} className="text-white" fill="white" /></div>
+                          <h1 className="text-2xl font-black italic uppercase tracking-tighter text-indigo-950">LifeOS</h1>
                         </div>
-                      ))}
-                      <div className="pt-6 border-t border-slate-100 mt-6 flex justify-between items-center">
-                        <span className="text-sm font-black text-slate-400 uppercase">Total Productivo</span>
-                        <span className="text-2xl font-black text-indigo-600">{stats.total}h</span>
+                        <p className="text-xs font-bold text-indigo-600 uppercase tracking-widest">Reporte de Revisión Integral</p>
+                      </div>
+                      <div className="text-right">
+                        <p className="text-[10px] font-black text-slate-400 uppercase leading-[2]">Período de Análisis · {rangeLabel}</p>
+                        <p className="text-base font-black text-slate-800 capitalize">{reportData.periodLabel}</p>
+                        <p className="text-[10px] font-bold text-slate-400 leading-[2]">
+                          Generado el {new Date(reportData.generatedAt).toLocaleDateString('es-ES', { day: 'numeric', month: 'long', year: 'numeric' })}
+                        </p>
                       </div>
                     </div>
-                  </div>
-                </div>
 
-                {/* Columna Derecha: Finanzas y Objetivos */}
-                <div className="space-y-8">
-                  {/* Finanzas */}
-                  <div className="bg-white p-8 rounded-[2rem] shadow-sm border border-slate-100">
-                    <h3 className="text-xs font-black text-slate-400 uppercase tracking-widest mb-6 border-b border-slate-100 pb-2">Resumen Financiero</h3>
-                    <div className="grid grid-cols-1 gap-4">
-                      {(() => {
-                        const rangeTxs = transactions.filter(tx => {
-                          const [y, m, d] = tx.date.split('-').map(Number);
-                          const date = new Date(y, m - 1, d);
-                          if (reportRange === 'week') return date >= weekDays[0] && date <= weekDays[6];
-                          if (reportRange === 'month') return y === currentDate.getFullYear() && m - 1 === currentDate.getMonth();
-                          return y === currentDate.getFullYear();
-                        });
-                        const income = rangeTxs.filter(t => t.type === 'income' && t.finCategoryId !== LOAN_IN_CAT_ID).reduce((s, t) => s + t.amount, 0);
-                        const expenses = rangeTxs.filter(t => t.type === 'expense' && t.finCategoryId !== LOAN_OUT_CAT_ID).reduce((s, t) => s + t.amount, 0);
-                        return (
-                          <>
-                            <div className="bg-emerald-50 p-4 rounded-2xl flex justify-between items-center">
-                              <span className="text-xs font-black text-slate-500 uppercase">Ingresos</span>
-                              <span className="text-lg font-black text-emerald-600">${fmtCurrency(income)}</span>
-                            </div>
-                            <div className="bg-red-50 p-4 rounded-2xl flex justify-between items-center">
-                              <span className="text-xs font-black text-slate-500 uppercase">Gastos</span>
-                              <span className="text-lg font-black text-red-500">${fmtCurrency(expenses)}</span>
-                            </div>
-                            <div className="pt-4 border-t border-slate-100 mt-2 flex justify-between items-center px-4">
-                              <span className="text-sm font-black text-slate-400 uppercase">Balance Neto</span>
-                              <span className="text-2xl font-black text-indigo-600">${fmtCurrency(income - expenses)}</span>
-                            </div>
-                          </>
-                        );
-                      })()}
+                    {/* ── Resumen ejecutivo ── */}
+                    <div className="grid grid-cols-4 gap-3 mb-6">
+                      <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-4">
+                        <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest leading-[2]">Tiempo Productivo</p>
+                        <p className="text-xl font-black text-indigo-600 mt-1">{reportData.time.totalHours}h</p>
+                        <p className="text-[11px] font-bold text-slate-400 leading-[2]">{reportData.time.completionRate}% cumplimiento</p>
+                      </div>
+                      <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-4">
+                        <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest leading-[2]">Balance Financiero</p>
+                        <p className={`text-xl font-black mt-1 ${reportData.finance.balance >= 0 ? 'text-emerald-600' : 'text-red-500'}`}>${fmtCurrency(reportData.finance.balance)}</p>
+                        <p className="text-[11px] font-bold text-slate-400 leading-[2]">Ingresos ${fmtCurrency(reportData.finance.income)}</p>
+                      </div>
+                      <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-4">
+                        <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest leading-[2]">Objetivos</p>
+                        <p className="text-xl font-black text-violet-600 mt-1">{reportData.goals.completed}/{reportData.goals.total}</p>
+                        <p className="text-[11px] font-bold text-slate-400 leading-[2]">{reportData.goals.rate}% logrado</p>
+                      </div>
+                      <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-4">
+                        <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest leading-[2]">Hábitos</p>
+                        <p className="text-xl font-black text-amber-500 mt-1">{reportData.habits.overallPct}%</p>
+                        <p className="text-[11px] font-bold text-slate-400 leading-[2]">Mejor racha: {reportData.habits.bestStreak}d</p>
+                      </div>
                     </div>
-                  </div>
-
-                  {/* Objetivos */}
-                  <div className="bg-white p-8 rounded-[2rem] shadow-sm border border-slate-100">
-                    <h3 className="text-xs font-black text-slate-400 uppercase tracking-widest mb-6 border-b border-slate-100 pb-2">Cumplimiento de Objetivos</h3>
-                    <div className="flex items-center gap-6">
-                      {(() => {
-                        const weekId = formatDateId(weekDays[0]); // Aproximación, pero mejor usar getWeekId si estuviera disponible
-                        // Nota: getWeekId está en utils. Usémoslo.
-                        const rangeGoals = goals.filter(g => {
-                          if (reportRange === 'week') return g.weekId === getWeekId(currentDate);
-                          if (reportRange === 'month') {
-                             const [gy, gm] = (g.createdAt || "").split('-').map(Number);
-                             return gy === currentDate.getFullYear() && gm - 1 === currentDate.getMonth();
-                          }
-                          return new Date(g.createdAt).getFullYear() === currentDate.getFullYear();
-                        });
-                        const completed = rangeGoals.filter(g => g.completed).length;
-                        const total = rangeGoals.length;
-                        const rate = total > 0 ? Math.round((completed / total) * 100) : 0;
-                        return (
-                          <>
-                            <div className="flex-1">
-                              <p className="text-sm font-black text-slate-700 uppercase">Logrados / Planeados</p>
-                              <p className="text-3xl font-black text-indigo-600">{completed} / {total}</p>
-                            </div>
-                            <div className="w-16 h-16 rounded-full border-4 border-indigo-600 flex items-center justify-center">
-                              <span className="text-sm font-black text-indigo-600">{rate}%</span>
-                            </div>
-                          </>
-                        );
-                      })()}
                     </div>
-                  </div>
-                </div>
-              </div>
 
-              {/* Actividades Detalladas */}
-              <div className="bg-white p-8 rounded-[2rem] shadow-sm border border-slate-100 mb-10">
-                <h3 className="text-xs font-black text-slate-400 uppercase tracking-widest mb-6 border-b border-slate-100 pb-2">Top Actividades Realizadas</h3>
-                <div className="grid grid-cols-2 gap-4">
-                  {stats.sub.slice(0, 10).map((s, i) => (
-                    <div key={i} className="flex items-center justify-between bg-slate-50 p-4 rounded-2xl border border-slate-100">
-                      <span className="text-xs font-black text-slate-700 uppercase pr-4 leading-tight flex-1">{s.name}</span>
-                      <span className="text-xs font-black text-indigo-600 bg-white px-3 py-1 rounded-lg shadow-sm border border-indigo-50 shrink-0">{s.hours}h</span>
+                    {/* ── Gestión del Tiempo ── */}
+                    <div ref={registerSection} className="bg-white rounded-[1.5rem] border border-slate-100 shadow-sm p-6 mb-6">
+                      <h3 className="text-xs font-black text-indigo-600 uppercase tracking-widest flex items-center gap-2">
+                        <Clock size={13} /> Gestión del Tiempo por Área
+                      </h3>
+                      {reportData.time.categories.length === 0 && (
+                        <p className="text-xs text-slate-400 font-bold italic mt-4">Sin actividades completadas en este período.</p>
+                      )}
                     </div>
-                  ))}
-                </div>
-              </div>
 
-              {/* Footer / Nota Final */}
-              <div className="bg-indigo-900 rounded-[2.5rem] p-10 text-white relative overflow-hidden">
-                <div className="relative z-10 flex justify-between items-center">
-                  <div className="max-w-xl">
-                    <h2 className="text-2xl font-black mb-2 uppercase italic">Análisis Estratégico</h2>
-                    <p className="text-indigo-200 text-sm leading-relaxed font-medium">
-                      Este reporte consolida tu ejecución en tiempo, finanzas y objetivos. 
-                      La clave del crecimiento es la revisión constante. Utiliza estos datos para ajustar tu enfoque en la siguiente semana y maximizar tu impacto personal.
-                    </p>
-                  </div>
-                  <Zap size={100} className="text-white/10 shrink-0" fill="white" />
-                </div>
-              </div>
-              
-              <div className="mt-12 text-center border-t border-slate-200 pt-8">
-                <p className="text-[10px] font-black text-slate-300 uppercase tracking-[0.4em]">LifeOS — Generado Automáticamente por tu Sistema de Vida</p>
-              </div>
+                    {reportData.time.categories.map(cat => (
+                      <div key={cat.id} ref={registerSection} className="bg-white rounded-[1.5rem] border border-slate-100 shadow-sm p-6 mb-6">
+                        <div className="flex items-center justify-between mb-1.5">
+                          <div className="flex items-center gap-2">
+                            <div className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: cat.color }} />
+                            <span className="text-xs font-black text-slate-700 uppercase">{cat.name}</span>
+                          </div>
+                          <span className="text-xs font-black text-indigo-600">{cat.hours}h ({cat.percentage.toFixed(0)}%)</span>
+                        </div>
+                        <div className="w-full h-1.5 bg-slate-100 rounded-full overflow-hidden mb-2">
+                          <div className="h-full rounded-full" style={{ backgroundColor: cat.color, width: `${cat.percentage}%` }} />
+                        </div>
+                        <div className="grid grid-cols-2 gap-3 pl-4">
+                          <div>
+                            <p className="text-[11px] font-black text-slate-400 uppercase tracking-wide mb-1.5 leading-[2]">Sub-actividades</p>
+                            {cat.presets.length === 0 ? (
+                              <p className="text-[10px] text-slate-300 italic leading-[2]">Ninguna</p>
+                            ) : (
+                              <div className="space-y-1.5">
+                                {cat.presets.map((p, i) => (
+                                  <div key={i} className="flex items-center justify-between leading-[2]">
+                                    <span className="text-[10px] font-bold text-slate-600 truncate pr-2 leading-[2]">{p.name}</span>
+                                    <span className="text-[10px] font-black text-slate-500 shrink-0 leading-[2]">{p.hours}h</span>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                          <div>
+                            <p className="text-[11px] font-black text-slate-400 uppercase tracking-wide mb-1.5 leading-[2]">Otras actividades</p>
+                            {cat.others.length === 0 ? (
+                              <p className="text-[10px] text-slate-300 italic leading-[2]">Ninguna</p>
+                            ) : (
+                              <div className="space-y-1.5">
+                                {cat.others.map((o, i) => (
+                                  <div key={i} className="flex items-center justify-between leading-[2]">
+                                    <span className="text-[10px] font-bold text-slate-600 truncate pr-2 leading-[2]">{o.name}</span>
+                                    <span className="text-[10px] font-black text-slate-500 shrink-0 leading-[2]">{o.hours}h</span>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+
+                    {reportData.time.categories.length > 0 && (
+                      <div ref={registerSection} className="bg-white rounded-[1.5rem] border border-slate-100 shadow-sm px-6 py-4 mb-6 flex justify-between items-center">
+                        <span className="text-[10px] font-black text-slate-400 uppercase leading-[2]">Total Productivo</span>
+                        <span className="text-lg font-black text-indigo-600">{reportData.time.totalHours}h</span>
+                      </div>
+                    )}
+
+                    {/* ── Finanzas ── */}
+                    <div ref={registerSection} className="bg-white rounded-[1.5rem] border border-slate-100 shadow-sm p-6 mb-6">
+                      <h3 className="text-xs font-black text-emerald-600 uppercase tracking-widest mb-4 pb-2 border-b border-slate-100 flex items-center gap-2">
+                        <DollarSign size={13} /> Resumen Financiero
+                      </h3>
+                      <div className="grid grid-cols-3 gap-3 mb-4">
+                        <div className="bg-emerald-50 rounded-xl p-3 text-center">
+                          <p className="text-[10px] font-black text-slate-400 uppercase leading-[2]">Ingresos</p>
+                          <p className="text-base font-black text-emerald-600">${fmtCurrency(reportData.finance.income)}</p>
+                        </div>
+                        <div className="bg-red-50 rounded-xl p-3 text-center">
+                          <p className="text-[10px] font-black text-slate-400 uppercase leading-[2]">Gastos</p>
+                          <p className="text-base font-black text-red-500">${fmtCurrency(reportData.finance.expenses)}</p>
+                        </div>
+                        <div className="bg-indigo-50 rounded-xl p-3 text-center">
+                          <p className="text-[10px] font-black text-slate-400 uppercase leading-[2]">Balance</p>
+                          <p className={`text-base font-black ${reportData.finance.balance >= 0 ? 'text-indigo-600' : 'text-orange-500'}`}>${fmtCurrency(reportData.finance.balance)}</p>
+                        </div>
+                      </div>
+                      <div className="grid grid-cols-2 gap-4">
+                        <div>
+                          <p className="text-[11px] font-black text-slate-400 uppercase tracking-wide mb-1.5 leading-[2]">Ingresos por categoría</p>
+                          {reportData.finance.incomeCats.length === 0 ? (
+                            <p className="text-[11px] text-slate-300 italic leading-[2]">Sin movimientos</p>
+                          ) : (
+                            <div className="space-y-1.5">
+                              {reportData.finance.incomeCats.map((c, i) => (
+                                <div key={i} className="flex items-center justify-between bg-slate-50 rounded-lg px-2.5 py-1.5">
+                                  <div className="flex items-center gap-1.5 min-w-0">
+                                    <div className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: c.color }} />
+                                    <span className="text-[11px] font-bold text-slate-600 truncate leading-[2]">{c.label}</span>
+                                  </div>
+                                  <span className="text-[11px] font-black text-emerald-600 shrink-0 leading-[2]">${fmtCurrency(c.total)}</span>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                        <div>
+                          <p className="text-[11px] font-black text-slate-400 uppercase tracking-wide mb-1.5 leading-[2]">Gastos por categoría</p>
+                          {reportData.finance.expenseCats.length === 0 ? (
+                            <p className="text-[11px] text-slate-300 italic leading-[2]">Sin movimientos</p>
+                          ) : (
+                            <div className="space-y-1.5">
+                              {reportData.finance.expenseCats.map((c, i) => (
+                                <div key={i} className="flex items-center justify-between bg-slate-50 rounded-lg px-2.5 py-1.5">
+                                  <div className="flex items-center gap-1.5 min-w-0">
+                                    <div className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: c.color }} />
+                                    <span className="text-[11px] font-bold text-slate-600 truncate leading-[2]">{c.label}</span>
+                                  </div>
+                                  <span className="text-[11px] font-black text-red-500 shrink-0 leading-[2]">${fmtCurrency(c.total)}</span>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* ── Objetivos ── */}
+                    <div ref={registerSection} className="bg-white rounded-[1.5rem] border border-slate-100 shadow-sm p-6 mb-6">
+                      <h3 className="text-xs font-black text-violet-600 uppercase tracking-widest mb-4 pb-2 border-b border-slate-100 flex items-center gap-2">
+                        <Target size={13} /> Cumplimiento de Objetivos
+                      </h3>
+                      <div className="flex items-center gap-6 mb-4">
+                        <div className="flex-1">
+                          <p className="text-[11px] font-black text-slate-400 uppercase leading-[2]">Logrados / Planeados</p>
+                          <p className="text-2xl font-black text-violet-600">{reportData.goals.completed} / {reportData.goals.total}</p>
+                        </div>
+                        <div className="w-14 h-14 rounded-full border-4 border-violet-600 flex items-center justify-center shrink-0">
+                          <span className="text-xs font-black text-violet-600">{reportData.goals.rate}%</span>
+                        </div>
+                        {reportData.goals.withDeadline > 0 && (
+                          <div className="flex-1 flex flex-wrap gap-1.5 justify-end">
+                            {reportData.goals.metOnTime > 0 && <span className="text-[11px] font-black text-emerald-600 bg-emerald-50 rounded-full px-2 py-1 leading-[2]">✓ {reportData.goals.metOnTime} a tiempo</span>}
+                            {reportData.goals.late > 0 && <span className="text-[11px] font-black text-amber-700 bg-amber-50 rounded-full px-2 py-1 leading-[2]">⚠ {reportData.goals.late} tarde</span>}
+                            {reportData.goals.overdue > 0 && <span className="text-[11px] font-black text-red-600 bg-red-50 rounded-full px-2 py-1 leading-[2]">✗ {reportData.goals.overdue} vencidos</span>}
+                          </div>
+                        )}
+                      </div>
+                      {reportData.goals.list.length === 0 ? (
+                        <p className="text-xs text-slate-400 font-bold italic">Sin objetivos definidos en este período.</p>
+                      ) : (
+                        <div className="grid grid-cols-2 gap-2">
+                          {reportData.goals.list.map((g, i) => (
+                            <div key={i} className="flex items-center justify-between bg-slate-50 rounded-xl px-3 py-2">
+                              <div className="flex items-center gap-2 min-w-0">
+                                <div className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: goalPriorityCfg[g.priority].color }} />
+                                <span className={`text-[11px] font-bold truncate leading-[2] ${g.completed ? 'text-slate-400 line-through' : 'text-slate-600'}`}>{g.title}</span>
+                              </div>
+                              <span className="text-[11px] font-black shrink-0 ml-2 leading-[2]" style={{ color: g.completed ? '#10b981' : '#94a3b8' }}>{g.completed ? '✓' : '—'}</span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+
+                    {/* ── Hábitos ── */}
+                    <div ref={registerSection} className="bg-white rounded-[1.5rem] border border-slate-100 shadow-sm p-6 mb-6">
+                      <h3 className="text-xs font-black text-amber-500 uppercase tracking-widest mb-4 pb-2 border-b border-slate-100 flex items-center gap-2">
+                        <Flame size={13} /> Seguimiento de Hábitos
+                      </h3>
+                      {reportData.habits.list.length === 0 ? (
+                        <p className="text-xs text-slate-400 font-bold italic">Sin hábitos activos en este período.</p>
+                      ) : (
+                        <div className="space-y-2.5">
+                          {reportData.habits.list.map((h, i) => (
+                            <div key={i}>
+                              <div className="flex items-center justify-between mb-1">
+                                <span className="text-[10px] font-black text-slate-700 leading-[2]">{h.name}</span>
+                                <div className="flex items-center gap-2">
+                                  {h.streak > 0 && <span className="text-[11px] font-bold text-amber-600 leading-[2]">🔥 {h.streak}d</span>}
+                                  <span className="text-[10px] font-black text-slate-500 leading-[2]">{h.doneCount}/{h.periodTarget}</span>
+                                  <span className="text-[10px] font-black w-8 text-right leading-[2]" style={{ color: h.pct >= 70 ? '#10b981' : h.pct >= 40 ? '#f59e0b' : '#ef4444' }}>{h.pct}%</span>
+                                </div>
+                              </div>
+                              <div className="w-full h-1.5 bg-slate-100 rounded-full overflow-hidden">
+                                <div className="h-full rounded-full" style={{ backgroundColor: h.pct >= 70 ? '#10b981' : h.pct >= 40 ? '#f59e0b' : '#ef4444', width: `${h.pct}%` }} />
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+
+                    {/* ── Footer / Nota Final ── */}
+                    <div ref={registerSection}>
+                      <div className="bg-indigo-900 rounded-[1.5rem] p-7 text-white relative overflow-hidden">
+                        <div className="relative z-10 flex justify-between items-center">
+                          <div className="max-w-xl">
+                            <h2 className="text-lg font-black mb-1.5 uppercase italic">Análisis Estratégico</h2>
+                            <p className="text-indigo-200 text-xs leading-relaxed font-medium">
+                              Este reporte consolida tu ejecución en tiempo, finanzas, objetivos y hábitos.
+                              La clave del crecimiento es la revisión constante — usa estos datos para ajustar tu enfoque en el próximo período.
+                            </p>
+                          </div>
+                          <Zap size={64} className="text-white/10 shrink-0" fill="white" />
+                        </div>
+                      </div>
+
+                      <div className="mt-6 text-center border-t border-slate-200 pt-5">
+                        <p className="text-[11px] font-black text-slate-300 uppercase tracking-[0.3em] leading-[2]">LifeOS — Generado Automáticamente por tu Sistema de Vida</p>
+                      </div>
+                    </div>
+                  </>
+                );
+              })()}
             </div>
           </div>
 
