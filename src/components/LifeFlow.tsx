@@ -26,7 +26,7 @@ import { LOAN_OUT_CAT_ID, LOAN_IN_CAT_ID } from '../types';
 import { generateId, formatDateId as fmtDateId, getWeekDays, GRID_HOURS, fmtCurrency, getWeekId } from '../lib/utils';
 import {
   loadAllData, migrateFromLocalStorage,
-  loadEvents, loadCategories, loadTransactions, loadFinCategories, loadGoals,
+  loadCategories, loadTransactions, loadFinCategories, loadGoals,
   loadSavings, loadMonthBalances, loadSavingsWithdrawals, loadSavingsPockets,
   loadPocketFundings, loadSavingsYearBalances, loadLoans, loadLoanPayments,
   loadBudgets, loadTasks, loadChecklistItems, loadHabits, loadHabitLogs,
@@ -34,6 +34,7 @@ import {
   syncSavings, syncMonthBalances, syncSavingsWithdrawals, syncSavingsPockets,
   syncPocketFundings, syncSavingsYearBalances, syncLoans, syncLoanPayments, syncBudgets,
   syncTasks, syncChecklistItems, syncHabits, syncHabitLogs, loadReminders, syncReminders,
+  rowToEvent,
 } from '../lib/db';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../hooks/useAuth';
@@ -753,10 +754,34 @@ const App = () => {
     const channel = supabase
       .channel(`lifeos-rt-${userId}`)
 
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'events', filter: f }, async () => {
-        if (Date.now() - (lastLocalSyncAt.current['events'] ?? 0) < RT_ECHO_GRACE_MS) return; // eco del propio cambio local
-        const fresh = await loadEvents();
-        rt['events'] = true; prevEvents.current = fresh; setEvents(fresh);
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'events', filter: f }, (payload) => {
+        // Aplica el cambio puntual del payload directamente sobre el estado local, en vez de
+        // releer toda la tabla. Esto evita que, con varias pestañas/dispositivos abiertos a la
+        // vez, una relectura pise una escritura local aún no confirmada (pérdida de datos).
+        rt['events'] = true;
+        setEvents(prev => {
+          const next = { ...prev };
+          const removeId = (id: string) => {
+            Object.keys(next).forEach(dId => {
+              if (next[dId]?.some(e => e.id === id)) {
+                next[dId] = next[dId].filter(e => e.id !== id);
+                if (next[dId].length === 0) delete next[dId];
+              }
+            });
+          };
+          if (payload.eventType === 'DELETE') {
+            const oldId = (payload.old as Record<string, unknown>)?.id as string | undefined;
+            if (oldId) removeId(oldId);
+          } else {
+            const row = payload.new as Record<string, unknown>;
+            const dateId = row.date_id as string;
+            const entry = rowToEvent(row);
+            removeId(entry.id);
+            next[dateId] = [...(next[dateId] || []), entry];
+          }
+          prevEvents.current = next;
+          return next;
+        });
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'categories', filter: f }, async () => {
         if (Date.now() - (lastLocalSyncAt.current['categories'] ?? 0) < RT_ECHO_GRACE_MS) return; // eco del propio cambio local

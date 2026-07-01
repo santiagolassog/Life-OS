@@ -53,7 +53,7 @@ function diffArrays<T extends { id: string }>(
 // Conversores: DB row → tipo de la app
 // ─────────────────────────────────────────────────────────────────────────────
 
-const rowToEvent = (row: Record<string, unknown>): EventEntry => ({
+export const rowToEvent = (row: Record<string, unknown>): EventEntry => ({
   id:        row.id as string,
   startHour: row.start_hour as string,
   endHour:   row.end_hour as string,
