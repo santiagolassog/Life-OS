@@ -100,6 +100,53 @@ const INITIAL_FIN_CATEGORIES: FinCategory[] = [
 const TRANSPARENT_IMG = new Image();
 TRANSPARENT_IMG.src = 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7';
 
+// Calcula, para cada evento de un día, en qué "columna" dibujarlo y cuántas columnas
+// totales tiene el grupo de eventos que se solapan con él en el tiempo — así los eventos
+// simultáneos se muestran lado a lado en vez de superpuestos exactamente uno sobre otro
+// (lo que hacía que solo el último se viera, dando la sensación de que los demás "desaparecían").
+function layoutDayEvents(dayEvents: EventEntry[]): Map<string, { col: number; totalCols: number }> {
+  const items = dayEvents
+    .map(event => ({
+      event,
+      start: GRID_HOURS.indexOf(event.startHour),
+      end: GRID_HOURS.indexOf(event.endHour),
+    }))
+    .filter(it => it.start !== -1 && it.end !== -1)
+    .sort((a, b) => a.start - b.start || a.end - b.end);
+
+  const layout = new Map<string, { col: number; totalCols: number }>();
+  let cluster: typeof items = [];
+  let clusterEnd = -Infinity;
+
+  const flushCluster = () => {
+    if (cluster.length === 0) return;
+    const columnEndAt: number[] = [];
+    cluster.forEach(it => {
+      let colIdx = columnEndAt.findIndex(endAt => endAt <= it.start);
+      if (colIdx === -1) { colIdx = columnEndAt.length; columnEndAt.push(it.end); }
+      else columnEndAt[colIdx] = it.end;
+      layout.set(it.event.id, { col: colIdx, totalCols: 0 });
+    });
+    const totalCols = columnEndAt.length;
+    cluster.forEach(it => { layout.get(it.event.id)!.totalCols = totalCols; });
+    cluster = [];
+  };
+
+  items.forEach(it => {
+    if (cluster.length === 0 || it.start < clusterEnd) {
+      cluster.push(it);
+      clusterEnd = Math.max(clusterEnd, it.end);
+    } else {
+      flushCluster();
+      cluster.push(it);
+      clusterEnd = it.end;
+    }
+  });
+  flushCluster();
+
+  return layout;
+}
+
 const MIN_OPTIONS = ['00', '15', '30', '45'];
 const HOUR_OPTIONS = Array.from({ length: 24 }, (_, i) => i.toString().padStart(2, '0'));
 const WEEK_DAYS_SHORT = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'];
@@ -2593,6 +2640,7 @@ const App = () => {
                       {currentVisibleDays.map((date) => {
                         const dateId = formatDateId(date);
                         const dayEvents = events[dateId] || [];
+                        const dayEventsLayout = layoutDayEvents(dayEvents);
                         const isToday = date.toDateString() === new Date().toDateString();
                         return (
                           <div key={dateId} data-day-col="1" className={`border-r h-full relative ${isToday ? 'bg-blue-50/30' : ''}`}
@@ -2659,12 +2707,13 @@ const App = () => {
                               const eIdx = isResizing && resizePreviewEndIdx !== null ? resizePreviewEndIdx : GRID_HOURS.indexOf(event.endHour);
                               const span = eIdx - sIdx;
                               const cat = categories[event.category] || { color: '#cbd5e1', short: '??' };
-                              const isSmall = span <= 2;
+                              const { col, totalCols } = dayEventsLayout.get(event.id) ?? { col: 0, totalCols: 1 };
+                              const isSmall = span <= 2 || totalCols > 2;
                               const displayEndHour = isResizing && resizePreviewEndIdx !== null ? GRID_HOURS[resizePreviewEndIdx] : event.endHour;
                               return (
                                 <div key={event.id} draggable={!isResizing} onDragStart={(e) => handleDragStart(e, event, dateId)} onDragEnd={() => { setDraggedItem(null); setDragPreview(null); dragGrabOffset.current = 0; }} onClick={(e) => { e.stopPropagation(); if (!isResizing) handleOpenModal(date, event.startHour, event); }}
-                                  className={`absolute inset-x-1 z-10 rounded-xl overflow-hidden cursor-pointer transition-colors ${draggedItem?.id === event.id ? 'opacity-20 scale-95' : 'hover:brightness-95'} ${isResizing ? 'ring-2 ring-indigo-400 shadow-lg' : ''}`}
-                                  style={{ top: `${sIdx * SEGMENT_HEIGHT + 2}px`, height: `${span * SEGMENT_HEIGHT - 4}px`, backgroundColor: event.completed ? `${cat.color}18` : 'white', border: `1px solid ${event.completed ? cat.color + '40' : '#e2e8f0'}`, borderLeft: `3px solid ${cat.color}`, boxShadow: '0 1px 3px rgba(0,0,0,0.06)', userSelect: 'none' }}>
+                                  className={`absolute rounded-xl overflow-hidden cursor-pointer transition-colors ${draggedItem?.id === event.id ? 'opacity-20 scale-95' : 'hover:brightness-95'} ${isResizing ? 'ring-2 ring-indigo-400 shadow-lg' : ''}`}
+                                  style={{ top: `${sIdx * SEGMENT_HEIGHT + 2}px`, height: `${span * SEGMENT_HEIGHT - 4}px`, left: `calc(${(col / totalCols) * 100}% + 4px)`, width: `calc(${100 / totalCols}% - 8px)`, zIndex: 10 + col, backgroundColor: event.completed ? `${cat.color}18` : 'white', border: `1px solid ${event.completed ? cat.color + '40' : '#e2e8f0'}`, borderLeft: `3px solid ${cat.color}`, boxShadow: '0 1px 3px rgba(0,0,0,0.06)', userSelect: 'none' }}>
                                   <div className={`h-full flex flex-col overflow-hidden relative ${span === 1 ? 'px-2 py-0 justify-center' : isSmall ? 'px-2 py-1' : 'px-2.5 pt-1.5 pb-1.5'}`}>
                                     <div className={`flex items-start gap-1 overflow-hidden ${event.completed ? 'pr-4' : ''}`}>
                                       <span className={`font-black leading-tight flex-1 overflow-hidden ${isSmall ? 'text-[9px]' : 'text-[10px]'} ${event.completed ? 'text-slate-600' : 'text-slate-800'} ${span === 1 ? 'leading-[1.1]' : ''}`}>{event.task}</span>
