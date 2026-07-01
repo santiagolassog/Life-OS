@@ -30,6 +30,7 @@ interface HoyProps {
   setHabitLogs: React.Dispatch<React.SetStateAction<HabitLog[]>>;
   currentDate: Date;
   onNavigate: (s: SectionKey) => void;
+  isModuleEnabled?: (key: string) => boolean;
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -111,8 +112,10 @@ const MiniRing: React.FC<{
 const Hoy: React.FC<HoyProps> = ({
   userName, streak, events, categories, tasks, goals,
   transactions, finCategories, monthBalances, habits, habitLogs, setHabitLogs,
-  currentDate, onNavigate,
+  currentDate, onNavigate, isModuleEnabled,
 }) => {
+  // Por defecto todos los módulos habilitados (usuarios personales sin empresa)
+  const modEnabled = (key: string) => isModuleEnabled ? isModuleEnabled(key) : true;
   const { text: greetText, Icon: GreetIcon } = greeting();
   const todayStr = formatDateId(new Date());
   const weekId   = useMemo(() => getWeekId(currentDate), [currentDate]);
@@ -226,7 +229,7 @@ const Hoy: React.FC<HoyProps> = ({
 
   return (
     <div className="flex-1 overflow-y-auto custom-scrollbar">
-      <div className="max-w-4xl mx-auto p-4 md:p-8 pb-28 md:pb-12 space-y-4 md:space-y-5">
+      <div className="w-full p-4 md:p-8 pb-28 md:pb-12 space-y-4 md:space-y-5">
 
         {/* ── Bienvenida usuario nuevo ── */}
         {isNewUser && (
@@ -239,28 +242,36 @@ const Hoy: React.FC<HoyProps> = ({
             <div>
               <p className="font-black text-slate-800 text-lg">Bienvenido a LifeOS</p>
               <p className="text-slate-500 text-sm mt-1 max-w-xs mx-auto leading-relaxed">
-                Tu sistema de vida personal. Elige por dónde empezar.
+                Tu sistema de vida personal.
               </p>
             </div>
-            <div className="grid grid-cols-2 gap-3 max-w-sm mx-auto">
-              {[
+            {(() => {
+              const quickBtns = [
                 { label: 'Agenda tu día', icon: CalendarDays, section: 'tiempo' as SectionKey, color: 'bg-indigo-500' },
                 { label: 'Registra un gasto', icon: DollarSign, section: 'dinero' as SectionKey, color: 'bg-emerald-500' },
+                { label: 'Mis hábitos', icon: Flame, section: 'habitos' as SectionKey, color: 'bg-orange-500' },
                 { label: 'Define objetivos', icon: Target, section: 'objetivos' as SectionKey, color: 'bg-violet-500' },
                 { label: 'Añade una tarea', icon: CheckSquare, section: 'lista' as SectionKey, color: 'bg-blue-500' },
-              ].map(({ label, icon: Icon, section, color }) => (
+              ].filter(({ section }) => modEnabled(section));
+              // Ancho de cada ítem: 3 por fila máx. Si hay 4, van 2×2. Si hay 1-3 se reparten igual.
+              const perRow = quickBtns.length === 4 ? 2 : Math.min(quickBtns.length, 3);
+              const itemW = perRow === 1 ? 'w-full max-w-[200px]' : perRow === 2 ? 'w-[calc(50%-6px)]' : 'w-[calc(33.333%-8px)]';
+              return (
+            <div className="flex flex-wrap justify-center gap-3 w-full max-w-md mx-auto">
+              {quickBtns.map(({ label, icon: Icon, section, color }) => (
                 <button
                   key={section}
                   onClick={() => onNavigate(section)}
-                  className="flex items-center gap-3 bg-white rounded-2xl p-4 border border-slate-100 shadow-sm hover:shadow-md transition-all text-left active:scale-95"
+                  className={`${itemW} min-h-[96px] flex flex-col items-center justify-center gap-2.5 bg-white rounded-2xl p-4 border border-slate-100 shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all text-center active:scale-95`}
                 >
-                  <div className={`${color} p-2 rounded-xl shrink-0`}>
-                    <Icon size={16} className="text-white" />
+                  <div className={`${color} p-2.5 rounded-xl shadow-sm`}>
+                    <Icon size={18} className="text-white" />
                   </div>
-                  <span className="text-xs font-black text-slate-700">{label}</span>
+                  <span className="text-[11px] font-black text-slate-700 leading-tight">{label}</span>
                 </button>
               ))}
             </div>
+              )})()}
           </div>
         )}
 
@@ -325,10 +336,11 @@ const Hoy: React.FC<HoyProps> = ({
             {/* ═══════════════════════════════════════════════════════════════
                 FILA 2: AGENDA + HÁBITOS
             ═══════════════════════════════════════════════════════════════ */}
+            {(modEnabled('tiempo') || modEnabled('habitos')) && (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
 
               {/* ── Agenda de hoy (timeline) ── */}
-              <div className="bg-white rounded-3xl border border-slate-100 shadow-sm overflow-hidden flex flex-col">
+              {modEnabled('tiempo') && <div className="bg-white rounded-3xl border border-slate-100 shadow-sm overflow-hidden flex flex-col">
                 <button
                   className="w-full flex items-center justify-between px-5 pt-5 pb-3"
                   onClick={() => onNavigate('tiempo')}
@@ -359,34 +371,51 @@ const Hoy: React.FC<HoyProps> = ({
                     </div>
                   ) : (
                     <div className="space-y-1">
-                      {todayEvents.all.slice(0, 5).map((ev) => {
-                        const cat = categories[ev.category] ?? { color: '#94a3b8', short: '??' };
-                        const isNext = !ev.completed && todayEvents.upcoming[0]?.id === ev.id;
-                        return (
-                          <div
-                            key={ev.id}
-                            className={`flex items-center gap-3 p-2.5 rounded-xl transition-all ${
-                              isNext ? 'bg-indigo-50/60 ring-1 ring-indigo-100' : ''
-                            }`}
-                          >
-                            <span className="text-[10px] font-bold text-slate-400 w-10 shrink-0 text-right tabular-nums">
-                              {eventTime(ev.startHour)}
-                            </span>
-                            <div className="w-1 h-8 rounded-full shrink-0" style={{ backgroundColor: cat.color }} />
-                            <p className={`text-sm font-bold truncate flex-1 ${
-                              ev.completed ? 'line-through text-slate-400' : 'text-slate-700'
-                            }`}>
-                              {ev.task}
-                            </p>
-                            {ev.completed && <CheckCircle2 size={14} className="text-emerald-500 shrink-0" />}
-                            {isNext && (
-                              <span className="text-[8px] font-black text-indigo-500 bg-indigo-100 rounded-full px-1.5 py-0.5 uppercase shrink-0">
-                                Ahora
+                      {(() => {
+                        const allEvs = todayEvents.all;
+                        const nowMin = new Date().getHours() * 60 + new Date().getMinutes();
+                        // Índice del primer evento que aún no ha terminado
+                        const firstUpIdx = allEvs.findIndex(e => {
+                          const [h, m] = e.endHour.split(':').map(Number);
+                          return h * 60 + m > nowMin;
+                        });
+                        let start: number;
+                        if (firstUpIdx === -1) {
+                          // Todos terminados → mostrar los últimos 5
+                          start = Math.max(0, allEvs.length - 5);
+                        } else {
+                          // Mostrar hasta 2 pasados como contexto + los próximos
+                          start = Math.max(0, firstUpIdx - 2);
+                        }
+                        return allEvs.slice(start, start + 5).map((ev) => {
+                          const cat = categories[ev.category] ?? { color: '#94a3b8', short: '??' };
+                          const isNext = !ev.completed && todayEvents.upcoming[0]?.id === ev.id;
+                          return (
+                            <div
+                              key={ev.id}
+                              className={`flex items-center gap-3 p-2.5 rounded-xl transition-all ${
+                                isNext ? 'bg-indigo-50/60 ring-1 ring-indigo-100' : ''
+                              }`}
+                            >
+                              <span className="text-[10px] font-bold text-slate-400 w-10 shrink-0 text-right tabular-nums">
+                                {eventTime(ev.startHour)}
                               </span>
-                            )}
-                          </div>
-                        );
-                      })}
+                              <div className="w-1 h-8 rounded-full shrink-0" style={{ backgroundColor: cat.color }} />
+                              <p className={`text-sm font-bold truncate flex-1 ${
+                                ev.completed ? 'line-through text-slate-400' : 'text-slate-700'
+                              }`}>
+                                {ev.task}
+                              </p>
+                              {ev.completed && <CheckCircle2 size={14} className="text-emerald-500 shrink-0" />}
+                              {isNext && (
+                                <span className="text-[8px] font-black text-indigo-500 bg-indigo-100 rounded-full px-1.5 py-0.5 uppercase shrink-0">
+                                  Ahora
+                                </span>
+                              )}
+                            </div>
+                          );
+                        });
+                      })()}
                       {todayEvents.all.length > 5 && (
                         <button
                           onClick={() => onNavigate('tiempo')}
@@ -398,10 +427,10 @@ const Hoy: React.FC<HoyProps> = ({
                     </div>
                   )}
                 </div>
-              </div>
+              </div>}
 
               {/* ── Hábitos del día ── */}
-              <div className="bg-white rounded-3xl border border-slate-100 shadow-sm overflow-hidden flex flex-col">
+              {modEnabled('habitos') && <div className="bg-white rounded-3xl border border-slate-100 shadow-sm overflow-hidden flex flex-col">
                 <button
                   className="w-full flex items-center justify-between px-5 pt-5 pb-3"
                   onClick={() => onNavigate('habitos')}
@@ -465,15 +494,18 @@ const Hoy: React.FC<HoyProps> = ({
                     </div>
                   )}
                 </div>
-              </div>
+              </div>}
             </div>
+            )}
 
             {/* ═══════════════════════════════════════════════════════════════
                 FILA 3: TAREAS + OBJETIVOS
             ═══════════════════════════════════════════════════════════════ */}
+            {(modEnabled('lista') || modEnabled('objetivos')) && (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
 
               {/* ── Tareas activas ── */}
+              {modEnabled('lista') &&
               <div className="bg-white rounded-3xl border border-slate-100 shadow-sm overflow-hidden flex flex-col">
                 <button
                   className="w-full flex items-center justify-between px-5 pt-5 pb-3"
@@ -528,10 +560,10 @@ const Hoy: React.FC<HoyProps> = ({
                     </div>
                   )}
                 </div>
-              </div>
+              </div>}
 
               {/* ── Objetivos semanales (con anillo) ── */}
-              <div className="bg-white rounded-3xl border border-slate-100 shadow-sm overflow-hidden flex flex-col">
+              {modEnabled('objetivos') && <div className="bg-white rounded-3xl border border-slate-100 shadow-sm overflow-hidden flex flex-col">
                 <button
                   className="w-full flex items-center justify-between px-5 pt-5 pb-3"
                   onClick={() => onNavigate('objetivos')}
@@ -588,13 +620,14 @@ const Hoy: React.FC<HoyProps> = ({
                     </div>
                   )}
                 </div>
-              </div>
+              </div>}
             </div>
+            )}
 
             {/* ═══════════════════════════════════════════════════════════════
                 FILA 4: FINANZAS (horizontal)
             ═══════════════════════════════════════════════════════════════ */}
-            <button
+            {modEnabled('dinero') && <button
               onClick={() => onNavigate('dinero')}
               className="w-full bg-white rounded-3xl border border-slate-100 shadow-sm p-5 hover:shadow-md transition-all active:scale-[0.995] text-left"
             >
@@ -663,12 +696,12 @@ const Hoy: React.FC<HoyProps> = ({
                   </div>
                 </div>
               )}
-            </button>
+            </button>}
 
             {/* ═══════════════════════════════════════════════════════════════
                 FILA 5: RESUMEN SEMANAL
             ═══════════════════════════════════════════════════════════════ */}
-            {hasWeekData && (
+            {hasWeekData && modEnabled('revision') && (
               <button
                 onClick={() => onNavigate('revision')}
                 className="w-full bg-gradient-to-br from-indigo-50 to-violet-50 border border-indigo-100 rounded-3xl p-5 text-left hover:shadow-md transition-all active:scale-[0.995]"

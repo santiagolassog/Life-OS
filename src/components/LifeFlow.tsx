@@ -9,7 +9,8 @@ import {
   Clock, Save, Zap, ChevronLeft, ChevronRight, X, Plus,
   PieChart as PieChartIcon, Trash2, CalendarDays, Menu, Copy, CheckCircle2, Circle, Edit2, Palette,
   Download, ListPlus, Target, BarChart3, History, DollarSign, Star, ChevronDown, LogOut, CheckSquare,
-  Sparkles, Keyboard, Home, MoreHorizontal, Search, GripVertical, Flame,
+  Sparkles, Keyboard, Home, MoreHorizontal, Search, GripVertical, Flame, GraduationCap, Shield, KeyRound, Eye, EyeOff,
+  ListTodo, Bell, BellRing, AlarmClock,
 } from 'lucide-react';
 import Dinero from './modules/Dinero';
 import Objetivos from './modules/Objetivos';
@@ -17,8 +18,10 @@ import Revision from './modules/Revision';
 import Lista from './modules/Lista';
 import Hoy from './modules/Hoy';
 import Habitos from './modules/Habitos';
+import Admin from './modules/Admin';
+import Academia from './modules/Academia';
 import SearchModal, { type SearchResult } from './SearchModal';
-import type { Transaction, FinCategory, Goal, Savings, MonthBalance, SavingsWithdrawal, SavingsPocket, PocketFunding, SavingsYearBalance, Loan, LoanPayment, Budget, Task, ChecklistItem, EventEntry, Habit, HabitLog } from '../types';
+import type { Transaction, FinCategory, Goal, Savings, MonthBalance, SavingsWithdrawal, SavingsPocket, PocketFunding, SavingsYearBalance, Loan, LoanPayment, Budget, Task, ChecklistItem, EventEntry, Habit, HabitLog, Reminder } from '../types';
 import { LOAN_OUT_CAT_ID, LOAN_IN_CAT_ID } from '../types';
 import { generateId, formatDateId as fmtDateId, getWeekDays, GRID_HOURS, fmtCurrency, getWeekId } from '../lib/utils';
 import {
@@ -30,7 +33,7 @@ import {
   syncEvents, syncCategories, syncTransactions, syncFinCategories, syncGoals,
   syncSavings, syncMonthBalances, syncSavingsWithdrawals, syncSavingsPockets,
   syncPocketFundings, syncSavingsYearBalances, syncLoans, syncLoanPayments, syncBudgets,
-  syncTasks, syncChecklistItems, syncHabits, syncHabitLogs,
+  syncTasks, syncChecklistItems, syncHabits, syncHabitLogs, loadReminders, syncReminders,
 } from '../lib/db';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../hooks/useAuth';
@@ -91,6 +94,10 @@ const INITIAL_FIN_CATEGORIES: FinCategory[] = [
   { id: LOAN_OUT_CAT_ID, label: 'Préstamos',  color: '#f97316', type: 'expense', description: 'Dinero prestado a otras personas que esperas que se devuelva' },
   { id: LOAN_IN_CAT_ID,  label: 'Reintegros', color: '#22c55e', type: 'income',  description: 'Devoluciones de préstamos recibidas' },
 ];
+
+// Imagen transparente precargada para drag & drop (evita el ícono fantasma del navegador)
+const TRANSPARENT_IMG = new Image();
+TRANSPARENT_IMG.src = 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7';
 
 const MIN_OPTIONS = ['00', '15', '30', '45'];
 const HOUR_OPTIONS = Array.from({ length: 24 }, (_, i) => i.toString().padStart(2, '0'));
@@ -197,29 +204,111 @@ const CustomTimePicker = ({ label, hour, minute, onTimeChange, minTime = "00:00"
 };
 
 
-type SectionKey = 'hoy' | 'tiempo' | 'dinero' | 'objetivos' | 'lista' | 'revision' | 'habitos';
+type SectionKey = 'hoy' | 'tiempo' | 'dinero' | 'objetivos' | 'lista' | 'revision' | 'habitos' | 'academia' | 'admin';
+
+// Hash routing: slug ↔ sectionKey
+const SLUG_TO_SECTION: Record<string, SectionKey> = {
+  inicio: 'hoy', agenda: 'tiempo', dinero: 'dinero', objetivos: 'objetivos',
+  tareas: 'lista', revision: 'revision', habitos: 'habitos', academia: 'academia', admin: 'admin',
+};
+const SECTION_TO_SLUG: Record<SectionKey, string> = Object.fromEntries(
+  Object.entries(SLUG_TO_SECTION).map(([slug, key]) => [key, slug])
+) as Record<SectionKey, string>;
+
+const getSectionFromHash = (): SectionKey => {
+  const hash = window.location.hash.replace('#/', '').replace('#', '').toLowerCase();
+  return SLUG_TO_SECTION[hash] || 'hoy';
+};
 
 const SECTIONS: Array<{ key: SectionKey; label: string; Icon: React.FC<{ size?: number }> }> = [
   { key: 'hoy',      label: 'Inicio',   Icon: Home },
   { key: 'dinero',   label: 'Dinero',   Icon: DollarSign },
-  { key: 'tiempo',   label: 'Tiempo',   Icon: CalendarDays },
-  { key: 'lista',    label: 'Lista',    Icon: CheckSquare },
+  { key: 'tiempo',   label: 'Agenda',   Icon: CalendarDays },
+  { key: 'lista',    label: 'Tareas',   Icon: CheckSquare },
   { key: 'habitos',  label: 'Hábitos',  Icon: Flame },
   { key: 'objetivos',label: 'Objetivos',Icon: Target },
   { key: 'revision', label: 'Revisión', Icon: BarChart3 },
+  { key: 'academia', label: 'Academia', Icon: GraduationCap },
 ];
 
 // Secciones en el nav mobile principal (sin Hábitos/Objetivos/Revisión — van en "Más")
 const MOBILE_NAV = SECTIONS.filter(s => ['hoy','dinero','tiempo','lista'].includes(s.key));
-const MORE_SECTIONS = SECTIONS.filter(s => ['habitos','objetivos','revision'].includes(s.key));
+const MORE_SECTIONS = SECTIONS.filter(s => ['habitos','objetivos','revision','academia'].includes(s.key));
 
 const App = () => {
-  const { user, signOut, displayName, updateDisplayName } = useAuth();
+  const { user, signOut, displayName, updateDisplayName, isSuperAdmin } = useAuth();
   const userId = user?.id ?? '';
+
+  // ── Módulos habilitados por empresa ───────────────────────────────────────────
+  // null = sin restricción (usuario personal o super_admin) → se muestran todos
+  // string[] = lista de moduleKeys habilitados para la empresa del usuario
+  const [enabledModules, setEnabledModules] = useState<string[] | null>(null);
+
+  useEffect(() => {
+    if (!user || isSuperAdmin) { setEnabledModules(null); return; }
+    const fetchModules = async () => {
+      // Empresa del usuario
+      const { data: membership } = await supabase
+        .from('company_members')
+        .select('company_id')
+        .eq('user_id', user.id)
+        .maybeSingle();
+
+      if (!membership) { setEnabledModules(null); return; } // sin empresa → todo habilitado
+
+      // Módulos configurados para esa empresa
+      const { data: mods } = await supabase
+        .from('company_modules')
+        .select('module_key, enabled')
+        .eq('company_id', membership.company_id);
+
+      if (!mods || mods.length === 0) { setEnabledModules(null); return; } // sin config → todo habilitado
+
+      const enabled = mods.filter(m => m.enabled).map(m => m.module_key as string);
+      setEnabledModules(enabled);
+    };
+    fetchModules();
+  }, [user, isSuperAdmin]);
+
+  // Helper: ¿está habilitado este módulo para el usuario actual?
+  // 'hoy' y 'admin' siempre están habilitados (no son módulos configurables)
+  const isModuleEnabled = (key: string) => key === 'hoy' || key === 'admin' || isSuperAdmin || enabledModules === null || enabledModules.includes(key);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const [showSearch, setShowSearch]         = useState(false);
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [showProfile, setShowProfile]     = useState(false);
+  const [showChangePassword, setShowChangePassword] = useState(false);
+  const [showNewPassword, setShowNewPassword]   = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const [sidebarMenuOpen, setSidebarMenuOpen] = useState(false);
+  const [newPassword, setNewPassword]     = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [passwordSaving, setPasswordSaving] = useState(false);
+  const [passwordError, setPasswordError]  = useState('');
+  const [passwordSuccess, setPasswordSuccess] = useState(false);
+
+  const closePasswordModal = () => {
+    setShowChangePassword(false);
+    setNewPassword('');
+    setConfirmPassword('');
+    setPasswordError('');
+    setPasswordSuccess(false);
+    setPasswordSaving(false);
+    setShowNewPassword(false);
+    setShowConfirmPassword(false);
+  };
+
+  const handleChangePassword = async () => {
+    setPasswordError('');
+    if (newPassword.length < 6) { setPasswordError('La contraseña debe tener al menos 6 caracteres.'); return; }
+    if (newPassword !== confirmPassword) { setPasswordError('Las contraseñas no coinciden.'); return; }
+    setPasswordSaving(true);
+    const { error } = await supabase.auth.updateUser({ password: newPassword });
+    setPasswordSaving(false);
+    if (error) { setPasswordError(error.message); }
+    else { setPasswordSuccess(true); setTimeout(() => { closePasswordModal(); }, 2000); }
+  };
+
   const [showMoreMenu, setShowMoreMenu]   = useState(false);
   const [profileName, setProfileName]     = useState('');
   const [profileSaving, setProfileSaving] = useState(false);
@@ -254,8 +343,25 @@ const App = () => {
   const [categories, setCategories] = useState(INITIAL_CATEGORIES);
   const [modalData, setModalData] = useState(null);
   const [catModal, setCatModal] = useState(null);
-  const [sidebarOpen, setSidebarOpen] = useState(false);
+  // Desktop: abierto por defecto. Mobile: cerrado por defecto (muestra el calendario directo)
+  const [sidebarOpen, setSidebarOpen] = useState(() => window.innerWidth >= 1024);
   const [draggedItem, setDraggedItem] = useState(null);
+  const [draggedTask, setDraggedTask] = useState<Task | null>(null);
+  // Drag ghost preview
+  const [dragPreview, setDragPreview] = useState<{ dateId: string; startIdx: number; span: number; label: string; color: string } | null>(null);
+  const dragGrabOffset = useRef(0);
+  // Resize state (arrastrar borde inferior de evento)
+  const [resizingEvent, setResizingEvent] = useState<{ event: EventEntry; dateId: string; startY: number; originalEndIdx: number } | null>(null);
+  const [resizePreviewEndIdx, setResizePreviewEndIdx] = useState<number | null>(null);
+  // Current time indicator
+  const [currentTimePos, setCurrentTimePos] = useState<number>(0);
+  // Tasks panel
+  const [showTasksPanel, setShowTasksPanel] = useState(false);
+  // Mini calendar sidebar
+  const [miniCalMonth, setMiniCalMonth] = useState(() => new Date());
+  // Public holidays by country (auto-detected)
+  const [holidays, setHolidays] = useState<Record<string, string>>({}); // dateStr → holiday name
+  const [userCountry, setUserCountry] = useState<string>('');
   const [mobileDayOffset, setMobileDayOffset] = useState(() => {
     const day = new Date().getDay();
     return day === 0 ? 7 : day;
@@ -266,7 +372,30 @@ const App = () => {
   const [isExporting, setIsExporting] = useState(false);
   const reportRef = useRef<HTMLDivElement>(null);
 
-  const [section, setSection] = useState<SectionKey>('hoy');
+  const [section, setSectionRaw] = useState<SectionKey>(getSectionFromHash);
+
+  // Wrap setSection to also update the hash
+  const setSection = (s: SectionKey | ((prev: SectionKey) => SectionKey)) => {
+    setSectionRaw(prev => {
+      const next = typeof s === 'function' ? s(prev) : s;
+      const slug = SECTION_TO_SLUG[next] || 'inicio';
+      if (window.location.hash !== `#/${slug}`) {
+        window.history.pushState(null, '', `#/${slug}`);
+      }
+      return next;
+    });
+  };
+
+  // Listen for back/forward navigation
+  useEffect(() => {
+    const onHashChange = () => setSectionRaw(getSectionFromHash());
+    window.addEventListener('hashchange', onHashChange);
+    // Set initial hash if empty
+    if (!window.location.hash) {
+      window.history.replaceState(null, '', `#/${SECTION_TO_SLUG['hoy']}`);
+    }
+    return () => window.removeEventListener('hashchange', onHashChange);
+  }, []);
   const [showShortcuts, setShowShortcuts] = useState(false);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [finCategories, setFinCategories] = useState<FinCategory[]>(INITIAL_FIN_CATEGORIES);
@@ -284,6 +413,10 @@ const App = () => {
   const [checklistItems, setChecklistItems]         = useState<ChecklistItem[]>([]);
   const [habits, setHabits]                         = useState<Habit[]>([]);
   const [habitLogs, setHabitLogs]                   = useState<HabitLog[]>([]);
+  const [reminders, setReminders]                   = useState<Reminder[]>([]);
+  const [reminderPopup, setReminderPopup]           = useState<Reminder | null>(null);
+  const [reminderSnoozeOpen, setReminderSnoozeOpen] = useState(false);
+  const [reminderSnoozeTime, setReminderSnoozeTime] = useState('');
 
   // ── Carga inicial desde Supabase (con migración automática de localStorage) ─
   useEffect(() => {
@@ -347,6 +480,7 @@ const App = () => {
         setChecklistItems(d.checklistItems ?? []);
         setHabits(d.habits ?? []);
         setHabitLogs(d.habitLogs ?? []);
+        setReminders(d.reminders ?? []);
 
         // Sincronizar refs con los datos cargados ANTES de setLoading(false).
         // Así los sync-effects ven prev === curr y no re-suben nada a Supabase.
@@ -368,6 +502,7 @@ const App = () => {
         prevChecklistItems.current     = d.checklistItems ?? [];
         prevHabits.current             = d.habits ?? [];
         prevHabitLogs.current          = d.habitLogs ?? [];
+        prevReminders.current          = d.reminders ?? [];
 
       } catch (err) {
         console.error('Error al cargar datos de Supabase:', err);
@@ -398,6 +533,7 @@ const App = () => {
   const prevChecklistItems      = useRef(checklistItems);
   const prevHabits              = useRef(habits);
   const prevHabitLogs           = useRef(habitLogs);
+  const prevReminders           = useRef(reminders);
 
   // Flag por tabla: true cuando el cambio vino de RT (no de acción local).
   // El sync-effect lo detecta, actualiza prevXxx y omite el upsert a Supabase,
@@ -567,6 +703,14 @@ const App = () => {
     prevHabitLogs.current = habitLogs;
   }, [habitLogs, loading, userId]);
 
+  useEffect(() => {
+    if (loading || !userId) return;
+    if (skipIfRT('reminders', prevReminders, reminders)) return;
+    markSaving();
+    syncReminders(prevReminders.current, reminders, userId).catch(console.error);
+    prevReminders.current = reminders;
+  }, [reminders, loading, userId]);
+
   // ── Real-time: recibe cambios de otros dispositivos/tabs ─────────────────────
   // El flag isRTUpdate marca el update como "venido de RT" para que el
   // sync-effect lo salte sin upload. No hay cooldown → cada evento RT
@@ -652,6 +796,10 @@ const App = () => {
         const fresh = await loadHabitLogs();
         rt['habit_logs'] = true; prevHabitLogs.current = fresh; setHabitLogs(fresh);
       })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'reminders', filter: f }, async () => {
+        const fresh = await loadReminders();
+        rt['reminders'] = true; prevReminders.current = fresh; setReminders(fresh);
+      })
 
       .subscribe();
 
@@ -688,6 +836,63 @@ const App = () => {
     localStorage.setItem(key, JSON.stringify({ lastVisit: todayStr, streak: newStreak }));
     setStreak(newStreak);
   }, [userId, loading]);
+
+  // ── Recordatorios: verificar cada 30s si hay alguno pendiente ────────────────
+  useEffect(() => {
+    if (loading || reminders.length === 0) return;
+    const firedIds = new Set<string>();
+    const check = () => {
+      const now = new Date();
+      reminders.forEach(r => {
+        if (r.done || firedIds.has(r.id)) return;
+        // Si fue snoozed, comparar contra snoozedTo
+        const triggerTime = r.snoozedTo ? new Date(r.snoozedTo) : new Date(`${r.date}T${r.time}:00`);
+        if (now >= triggerTime) {
+          firedIds.add(r.id);
+          setReminderPopup(r);
+        }
+      });
+    };
+    check();
+    const interval = setInterval(check, 30_000);
+    return () => clearInterval(interval);
+  }, [reminders, loading]);
+
+  // ── Recordatorios: CRUD helpers ─────────────────────────────────────────────
+  const handleSaveReminder = (title: string, date: string, time: string, id?: string) => {
+    if (id) {
+      setReminders(prev => prev.map(r => r.id === id ? { ...r, title, date, time, snoozedTo: undefined } : r));
+    } else {
+      const newR: Reminder = { id: generateId(), title, date, time, done: false, createdAt: new Date().toISOString() };
+      setReminders(prev => [...prev, newR]);
+    }
+    setModalData(null);
+  };
+
+  const handleDeleteReminder = (id: string) => {
+    setReminders(prev => prev.filter(r => r.id !== id));
+    setModalData(null);
+    setReminderPopup(null);
+  };
+
+  const handleReminderDone = (id: string) => {
+    setReminders(prev => prev.map(r => r.id === id ? { ...r, done: true } : r));
+    setReminderPopup(null);
+  };
+
+  const handleReminderSnooze = (id: string, newTime: string) => {
+    if (!newTime) return;
+    // newTime is "HH:MM" — snooze to today at that time, or tomorrow if time already passed
+    const now = new Date();
+    const [h, m] = newTime.split(':').map(Number);
+    const target = new Date(now.getFullYear(), now.getMonth(), now.getDate(), h, m, 0);
+    if (target <= now) target.setDate(target.getDate() + 1);
+    setReminders(prev => prev.map(r => r.id === id ? { ...r, snoozedTo: target.toISOString() } : r));
+    setReminderPopup(null);
+    setReminderSnoozeOpen(false);
+    setReminderSnoozeTime('');
+    toast.success('Recordatorio pospuesto', { description: `Se te notificará a las ${newTime}`, duration: 3000 });
+  };
 
   const handleSaveName = async (name: string, isOnboarding = false) => {
     if (!name.trim()) {
@@ -796,6 +1001,84 @@ const App = () => {
     }
   }, [section, loading]);
 
+  // Current time line position — updated every minute
+  useEffect(() => {
+    const calcPos = () => {
+      const now = new Date();
+      const totalMinutes = now.getHours() * 60 + now.getMinutes();
+      // Each segment is 15 min, position = (totalMinutes / 15) * SEGMENT_HEIGHT
+      setCurrentTimePos((totalMinutes / 15) * SEGMENT_HEIGHT);
+    };
+    calcPos();
+    const interval = setInterval(calcPos, 60_000);
+    return () => clearInterval(interval);
+  }, []);
+
+  // Detect user country from timezone and load public holidays
+  useEffect(() => {
+    const tzToCountry: Record<string, string> = {
+      'America/Bogota': 'CO', 'America/Medellin': 'CO',
+      'America/Mexico_City': 'MX', 'America/Monterrey': 'MX', 'America/Cancun': 'MX', 'America/Tijuana': 'MX',
+      'America/Argentina/Buenos_Aires': 'AR', 'America/Cordoba': 'AR',
+      'America/Santiago': 'CL',
+      'America/Lima': 'PE',
+      'America/Guayaquil': 'EC',
+      'America/Caracas': 'VE',
+      'America/La_Paz': 'BO',
+      'America/Asuncion': 'PY',
+      'America/Montevideo': 'UY',
+      'America/Panama': 'PA',
+      'America/Costa_Rica': 'CR',
+      'America/Guatemala': 'GT',
+      'America/El_Salvador': 'SV',
+      'America/Tegucigalpa': 'HN',
+      'America/Managua': 'NI',
+      'America/Santo_Domingo': 'DO',
+      'America/Havana': 'CU',
+      'America/New_York': 'US', 'America/Chicago': 'US', 'America/Denver': 'US', 'America/Los_Angeles': 'US',
+      'America/Toronto': 'CA', 'America/Vancouver': 'CA',
+      'America/Sao_Paulo': 'BR', 'America/Fortaleza': 'BR',
+      'Europe/Madrid': 'ES', 'Atlantic/Canary': 'ES',
+      'Europe/London': 'GB',
+      'Europe/Paris': 'FR',
+      'Europe/Berlin': 'DE',
+      'Europe/Rome': 'IT',
+      'Europe/Lisbon': 'PT',
+    };
+    const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    const country = tzToCountry[tz] || 'US';
+    setUserCountry(country);
+  }, []);
+
+  useEffect(() => {
+    if (!userCountry) return;
+    const year = miniCalMonth.getFullYear();
+    const fetchHolidays = async () => {
+      try {
+        const res = await fetch(`https://date.nager.at/api/v3/PublicHolidays/${year}/${userCountry}`);
+        if (!res.ok) return;
+        const data: Array<{ date: string; localName: string }> = await res.json();
+        const map: Record<string, string> = {};
+        data.forEach(h => { map[h.date] = h.localName; });
+        setHolidays(prev => ({ ...prev, ...map }));
+      } catch { /* silently fail */ }
+    };
+    fetchHolidays();
+  }, [userCountry, miniCalMonth]);
+
+  // Auto-expandir el grupo correcto al cambiar de sección
+  useEffect(() => {
+    const g = SECTION_TO_GROUP[section as SectionKey];
+    if (g) setExpandedGroups(prev => prev.includes(g) ? prev : [...prev, g]);
+  }, [section]);
+
+  // Redirigir a 'hoy' si la sección activa queda deshabilitada para este usuario
+  useEffect(() => {
+    if (enabledModules !== null && section !== 'hoy' && section !== 'admin' && !enabledModules.includes(section)) {
+      setSection('hoy');
+    }
+  }, [enabledModules, section]);
+
   useEffect(() => {
     const handler = (e: MouseEvent) => {
       if (userMenuRef.current && !userMenuRef.current.contains(e.target as Node)) {
@@ -865,16 +1148,26 @@ const App = () => {
 
   // ── Autocompletado inteligente de actividades ────────────────────────────────
   const getFilteredPresets = (categoryId: string, searchText: string) => {
+    const presets = categories[categoryId]?.presets ?? [];
+
     if (!searchText.trim()) {
-      // Si no hay búsqueda, mostrar todos
+      // Sin búsqueda: mostrar los 4 presets más usados del área
+      const usageCount: Record<string, number> = {};
+      presets.forEach(p => { usageCount[p] = 0; });
+      Object.values(events).flat().forEach((ev: EventEntry) => {
+        if (ev.category === categoryId && usageCount[ev.task] !== undefined) {
+          usageCount[ev.task]++;
+        }
+      });
+      const sorted = [...presets].sort((a, b) => (usageCount[b] || 0) - (usageCount[a] || 0));
       return {
-        matches: categories[categoryId]?.presets ?? [],
+        matches: sorted.slice(0, 4),
         exactMatch: false,
-        canCreate: false
+        canCreate: false,
+        hasMore: presets.length > 4
       };
     }
 
-    const presets = categories[categoryId]?.presets ?? [];
     const trimmed = searchText.trim();
     const lowerTrimmed = trimmed.toLowerCase();
 
@@ -887,7 +1180,7 @@ const App = () => {
     // ¿Puede crear? Solo si no existe exactamente y el texto no está vacío
     const canCreate = !exactMatch && trimmed.length > 0;
 
-    return { matches, exactMatch, canCreate };
+    return { matches, exactMatch, canCreate, hasMore: false };
   };
 
   const createPresetDynamically = (categoryId: string, presetName: string) => {
@@ -924,15 +1217,24 @@ const App = () => {
     setCatModal(null);
   };
 
-    const handleOpenModal = (dayDate: Date, hour: string, existingEvent: EventEntry | null = null) => {
+    const handleOpenModal = (dayDate: Date, hour: string, existingEvent: EventEntry | null = null, openAsReminder?: Reminder) => {
     const dateId = formatDateId(dayDate);
-    if (existingEvent) {
+    if (openAsReminder) {
+      // Abrir modal en modo recordatorio (editar)
+      const [h, m] = openAsReminder.time.split(':');
+      setModalData({
+        id: openAsReminder.id, dateId: openAsReminder.date,
+        startHour: h, startMin: m || '00', endHour: h, endMin: m || '00',
+        category: '', task: openAsReminder.title, isEditing: true, mode: 'edit', completed: false, selectedDays: [],
+        isReminder: true, reminderId: openAsReminder.id
+      });
+    } else if (existingEvent) {
       const [startH, startM] = existingEvent.startHour.split(':');
       const [endH, endM] = existingEvent.endHour.split(':');
       setModalData({
         ...existingEvent,
         startHour: startH, startMin: startM, endHour: endH, endMin: endM,
-        dateId, isEditing: true, mode: 'edit', selectedDays: []
+        dateId, isEditing: true, mode: 'edit', selectedDays: [], isReminder: false
       });
     } else {
       const [h, m] = hour.split(':');
@@ -941,7 +1243,7 @@ const App = () => {
       setModalData({
         id: generateId(), dateId,
         startHour: h, startMin: m, endHour: endH, endMin: m,
-        category: Object.keys(categories)[0] || '', task: '', isEditing: false, mode: 'edit', completed: false, selectedDays: [], energy: undefined, impact: undefined, habitId: undefined
+        category: Object.keys(categories)[0] || '', task: '', isEditing: false, mode: 'edit', completed: false, selectedDays: [], energy: undefined, impact: undefined, habitId: undefined, isReminder: false
       });
     }
   };
@@ -1047,11 +1349,68 @@ const App = () => {
   const handleDragStart = (e, event, dateId) => {
     setDraggedItem({ ...event, sourceDateId: dateId });
     e.dataTransfer.effectAllowed = 'move';
+    // Store the offset within the event where the user grabbed it
+    const rect = e.currentTarget.getBoundingClientRect();
+    const offsetY = e.clientY - rect.top;
+    dragGrabOffset.current = offsetY;
+    e.dataTransfer.setData('text/plain', JSON.stringify({ offsetY }));
+    // Use pre-loaded transparent image so the browser never shows the default globe icon
+    e.dataTransfer.setDragImage(TRANSPARENT_IMG, 0, 0);
   };
 
-  const handleDrop = (e, targetDateId, targetHour) => {
+  // Calculate target segment index from drag/drop position relative to the day column
+  const getSegmentIdxFromEvent = (e) => {
+    let columnEl = e.currentTarget as HTMLElement;
+    while (columnEl && !columnEl.dataset.dayCol && columnEl.parentElement) {
+      columnEl = columnEl.parentElement;
+    }
+    const rect = columnEl.getBoundingClientRect();
+    const y = e.clientY - rect.top;
+    // Use ref offset (works in dragover); fallback to dataTransfer (works in drop)
+    let offsetY = dragGrabOffset.current;
+    if (!offsetY) {
+      try { offsetY = JSON.parse(e.dataTransfer.getData('text/plain'))?.offsetY || 0; } catch {}
+    }
+    const adjustedY = y - offsetY;
+    return Math.max(0, Math.min(Math.round(adjustedY / SEGMENT_HEIGHT), GRID_HOURS.length - 2));
+  };
+
+  const getHourFromDropEvent = (e) => GRID_HOURS[getSegmentIdxFromEvent(e)];
+
+  const handleDrop = (e, targetDateId) => {
     e.preventDefault();
+    // Handle task drop from tasks panel
+    const taskData = e.dataTransfer.getData('application/task');
+    if (taskData) {
+      try {
+        const task = JSON.parse(taskData);
+        const targetHour = getHourFromDropEvent(e);
+        const startIdx = GRID_HOURS.indexOf(targetHour);
+        const endIdx = Math.min(startIdx + 4, GRID_HOURS.length - 1); // 1 hour default
+        const cat = task.categoryId && categories[task.categoryId] ? task.categoryId : Object.keys(categories)[0];
+        const newEvent: EventEntry = {
+          id: generateId(),
+          startHour: GRID_HOURS[startIdx],
+          endHour: GRID_HOURS[endIdx],
+          category: cat,
+          task: task.title,
+          completed: false,
+        };
+        setEvents(prev => {
+          const next = { ...prev };
+          if (!next[targetDateId]) next[targetDateId] = [];
+          next[targetDateId] = [...next[targetDateId], newEvent];
+          return next;
+        });
+        toast.success(`"${task.title}" agendada`);
+      } catch {}
+      setDragPreview(null);
+      setDraggedTask(null);
+      dragGrabOffset.current = 0;
+      return;
+    }
     if (!draggedItem) return;
+    const targetHour = getHourFromDropEvent(e);
     const startIdx = GRID_HOURS.indexOf(draggedItem.startHour);
     const endIdx = GRID_HOURS.indexOf(draggedItem.endHour);
     const duration = endIdx - startIdx;
@@ -1069,6 +1428,48 @@ const App = () => {
       return { ...nextEvents };
     });
     setDraggedItem(null);
+    setDragPreview(null);
+    dragGrabOffset.current = 0;
+  };
+
+  // ── Resize event by dragging bottom edge ──────────────────────────────────
+  const handleResizeStart = (e: React.MouseEvent, event: EventEntry, dateId: string) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const originalEndIdx = GRID_HOURS.indexOf(event.endHour);
+    const startY = e.clientY;
+    setResizingEvent({ event, dateId, startY, originalEndIdx });
+    setResizePreviewEndIdx(originalEndIdx);
+
+    const handleMouseMove = (me: MouseEvent) => {
+      const deltaY = me.clientY - startY;
+      const deltaSegments = Math.round(deltaY / SEGMENT_HEIGHT);
+      const startIdx = GRID_HOURS.indexOf(event.startHour);
+      const newEndIdx = Math.max(startIdx + 1, Math.min(originalEndIdx + deltaSegments, GRID_HOURS.length - 1));
+      setResizePreviewEndIdx(newEndIdx);
+    };
+
+    const handleMouseUp = () => {
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseup', handleMouseUp);
+      setResizingEvent(null);
+      setResizePreviewEndIdx(prev => {
+        if (prev !== null && prev !== originalEndIdx) {
+          const newEndHour = GRID_HOURS[prev];
+          setEvents(evPrev => {
+            const next = { ...evPrev };
+            next[dateId] = (next[dateId] || []).map(ev =>
+              ev.id === event.id ? { ...ev, endHour: newEndHour } : ev
+            );
+            return next;
+          });
+        }
+        return null;
+      });
+    };
+
+    document.addEventListener('mousemove', handleMouseMove);
+    document.addEventListener('mouseup', handleMouseUp);
   };
 
     const stats = useMemo(() => {
@@ -1140,6 +1541,38 @@ const App = () => {
     }, 100);
   };
 
+  // ── Grupos colapsables del sidebar ───────────────────────────────────────────
+  const SECTION_TO_GROUP: Partial<Record<SectionKey, string>> = {
+    tiempo: 'planificacion', lista: 'planificacion',
+    habitos: 'crecimiento', objetivos: 'crecimiento', academia: 'crecimiento',
+    dinero: 'finanzas',
+    revision: 'reflexion',
+  };
+  const [expandedGroups, setExpandedGroups] = useState<string[]>(['planificacion', 'crecimiento']);
+  const toggleGroup = (key: string) =>
+    setExpandedGroups(prev => prev.includes(key) ? prev.filter(k => k !== key) : [...prev, key]);
+
+  // ── Desktop sidebar nav item ─────────────────────────────────────────────────
+  const NavItem = ({ navKey, label, Icon, amber = false }: {
+    navKey: SectionKey; label: string; Icon: React.FC<{ size?: number; strokeWidth?: number }>; amber?: boolean
+  }) => {
+    const isActive = section === navKey;
+    return (
+      <button
+        onClick={() => setSection(navKey)}
+        className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-bold transition-all group ${
+          isActive
+            ? amber ? 'bg-amber-500/20 text-amber-300' : 'bg-indigo-500/25 text-white'
+            : amber ? 'text-amber-500/60 hover:bg-amber-500/10 hover:text-amber-400' : 'text-indigo-400 hover:bg-white/5 hover:text-indigo-200'
+        }`}
+      >
+        <Icon size={16} strokeWidth={isActive ? 2.5 : 2} />
+        <span className="truncate">{label}</span>
+        {isActive && <div className={`ml-auto w-1.5 h-1.5 rounded-full shrink-0 ${amber ? 'bg-amber-400' : 'bg-indigo-400'}`} />}
+      </button>
+    );
+  };
+
   if (loading) {
     return (
       <div className="flex flex-col h-screen bg-indigo-950 items-center justify-center gap-4">
@@ -1174,34 +1607,193 @@ const App = () => {
   }
 
   return (
-    <div className="flex flex-col h-screen [height:100dvh] bg-slate-50 text-slate-900 overflow-hidden font-sans">
+    <div className="flex h-screen [height:100dvh] bg-slate-50 text-slate-900 overflow-hidden font-sans">
 
-      {/* ---- HEADER LIFEOS ---- */}
-      <header className="bg-indigo-950 border-b border-indigo-900/50 px-4 md:px-6 py-3 flex justify-between items-center z-[100] shrink-0 shadow-lg">
-        <div className="flex items-center gap-3 text-white">
-          {section === 'tiempo' && (
-            <button onClick={() => setSidebarOpen(true)} className="p-2 hover:bg-white/10 rounded-xl lg:hidden">
-              <Menu size={20} />
-            </button>
-          )}
-          <div className="flex items-center gap-2">
-            <div className="bg-indigo-500 p-1.5 rounded-lg shadow-inner"><Zap size={18} fill="white" /></div>
-            <h1 className="text-lg font-black tracking-tight uppercase italic leading-none hidden sm:block">LifeOS</h1>
+      {/* ══ DESKTOP SIDEBAR ══════════════════════════════════════════════════════ */}
+      <nav className="hidden lg:flex flex-col w-[220px] shrink-0 bg-indigo-950 border-r border-indigo-900/50 z-[100] overflow-hidden">
+        {/* Logo */}
+        <div className="px-4 py-5 border-b border-indigo-900/50 shrink-0">
+          <div className="flex items-center gap-2.5">
+            <div className="bg-indigo-500 p-1.5 rounded-lg shadow-inner shrink-0">
+              <Zap size={18} fill="white" className="text-white" />
+            </div>
+            <span className="text-lg font-black tracking-tight uppercase italic text-white leading-none">LifeOS</span>
           </div>
         </div>
 
-        {/* Section tabs — desktop */}
-        <div className="hidden md:flex items-center bg-white/5 rounded-full p-1 border border-white/10 gap-0.5">
-          {SECTIONS.map(({ key, label, Icon }) => (
+        {/* Búsqueda — fija, no hace scroll */}
+        <div className="px-3 py-3 border-b border-indigo-900/50 shrink-0">
+          <button
+            onClick={() => setShowSearch(true)}
+            className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl bg-white/5 border border-indigo-900/80 text-indigo-400 hover:bg-white/10 hover:text-indigo-200 transition-all text-sm font-bold"
+          >
+            <Search size={14} strokeWidth={2} />
+            <span className="flex-1 text-left text-[13px]">Buscar</span>
+            <kbd className="text-[9px] font-black text-indigo-600 bg-black/20 border border-indigo-900 px-1.5 py-0.5 rounded-md">⌘K</kbd>
+          </button>
+        </div>
+
+        {/* Nav groups — scrollable */}
+        <div className="flex-1 overflow-y-auto custom-scrollbar py-2 px-2">
+
+          {/* INICIO — acceso directo */}
+          <button
+            onClick={() => setSection('hoy')}
+            className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-bold transition-all ${
+              section === 'hoy'
+                ? 'bg-indigo-500/25 text-white'
+                : 'text-indigo-300 hover:bg-white/5 hover:text-white'
+            }`}
+          >
+            <Home size={16} strokeWidth={section === 'hoy' ? 2.5 : 2} />
+            <span className="flex-1 text-left">Inicio</span>
+            {section === 'hoy' && <div className="w-1.5 h-1.5 rounded-full bg-indigo-400 shrink-0" />}
+          </button>
+
+          {/* GRUPOS COLAPSABLES */}
+          {([
+            { key: 'planificacion', label: 'Planificación', items: [
+              { navKey: 'tiempo' as SectionKey, label: 'Agenda', Icon: CalendarDays },
+              { navKey: 'lista'  as SectionKey, label: 'Tareas', Icon: CheckSquare },
+            ]},
+            { key: 'crecimiento', label: 'Crecimiento', items: [
+              { navKey: 'habitos'   as SectionKey, label: 'Hábitos',   Icon: Flame },
+              { navKey: 'objetivos' as SectionKey, label: 'Objetivos', Icon: Target },
+              { navKey: 'academia'  as SectionKey, label: 'Academia',  Icon: GraduationCap },
+            ]},
+            { key: 'finanzas', label: 'Finanzas', items: [
+              { navKey: 'dinero' as SectionKey, label: 'Dinero', Icon: DollarSign },
+            ]},
+            { key: 'reflexion', label: 'Reflexión', items: [
+              { navKey: 'revision' as SectionKey, label: 'Revisión', Icon: BarChart3 },
+            ]},
+          ] as const).map(group => {
+            // Filtrar items por módulos habilitados para la empresa del usuario
+            const visibleItems = group.items.filter(i => isModuleEnabled(i.navKey));
+            if (visibleItems.length === 0) return null; // ocultar grupo completo si no hay items
+
+            const isExpanded = expandedGroups.includes(group.key);
+            const isGroupActive = visibleItems.some(i => i.navKey === section);
+            return (
+              <div key={group.key}>
+                {/* Group header */}
+                <button
+                  onClick={() => toggleGroup(group.key)}
+                  className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-bold transition-all ${
+                    isGroupActive && !isExpanded
+                      ? 'text-white'
+                      : isGroupActive
+                        ? 'text-indigo-200 hover:bg-white/5'
+                        : 'text-indigo-400 hover:bg-white/5 hover:text-indigo-200'
+                  }`}
+                >
+                  <span className="flex-1 text-left">{group.label}</span>
+                  {isGroupActive && !isExpanded && <div className="w-1.5 h-1.5 rounded-full bg-indigo-400 shrink-0" />}
+                  <ChevronRight size={13} className={`shrink-0 transition-transform duration-200 text-indigo-600 ${isExpanded ? 'rotate-90' : ''}`} />
+                </button>
+                {/* Sub-items */}
+                {isExpanded && (
+                  <div className="pb-1">
+                    {visibleItems.map(item => (
+                      <NavItem key={item.navKey} navKey={item.navKey} label={item.label} Icon={item.Icon} />
+                    ))}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+
+        {/* Bottom: admin + profile */}
+        <div className="border-t border-indigo-900/50 p-3 space-y-1 shrink-0">
+          {/* Admin — solo super_admin */}
+          {isSuperAdmin && (
+            <NavItem navKey="admin" label="Admin" Icon={Shield} amber />
+          )}
+
+          <div className="h-px bg-indigo-900/50 my-1" />
+
+          {/* Perfil — botón con dropdown */}
+          <div className="relative">
             <button
-              key={key}
-              onClick={() => setSection(key)}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[11px] font-black uppercase tracking-wide transition-all ${section === key ? 'bg-indigo-500 text-white shadow-lg' : 'text-indigo-300 hover:text-white hover:bg-white/10'}`}
+              onClick={() => setSidebarMenuOpen(v => !v)}
+              className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all ${sidebarMenuOpen ? 'bg-white/10 text-white' : 'text-indigo-300 hover:bg-white/5 hover:text-white'}`}
             >
-              <Icon size={12} />
-              <span className="hidden lg:inline">{label}</span>
+              <div className="w-7 h-7 rounded-full bg-gradient-to-br from-indigo-400 to-violet-500 flex items-center justify-center text-white text-[11px] font-black shrink-0">
+                {(displayName || user?.email)?.[0]?.toUpperCase()}
+              </div>
+              <div className="min-w-0 flex-1 text-left">
+                <p className="text-xs font-black text-indigo-200 truncate leading-none">{displayName || user?.email?.split('@')[0]}</p>
+                <p className="text-[10px] text-indigo-500 truncate mt-0.5 leading-none">{user?.email}</p>
+              </div>
+              <ChevronDown size={13} className={`text-indigo-500 shrink-0 transition-transform ${sidebarMenuOpen ? 'rotate-180' : ''}`} />
             </button>
-          ))}
+
+            {/* Dropdown del perfil */}
+            {sidebarMenuOpen && (
+              <>
+                <div className="fixed inset-0 z-[90]" onClick={() => setSidebarMenuOpen(false)} />
+                <div className="absolute bottom-full left-0 right-0 mb-2 z-[91] bg-[#1a1d2e] border border-indigo-800/60 rounded-2xl shadow-2xl overflow-hidden animate-in fade-in slide-in-from-bottom-1 duration-150">
+                  <div className="p-1.5 space-y-0.5">
+                    <button
+                      onClick={() => { setProfileName(displayName); setShowProfile(true); setSidebarMenuOpen(false); }}
+                      className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-indigo-300 hover:bg-white/5 hover:text-white text-xs font-bold text-left transition-all"
+                    >
+                      <Edit2 size={14} className="shrink-0" />
+                      <span>Mi perfil</span>
+                    </button>
+                    <button
+                      onClick={() => { setShowChangePassword(true); setSidebarMenuOpen(false); }}
+                      className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-indigo-300 hover:bg-white/5 hover:text-white text-xs font-bold text-left transition-all"
+                    >
+                      <KeyRound size={14} className="shrink-0" />
+                      <span>Cambiar contraseña</span>
+                    </button>
+                    <div className="h-px bg-indigo-800/40 mx-2" />
+                    <button
+                      onClick={() => { signOut(); setSidebarMenuOpen(false); }}
+                      className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-red-400 hover:bg-red-500/10 hover:text-red-300 text-xs font-bold text-left transition-all"
+                    >
+                      <LogOut size={14} className="shrink-0" />
+                      <span>Cerrar sesión</span>
+                    </button>
+                  </div>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      </nav>
+
+      {/* ══ RIGHT COLUMN (header + content + mobile nav) ═════════════════════ */}
+      <div className="flex flex-col flex-1 overflow-hidden min-w-0">
+
+      {/* ---- HEADER LIFEOS — solo mobile/tablet, desktop usa sidebar ---- */}
+      <header className="lg:hidden bg-indigo-950 border-b border-indigo-900/50 px-4 md:px-6 py-3 flex justify-between items-center z-[100] shrink-0 shadow-lg">
+        <div className="flex items-center gap-3 text-white">
+          {/* Mobile: logo + menú tiempo */}
+          <div className="lg:hidden flex items-center gap-2">
+            {section === 'tiempo' && (
+              <button onClick={() => setSidebarOpen(true)} className="p-2 hover:bg-white/10 rounded-xl">
+                <Menu size={20} />
+              </button>
+            )}
+            <div className="flex items-center gap-2">
+              <div className="bg-indigo-500 p-1.5 rounded-lg shadow-inner"><Zap size={18} fill="white" /></div>
+              <h1 className="text-lg font-black tracking-tight uppercase italic leading-none hidden sm:block">LifeOS</h1>
+            </div>
+          </div>
+          {/* Desktop: título de la sección actual + menú tiempo */}
+          <div className="hidden lg:flex items-center gap-3">
+            {section === 'tiempo' && (
+              <button onClick={() => setSidebarOpen(true)} className="p-2 hover:bg-white/10 rounded-xl">
+                <Menu size={20} />
+              </button>
+            )}
+            <span className="text-white font-black text-base">
+              {section === 'admin' ? 'Admin' : SECTIONS.find(s => s.key === section)?.label ?? ''}
+            </span>
+          </div>
         </div>
 
         <div className="flex items-center gap-2 md:gap-3 text-white">
@@ -1215,8 +1807,8 @@ const App = () => {
             <kbd className="hidden lg:inline-flex items-center text-[9px] font-black text-indigo-500 bg-white/5 border border-white/10 px-1.5 py-0.5 rounded-md">⌘K</kbd>
           </button>
 
-          {/* Indicador de guardado — espacio siempre reservado para no mover layout */}
-          <div className={`hidden lg:flex items-center gap-1.5 text-[10px] font-bold min-w-[90px] justify-center transition-all duration-300 ${
+          {/* Indicador de guardado — visible en desktop y tablet */}
+          <div className={`hidden sm:flex items-center gap-1.5 text-[10px] font-bold min-w-[90px] justify-center transition-all duration-300 ${
             saveStatus === 'idle' ? 'opacity-0 pointer-events-none' : 'opacity-100'
           } ${saveStatus === 'saving' ? 'text-indigo-400' : 'text-emerald-400'}`}>
             {saveStatus === 'saving' ? (
@@ -1244,8 +1836,8 @@ const App = () => {
             <Search size={16} />
           </button>
 
-          {/* Menú de usuario */}
-          <div className="relative" ref={userMenuRef}>
+          {/* Menú de usuario — solo mobile/tablet (desktop lo tiene en sidebar) */}
+          <div className="lg:hidden relative" ref={userMenuRef}>
             <button
               onClick={() => setUserMenuOpen(v => !v)}
               className={`flex items-center gap-2 border rounded-full pl-1 pr-2.5 py-1 transition-all ${userMenuOpen ? 'bg-white/10 border-white/20' : 'bg-white/5 border-white/10 hover:bg-white/10'}`}
@@ -1292,6 +1884,14 @@ const App = () => {
                     Mi perfil
                   </button>
                   <button
+                    onClick={() => { setShowChangePassword(true); setUserMenuOpen(false); }}
+                    className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-indigo-300 hover:bg-white/5 hover:text-white text-[11px] font-black uppercase tracking-widest transition-all active:scale-[0.98]"
+                  >
+                    <KeyRound size={14} />
+                    Cambiar contraseña
+                  </button>
+                  <div className="h-px bg-indigo-800/40 my-1" />
+                  <button
                     onClick={() => { signOut(); setUserMenuOpen(false); }}
                     className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-red-400 hover:bg-red-500/10 hover:text-red-300 text-[11px] font-black uppercase tracking-widest transition-all active:scale-[0.98]"
                   >
@@ -1321,8 +1921,67 @@ const App = () => {
 
         {/* Sidebar — only in tiempo section */}
         {section === 'tiempo' && (
-          <aside className={`fixed inset-y-0 left-0 z-[120] w-80 bg-white border-r transform transition-transform lg:relative lg:translate-x-0 ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'} flex flex-col shrink-0 overflow-y-auto custom-scrollbar`}>
+          <aside className={`fixed inset-y-0 left-0 z-[120] w-80 bg-white border-r transform transition-transform lg:relative lg:inset-y-auto lg:left-auto ${sidebarOpen ? 'translate-x-0' : '-translate-x-full lg:-translate-x-full lg:w-0 lg:opacity-0 lg:overflow-hidden'} flex flex-col shrink-0 overflow-y-auto custom-scrollbar`}>
             <div className="p-6 space-y-8 pb-24 lg:pb-6">
+              {/* Mini Calendar */}
+              <section>
+                {(() => {
+                  const mcYear = miniCalMonth.getFullYear();
+                  const mcMonth = miniCalMonth.getMonth();
+                  const firstDay = new Date(mcYear, mcMonth, 1);
+                  const startOffset = (firstDay.getDay() + 6) % 7; // Monday = 0
+                  const daysInMonth = new Date(mcYear, mcMonth + 1, 0).getDate();
+                  const today = new Date();
+                  const todayStr = fmtDateId(today);
+                  // Which days are in the current week?
+                  const weekDateIds = new Set(weekDays.map(d => fmtDateId(d)));
+
+                  return (
+                    <div>
+                      <div className="flex items-center justify-between mb-3 px-1">
+                        <button onClick={() => setMiniCalMonth(new Date(mcYear, mcMonth - 1, 1))} className="p-1 hover:bg-slate-100 rounded-full transition-all"><ChevronLeft size={14} className="text-slate-400" /></button>
+                        <span className="text-[11px] font-black text-slate-600 capitalize">
+                          {miniCalMonth.toLocaleDateString('es-ES', { month: 'long', year: 'numeric' })}
+                        </span>
+                        <button onClick={() => setMiniCalMonth(new Date(mcYear, mcMonth + 1, 1))} className="p-1 hover:bg-slate-100 rounded-full transition-all"><ChevronRight size={14} className="text-slate-400" /></button>
+                      </div>
+                      <div className="grid grid-cols-7 gap-0 text-center">
+                        {['L','M','X','J','V','S','D'].map(d => (
+                          <div key={d} className="text-[8px] font-black text-slate-400 uppercase py-1">{d}</div>
+                        ))}
+                        {Array.from({ length: startOffset }).map((_, i) => <div key={`e-${i}`} />)}
+                        {Array.from({ length: daysInMonth }, (_, i) => {
+                          const day = i + 1;
+                          const dateObj = new Date(mcYear, mcMonth, day);
+                          const dateStr = fmtDateId(dateObj);
+                          const isToday = dateStr === todayStr;
+                          const isInWeek = weekDateIds.has(dateStr);
+                          const hasEvents = (events[dateStr] || []).length > 0;
+                          const holidayName = holidays[dateStr];
+                          return (
+                            <button
+                              key={day}
+                              onClick={() => { setCurrentDate(dateObj); }}
+                              title={holidayName || undefined}
+                              className={`text-[11px] w-7 h-7 mx-auto rounded-full flex items-center justify-center transition-all
+                                ${isToday ? 'bg-indigo-600 text-white font-black'
+                                  : holidayName && isInWeek ? 'bg-red-100 text-red-600 font-black ring-1 ring-red-200'
+                                  : holidayName ? 'text-red-500 font-black'
+                                  : isInWeek ? 'bg-indigo-50 text-indigo-700 font-black'
+                                  : hasEvents ? 'text-slate-800 font-black'
+                                  : 'text-slate-400 font-medium hover:bg-slate-100'}
+                              `}
+                            >
+                              {day}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  );
+                })()}
+              </section>
+
               <section>
                 <div className="flex items-center justify-between mb-4 px-1">
                   <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] flex items-center gap-2"><Palette size={14} className="text-indigo-600" /> Mis Áreas</h3>
@@ -1626,6 +2285,10 @@ const App = () => {
               {!isMobile && (
                 <div className="hidden md:flex items-center justify-between px-6 py-2.5 bg-slate-100 border-b border-slate-200 shrink-0">
                   <div className="flex items-center gap-3">
+                    {/* Botón abrir sidebar categorías */}
+                    <button onClick={() => setSidebarOpen(v => !v)} className="p-1.5 hover:bg-slate-200 rounded-lg transition-all text-slate-500 hover:text-slate-700">
+                      <Menu size={16} />
+                    </button>
                     <div className="flex items-center bg-white rounded-full p-0.5 border border-slate-200 shadow-sm">
                       <button onClick={() => { const d = new Date(currentDate); d.setDate(d.getDate() - 7); setCurrentDate(d); }} className="p-1.5 hover:bg-slate-100 rounded-full transition-all"><ChevronLeft size={14} className="text-slate-500"/></button>
                       <span className="px-3 text-xs font-black min-w-[180px] text-center text-slate-700">
@@ -1634,13 +2297,22 @@ const App = () => {
                       <button onClick={() => { const d = new Date(currentDate); d.setDate(d.getDate() + 7); setCurrentDate(d); }} className="p-1.5 hover:bg-slate-100 rounded-full transition-all"><ChevronRight size={14} className="text-slate-500"/></button>
                     </div>
                   </div>
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-3">
                     <span className="text-[9px] text-slate-400 font-black uppercase tracking-widest">Total Real</span>
                     <span className="text-lg font-black text-indigo-600">{stats.total}h</span>
+                    <div className="w-px h-5 bg-slate-200" />
+                    <button
+                      onClick={() => setShowTasksPanel(v => !v)}
+                      className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[10px] font-black uppercase tracking-wide transition-all border ${showTasksPanel ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-slate-500 border-slate-200 hover:border-indigo-300 hover:text-indigo-600'}`}
+                    >
+                      <ListTodo size={13} />
+                      Tareas
+                    </button>
                   </div>
                 </div>
               )}
 
+              <div className="flex-1 flex overflow-hidden">
               <div ref={scrollContainerRef} className="flex-1 overflow-auto custom-scrollbar scroll-smooth">
                 <div className={`${isMobile ? 'px-3' : 'px-6'}`}>
                   <div className="min-w-full relative">
@@ -1677,23 +2349,78 @@ const App = () => {
                       {currentVisibleDays.map((date) => {
                         const dateId = formatDateId(date);
                         const dayEvents = events[dateId] || [];
+                        const isToday = date.toDateString() === new Date().toDateString();
                         return (
-                          <div key={dateId} className="border-r h-full relative" onDragOver={(e) => e.preventDefault()} onDrop={(e) => handleDrop(e, dateId, draggedItem?.startHour)}>
+                          <div key={dateId} data-day-col="1" className={`border-r h-full relative ${isToday ? 'bg-blue-50/30' : ''}`}
+                            onDragOver={(e) => {
+                              e.preventDefault();
+                              const isTask = e.dataTransfer.types.includes('application/task');
+                              e.dataTransfer.dropEffect = isTask ? 'copy' : 'move';
+                              // Calculate ghost preview
+                              const segIdx = getSegmentIdxFromEvent(e);
+                              if (isTask && draggedTask) {
+                                const cat = draggedTask.categoryId && categories[draggedTask.categoryId] ? categories[draggedTask.categoryId] : null;
+                                setDragPreview({ dateId, startIdx: segIdx, span: 4, label: draggedTask.title, color: cat?.color || '#6366f1' });
+                              } else if (draggedItem) {
+                                const duration = GRID_HOURS.indexOf(draggedItem.endHour) - GRID_HOURS.indexOf(draggedItem.startHour);
+                                const cat = categories[draggedItem.category] || { color: '#cbd5e1' };
+                                setDragPreview({ dateId, startIdx: segIdx, span: duration, label: draggedItem.task, color: cat.color });
+                              }
+                            }}
+                            onDragLeave={(e) => {
+                              // Only clear if leaving the column (not entering a child)
+                              if (!e.currentTarget.contains(e.relatedTarget as Node)) {
+                                setDragPreview(null);
+                              }
+                            }}
+                            onDrop={(e) => handleDrop(e, dateId)}
+                          >
                             <div className="absolute inset-0 z-0">
                               {GRID_HOURS.slice(0, -1).filter(h => h.endsWith(':00') || h.endsWith(':30')).map((hour) => (
-                                <div key={hour} onClick={() => handleOpenModal(date, hour)} style={{ height: `${FIELD_HEIGHT}px` }} className={`transition-colors cursor-pointer flex items-center justify-center group/cell border-slate-100 ${hour.endsWith(':30') ? 'border-b border-dashed opacity-30' : 'border-b'}`}><Plus size={14} className="text-indigo-200 opacity-0 group-hover/cell:opacity-100 scale-75" /></div>
+                                <div key={hour} onClick={() => handleOpenModal(date, hour)} onDragOver={(e) => { e.preventDefault(); }} onDrop={(e) => { e.stopPropagation(); handleDrop(e, dateId); }} style={{ height: `${FIELD_HEIGHT}px` }} className={`transition-colors cursor-pointer flex items-center justify-center group/cell border-slate-100 ${hour.endsWith(':30') ? 'border-b border-dashed opacity-30' : 'border-b'}`}><Plus size={14} className="text-indigo-200 opacity-0 group-hover/cell:opacity-100 scale-75" /></div>
                               ))}
                             </div>
+                            {/* Current time line */}
+                            {isToday && (
+                              <div className="absolute left-0 right-0 z-30 pointer-events-none" style={{ top: `${currentTimePos}px` }}>
+                                <div className="relative flex items-center">
+                                  <div className="w-2.5 h-2.5 rounded-full bg-red-500 -ml-1 shrink-0 shadow-sm" />
+                                  <div className="flex-1 h-[2px] bg-red-500" />
+                                </div>
+                              </div>
+                            )}
+                            {/* Drag ghost preview */}
+                            {dragPreview && dragPreview.dateId === dateId && (
+                              <div
+                                className="absolute inset-x-1 z-20 rounded-xl pointer-events-none overflow-hidden"
+                                style={{
+                                  top: `${dragPreview.startIdx * SEGMENT_HEIGHT + 2}px`,
+                                  height: `${dragPreview.span * SEGMENT_HEIGHT - 4}px`,
+                                  backgroundColor: `${dragPreview.color}20`,
+                                  border: `2px dashed ${dragPreview.color}80`,
+                                  borderLeft: `3px solid ${dragPreview.color}`,
+                                }}
+                              >
+                                <div className="px-2.5 pt-1.5 h-full flex flex-col">
+                                  <span className="text-[10px] font-black leading-tight truncate" style={{ color: `${dragPreview.color}cc` }}>{dragPreview.label}</span>
+                                  <span className="text-[8px] font-bold mt-auto pb-1" style={{ color: `${dragPreview.color}99` }}>
+                                    {GRID_HOURS[dragPreview.startIdx]} – {GRID_HOURS[Math.min(dragPreview.startIdx + dragPreview.span, GRID_HOURS.length - 1)]}
+                                  </span>
+                                </div>
+                              </div>
+                            )}
                             {dayEvents.map((event) => {
                               const sIdx = GRID_HOURS.indexOf(event.startHour);
-                              const eIdx = GRID_HOURS.indexOf(event.endHour);
+                              const isResizing = resizingEvent?.event.id === event.id;
+                              const eIdx = isResizing && resizePreviewEndIdx !== null ? resizePreviewEndIdx : GRID_HOURS.indexOf(event.endHour);
                               const span = eIdx - sIdx;
                               const cat = categories[event.category] || { color: '#cbd5e1', short: '??' };
                               const isSmall = span <= 2;
+                              const displayEndHour = isResizing && resizePreviewEndIdx !== null ? GRID_HOURS[resizePreviewEndIdx] : event.endHour;
                               return (
-                                <div key={event.id} draggable onDragStart={(e) => handleDragStart(e, event, dateId)} onClick={(e) => { e.stopPropagation(); handleOpenModal(date, event.startHour, event); }}
-                                  className={`absolute inset-x-1 z-10 rounded-xl overflow-hidden cursor-pointer transition-all ${draggedItem?.id === event.id ? 'opacity-20 scale-95' : 'hover:brightness-95 active:scale-[0.98]'}`}
-                                  style={{ top: `${sIdx * SEGMENT_HEIGHT + 2}px`, height: `${(eIdx - sIdx) * SEGMENT_HEIGHT - 4}px`, backgroundColor: event.completed ? `${cat.color}18` : 'white', border: `1px solid ${event.completed ? cat.color + '40' : '#e2e8f0'}`, borderLeft: `3px solid ${cat.color}`, boxShadow: '0 1px 3px rgba(0,0,0,0.06)' }}>
+                                <div key={event.id} draggable={!isResizing} onDragStart={(e) => handleDragStart(e, event, dateId)} onDragEnd={() => { setDraggedItem(null); setDragPreview(null); dragGrabOffset.current = 0; }} onClick={(e) => { e.stopPropagation(); if (!isResizing) handleOpenModal(date, event.startHour, event); }}
+                                  className={`absolute inset-x-1 z-10 rounded-xl overflow-hidden cursor-pointer transition-colors ${draggedItem?.id === event.id ? 'opacity-20 scale-95' : 'hover:brightness-95'} ${isResizing ? 'ring-2 ring-indigo-400 shadow-lg' : ''}`}
+                                  style={{ top: `${sIdx * SEGMENT_HEIGHT + 2}px`, height: `${span * SEGMENT_HEIGHT - 4}px`, backgroundColor: event.completed ? `${cat.color}18` : 'white', border: `1px solid ${event.completed ? cat.color + '40' : '#e2e8f0'}`, borderLeft: `3px solid ${cat.color}`, boxShadow: '0 1px 3px rgba(0,0,0,0.06)', userSelect: 'none' }}>
                                   <div className={`h-full flex flex-col overflow-hidden relative ${span === 1 ? 'px-2 py-0 justify-center' : isSmall ? 'px-2 py-1' : 'px-2.5 pt-1.5 pb-1.5'}`}>
                                     <div className={`flex items-start gap-1 overflow-hidden ${event.completed ? 'pr-4' : ''}`}>
                                       <span className={`font-black leading-tight flex-1 overflow-hidden ${isSmall ? 'text-[9px]' : 'text-[10px]'} ${event.completed ? 'text-slate-600' : 'text-slate-800'} ${span === 1 ? 'leading-[1.1]' : ''}`}>{event.task}</span>
@@ -1703,7 +2430,39 @@ const App = () => {
                                         <CheckCircle2 size={12} className="text-emerald-500 bg-white/20 rounded-full" />
                                       </div>
                                     )}
-                                    {!isSmall && <span className="text-[8px] font-bold mt-auto leading-none" style={{ color: `${cat.color}bb` }}>{event.startHour} – {event.endHour}</span>}
+                                    {!isSmall && <span className="text-[8px] font-bold mt-auto leading-none" style={{ color: `${cat.color}bb` }}>{event.startHour} – {displayEndHour}</span>}
+                                    {/* Resize handle — bottom edge */}
+                                    {!isMobile && (
+                                      <div
+                                        onMouseDown={(e) => handleResizeStart(e, event, dateId)}
+                                        className="absolute bottom-0 left-0 right-0 h-2 cursor-s-resize group/resize z-20"
+                                        onClick={(e) => e.stopPropagation()}
+                                      >
+                                        <div className="mx-auto w-6 h-1 rounded-full bg-slate-300 opacity-0 group-hover/resize:opacity-100 transition-opacity mt-0.5" />
+                                      </div>
+                                    )}
+                                  </div>
+                                  {/* Resize preview tooltip */}
+                                  {isResizing && resizePreviewEndIdx !== null && (
+                                    <div className="absolute -bottom-7 left-1/2 -translate-x-1/2 bg-indigo-600 text-white text-[9px] font-black px-2 py-1 rounded-md shadow-lg whitespace-nowrap z-50">
+                                      {GRID_HOURS[resizePreviewEndIdx]} ({Math.round((resizePreviewEndIdx - sIdx) * 15)}min)
+                                    </div>
+                                  )}
+                                </div>
+                              );
+                            })}
+                            {/* ── Recordatorios del día ── */}
+                            {reminders.filter(r => r.date === dateId && !r.done).map(rem => {
+                              const timeIdx = GRID_HOURS.indexOf(rem.time);
+                              const idx = timeIdx >= 0 ? timeIdx : (() => { const [h, m] = rem.time.split(':').map(Number); return Math.round((h * 60 + m) / 15); })();
+                              return (
+                                <div key={rem.id} onClick={(e) => { e.stopPropagation(); handleOpenModal(date, rem.time, null, rem); }}
+                                  className="absolute right-1 z-20 cursor-pointer group/rem"
+                                  style={{ top: `${idx * SEGMENT_HEIGHT}px` }}>
+                                  <div className="flex items-center gap-1 bg-amber-50 border border-amber-300 rounded-lg px-2 py-0.5 shadow-sm hover:shadow-md hover:bg-amber-100 transition-all">
+                                    <Bell size={10} className="text-amber-600 shrink-0" />
+                                    <span className="text-[9px] font-black text-amber-800 truncate max-w-[80px]">{rem.title}</span>
+                                    <span className="text-[7px] font-bold text-amber-500">{rem.time}</span>
                                   </div>
                                 </div>
                               );
@@ -1716,6 +2475,54 @@ const App = () => {
                   </div>
                 </div>
               </div>
+
+              {/* Tasks Panel — right sidebar */}
+              {showTasksPanel && !isMobile && (
+                <div className="w-72 border-l border-slate-200 bg-white shrink-0 overflow-y-auto custom-scrollbar">
+                  <div className="p-4">
+                    <div className="flex items-center justify-between mb-4">
+                      <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] flex items-center gap-2">
+                        <ListTodo size={14} className="text-indigo-600" /> Por Hacer
+                      </h3>
+                      <button onClick={() => setShowTasksPanel(false)} className="p-1 hover:bg-slate-100 rounded-full transition-all">
+                        <X size={14} className="text-slate-400" />
+                      </button>
+                    </div>
+                    <div className="space-y-1.5">
+                      {tasks.filter(t => t.status === 'todo').length === 0 && (
+                        <p className="text-[10px] text-slate-400 italic text-center py-6">No hay tareas por hacer</p>
+                      )}
+                      {tasks.filter(t => t.status === 'todo').sort((a, b) => (a.sortOrder - b.sortOrder)).map(task => {
+                        const taskCat = task.categoryId ? categories[task.categoryId] : null;
+                        return (
+                          <div
+                            key={task.id}
+                            draggable
+                            onDragStart={(e) => {
+                              e.dataTransfer.setData('application/task', JSON.stringify(task));
+                              e.dataTransfer.setData('text/plain', '{}');
+                              e.dataTransfer.effectAllowed = 'copyMove';
+                              setDraggedTask(task);
+                              dragGrabOffset.current = 0;
+                              e.dataTransfer.setDragImage(TRANSPARENT_IMG, 0, 0);
+                            }}
+                            onDragEnd={() => { setDraggedTask(null); setDragPreview(null); }}
+                            className="flex items-start gap-2 p-2.5 rounded-xl border border-slate-100 bg-slate-50 hover:bg-indigo-50 hover:border-indigo-200 cursor-grab active:cursor-grabbing transition-all group"
+                          >
+                            {taskCat && <div className="w-2 h-2 rounded-full mt-1 shrink-0" style={{ backgroundColor: taskCat.color }} />}
+                            <div className="flex-1 min-w-0">
+                              <p className="text-[10px] font-bold text-slate-700 leading-tight truncate">{task.title}</p>
+                              {task.deadline && <p className="text-[8px] text-slate-400 mt-0.5">{task.deadline}</p>}
+                            </div>
+                            <GripVertical size={10} className="text-slate-300 opacity-0 group-hover:opacity-100 transition-opacity mt-0.5 shrink-0" />
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </div>
+              )}
+              </div>{/* close flex-1 flex wrapper */}
 
               {/* Floating Action Button for Tiempo */}
               <button
@@ -1748,6 +2555,7 @@ const App = () => {
               setHabitLogs={setHabitLogs}
               currentDate={currentDate}
               onNavigate={setSection}
+              isModuleEnabled={isModuleEnabled}
             />
           )}
 
@@ -1828,78 +2636,126 @@ const App = () => {
               currentDate={currentDate}
               onDownloadReport={downloadReport}
               isExporting={isExporting}
+              isModuleEnabled={isModuleEnabled}
             />
           )}
+          {section === 'academia' && <Academia />}
+          {section === 'admin' && isSuperAdmin && <Admin />}
         </main>
       </div>
 
       {/* Mobile bottom nav */}
       {isMobile && (
         <>
-          {/* Overlay que cierra el menú "Más" */}
-          {showMoreMenu && (
-            <div
-              className="fixed inset-0 z-[148]"
-              onClick={() => setShowMoreMenu(false)}
-            />
-          )}
 
-          {/* Panel "Más" — aparece encima de la nav */}
-          {showMoreMenu && (
-            <div
-              className="fixed left-0 right-0 z-[149] bg-indigo-950 border-t border-indigo-800/60 px-6 py-4 flex gap-4 animate-in slide-in-from-bottom-2 duration-150"
-              style={{ bottom: `calc(64px + env(safe-area-inset-bottom, 0px))` }}
-            >
-              {MORE_SECTIONS.map(({ key, label, Icon }) => (
-                <button
-                  key={key}
-                  onClick={() => { setSection(key as SectionKey); setShowMoreMenu(false); }}
-                  className={`flex-1 flex flex-col items-center justify-center gap-1.5 py-3.5 rounded-2xl transition-all active:scale-95 ${
-                    section === key
-                      ? 'bg-indigo-700/60 text-white'
-                      : 'bg-white/5 text-indigo-300 hover:bg-white/10'
-                  }`}
+          {/* Panel "Más" — bottom sheet rediseñado */}
+          {showMoreMenu && (() => {
+            const visibleMore = MORE_SECTIONS.filter(s => isModuleEnabled(s.key))
+            const allItems = [
+              ...visibleMore.map(s => ({ ...s, amber: false })),
+              ...(isSuperAdmin ? [{ key: 'admin' as SectionKey, label: 'Admin', Icon: Shield, amber: true }] : []),
+            ]
+            if (!allItems.length) return null
+
+            return (
+              <>
+                {/* Overlay para cerrar */}
+                <div className="fixed inset-0 z-[148]" onClick={() => setShowMoreMenu(false)} />
+
+                {/* Sheet */}
+                <div
+                  className="fixed left-0 right-0 z-[149] bg-[#0f1221] border-t border-white/10 animate-in slide-in-from-bottom-2 duration-200"
+                  style={{ bottom: `calc(64px + env(safe-area-inset-bottom, 0px))` }}
                 >
-                  <Icon size={22} />
-                  <span className="text-[10px] font-black uppercase tracking-wide">{label}</span>
-                </button>
-              ))}
-            </div>
-          )}
+                  {/* Handle indicator */}
+                  <div className="flex justify-center pt-3 pb-1">
+                    <div className="w-8 h-1 rounded-full bg-white/20" />
+                  </div>
 
-          {/* Barra de nav principal — 4 ítems + Más */}
-          <div
-            className="fixed bottom-0 left-0 right-0 bg-indigo-950 border-t border-indigo-800/60 flex z-[150]"
-            style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}
-          >
-            {MOBILE_NAV.map(({ key, label, Icon }) => (
-              <button
-                key={key}
-                onClick={() => { setSection(key as SectionKey); setShowMoreMenu(false); }}
-                className={`flex-1 flex flex-col items-center justify-center py-3.5 gap-1 transition-all active:scale-95 ${
-                  section === key ? 'text-white' : 'text-indigo-400'
-                }`}
+                  {/* Grid de ítems — 3 por fila máx */}
+                  <div className={`grid gap-1 px-4 pt-2 pb-4 ${
+                    allItems.length <= 3 ? 'grid-cols-3' : 'grid-cols-3 sm:grid-cols-4'
+                  }`}>
+                    {allItems.map(({ key, label, Icon, amber }) => {
+                      const isActive = section === key
+                      return (
+                        <button
+                          key={key}
+                          onClick={() => { setSection(key); setShowMoreMenu(false); }}
+                          className={`flex flex-col items-center justify-center gap-2 py-4 px-2 rounded-2xl transition-all active:scale-95 ${
+                            isActive
+                              ? amber ? 'bg-amber-500/20 text-amber-300' : 'bg-indigo-500/25 text-white'
+                              : amber ? 'text-amber-400/70 hover:bg-amber-500/10 hover:text-amber-300' : 'text-indigo-300 hover:bg-white/5 hover:text-white'
+                          }`}
+                        >
+                          <div className={`w-11 h-11 rounded-2xl flex items-center justify-center ${
+                            isActive
+                              ? amber ? 'bg-amber-500/30' : 'bg-indigo-500/40'
+                              : 'bg-white/5'
+                          }`}>
+                            <Icon size={20} strokeWidth={isActive ? 2.5 : 2} />
+                          </div>
+                          <span className="text-[10px] font-black tracking-wide">{label}</span>
+                          {isActive && <div className={`w-1 h-1 rounded-full ${amber ? 'bg-amber-400' : 'bg-indigo-400'}`} />}
+                        </button>
+                      )
+                    })}
+                  </div>
+                </div>
+              </>
+            )
+          })()}
+
+          {/* Barra de nav principal — filtrada por módulos habilitados */}
+          {(() => {
+            const visibleMain = MOBILE_NAV.filter(s => isModuleEnabled(s.key))
+            const visibleMore = MORE_SECTIONS.filter(s => isModuleEnabled(s.key))
+            const hasMoreItems = visibleMore.length > 0 || isSuperAdmin
+            const moreActive = showMoreMenu || ['habitos','objetivos','revision','academia','admin'].includes(section)
+            return (
+              <div
+                className="fixed bottom-0 left-0 right-0 bg-indigo-950 border-t border-indigo-800/60 flex z-[150]"
+                style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}
               >
-                <Icon size={22} strokeWidth={section === key ? 2.5 : 2} />
-                <span className="text-[9px] font-black uppercase tracking-wide">{label}</span>
-              </button>
-            ))}
-
-            {/* Botón Más */}
-            <button
-              onClick={() => setShowMoreMenu(v => !v)}
-              className={`flex-1 flex flex-col items-center justify-center py-3.5 gap-1 transition-all active:scale-95 ${
-                showMoreMenu || ['habitos','objetivos','revision'].includes(section)
-                  ? 'text-white'
-                  : 'text-indigo-400'
-              }`}
-            >
-              <MoreHorizontal size={22} strokeWidth={showMoreMenu || ['habitos','objetivos','revision'].includes(section) ? 2.5 : 2} />
-              <span className="text-[9px] font-black uppercase tracking-wide">Más</span>
-            </button>
-          </div>
+                {/* Inicio siempre visible */}
+                {visibleMain.filter(s => s.key === 'hoy').map(({ key, label, Icon }) => (
+                  <button
+                    key={key}
+                    onClick={() => { setSection(key as SectionKey); setShowMoreMenu(false); }}
+                    className={`flex-1 flex flex-col items-center justify-center py-3.5 gap-1 transition-all active:scale-95 ${section === key ? 'text-white' : 'text-indigo-400'}`}
+                  >
+                    <Icon size={22} strokeWidth={section === key ? 2.5 : 2} />
+                    <span className="text-[9px] font-black uppercase tracking-wide">{label}</span>
+                  </button>
+                ))}
+                {/* Resto de secciones principales habilitadas (sin hoy) */}
+                {visibleMain.filter(s => s.key !== 'hoy').map(({ key, label, Icon }) => (
+                  <button
+                    key={key}
+                    onClick={() => { setSection(key as SectionKey); setShowMoreMenu(false); }}
+                    className={`flex-1 flex flex-col items-center justify-center py-3.5 gap-1 transition-all active:scale-95 ${section === key ? 'text-white' : 'text-indigo-400'}`}
+                  >
+                    <Icon size={22} strokeWidth={section === key ? 2.5 : 2} />
+                    <span className="text-[9px] font-black uppercase tracking-wide">{label}</span>
+                  </button>
+                ))}
+                {/* Botón Más — solo si hay secciones habilitadas en el menú más */}
+                {hasMoreItems && (
+                  <button
+                    onClick={() => setShowMoreMenu(v => !v)}
+                    className={`flex-1 flex flex-col items-center justify-center py-3.5 gap-1 transition-all active:scale-95 ${moreActive ? 'text-white' : 'text-indigo-400'}`}
+                  >
+                    <MoreHorizontal size={22} strokeWidth={moreActive ? 2.5 : 2} />
+                    <span className="text-[9px] font-black uppercase tracking-wide">Más</span>
+                  </button>
+                )}
+              </div>
+            )
+          })()}
         </>
       )}
+
+      </div>{/* ── end right column ── */}
 
       {/* ── BÚSQUEDA GLOBAL ── */}
       {showSearch && (
@@ -1913,6 +2769,7 @@ const App = () => {
           habits={habits}
           onClose={() => setShowSearch(false)}
           onSearchSelect={(result) => { handleSearchSelect(result); setShowSearch(false); }}
+          isModuleEnabled={isModuleEnabled}
         />
       )}
 
@@ -2002,6 +2859,124 @@ const App = () => {
       )}
 
       {/* MODAL ATAJOS DE TECLADO */}
+      {/* MODAL CAMBIAR CONTRASEÑA */}
+      {showChangePassword && (
+        <div
+          className="fixed inset-0 z-[500] flex items-end sm:items-center justify-center bg-black/60 backdrop-blur-sm animate-in fade-in"
+          onClick={closePasswordModal}
+          onKeyDown={e => e.key === 'Escape' && closePasswordModal()}
+          tabIndex={-1}
+        >
+          <div
+            className="bg-white w-full sm:max-w-sm sm:rounded-3xl rounded-t-3xl shadow-2xl animate-in slide-in-from-bottom-4 sm:zoom-in-95 duration-200 flex flex-col"
+            style={{ maxHeight: 'min(90svh, 520px)' }}
+            onClick={e => e.stopPropagation()}
+          >
+            {/* Header fijo */}
+            <div className="flex items-center justify-between px-6 pt-5 pb-4 border-b border-slate-100 shrink-0">
+              <div className="flex items-center gap-3">
+                <div className="w-9 h-9 rounded-xl bg-indigo-100 flex items-center justify-center shrink-0">
+                  <KeyRound size={16} className="text-indigo-600" />
+                </div>
+                <h2 className="text-base font-black text-slate-800">Cambiar contraseña</h2>
+              </div>
+              <button
+                onClick={closePasswordModal}
+                className="w-8 h-8 flex items-center justify-center rounded-full bg-slate-100 hover:bg-slate-200 text-slate-500 transition-colors shrink-0"
+              >
+                <X size={15} />
+              </button>
+            </div>
+
+            {/* Body scrollable */}
+            <div className="flex-1 overflow-y-auto px-6 py-5">
+              {passwordSuccess ? (
+                <div className="flex flex-col items-center gap-3 py-6 text-center">
+                  <div className="w-16 h-16 rounded-full bg-emerald-100 flex items-center justify-center">
+                    <CheckCircle2 size={30} className="text-emerald-500" />
+                  </div>
+                  <p className="text-base font-black text-slate-800">¡Contraseña actualizada!</p>
+                  <p className="text-sm text-slate-400">El cambio se realizó correctamente.</p>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  <div>
+                    <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">Nueva contraseña</label>
+                    <div className="relative mt-1.5">
+                      <input
+                        type={showNewPassword ? 'text' : 'password'}
+                        value={newPassword}
+                        onChange={e => { setNewPassword(e.target.value); setPasswordError(''); }}
+                        autoFocus
+                        placeholder="Mínimo 6 caracteres"
+                        className="w-full px-4 py-3 pr-11 rounded-xl border border-slate-200 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-indigo-300 bg-white"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowNewPassword(v => !v)}
+                        className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 transition-colors p-1"
+                        tabIndex={-1}
+                      >
+                        {showNewPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                      </button>
+                    </div>
+                  </div>
+                  <div>
+                    <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">Confirmar contraseña</label>
+                    <div className="relative mt-1.5">
+                      <input
+                        type={showConfirmPassword ? 'text' : 'password'}
+                        value={confirmPassword}
+                        onChange={e => { setConfirmPassword(e.target.value); setPasswordError(''); }}
+                        onKeyDown={e => { if (e.key === 'Enter') handleChangePassword(); }}
+                        placeholder="Repite la nueva contraseña"
+                        className="w-full px-4 py-3 pr-11 rounded-xl border border-slate-200 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-indigo-300 bg-white"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowConfirmPassword(v => !v)}
+                        className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 transition-colors p-1"
+                        tabIndex={-1}
+                      >
+                        {showConfirmPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                      </button>
+                    </div>
+                  </div>
+                  {passwordError && (
+                    <div className="flex items-start gap-2 text-xs font-bold text-red-600 bg-red-50 border border-red-100 rounded-xl px-3 py-2.5">
+                      <span className="shrink-0 mt-0.5">⚠️</span>
+                      <span>{passwordError}</span>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {/* Footer fijo */}
+            {!passwordSuccess && (
+              <div
+                className="flex gap-3 px-6 py-4 border-t border-slate-100 shrink-0"
+                style={{ paddingBottom: 'max(1rem, env(safe-area-inset-bottom, 1rem))' }}
+              >
+                <button
+                  onClick={closePasswordModal}
+                  className="flex-1 py-3 rounded-xl border border-slate-200 text-sm font-bold text-slate-600 hover:bg-slate-50 active:scale-95 transition-all"
+                >
+                  Cancelar
+                </button>
+                <button
+                  onClick={handleChangePassword}
+                  disabled={passwordSaving || !newPassword.trim() || !confirmPassword.trim()}
+                  className="flex-1 py-3 rounded-xl bg-indigo-600 text-white text-sm font-bold hover:bg-indigo-700 disabled:opacity-50 active:scale-95 transition-all"
+                >
+                  {passwordSaving ? 'Guardando...' : 'Guardar cambios'}
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
       {showShortcuts && (
         <div
           className="fixed inset-0 z-[300] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm animate-in fade-in hidden md:flex"
@@ -2022,8 +2997,8 @@ const App = () => {
               {[
                 { key: 'H', desc: 'Dashboard Hoy' },
                 { key: 'D', desc: 'Dinero' },
-                { key: 'T', desc: 'Tiempo' },
-                { key: 'L', desc: 'Lista' },
+                { key: 'T', desc: 'Agenda' },
+                { key: 'L', desc: 'Tareas' },
                 { key: 'O', desc: 'Objetivos' },
                 { key: 'R', desc: 'Revisión' },
                 { key: '?', desc: 'Mostrar atajos' },
@@ -2057,23 +3032,76 @@ const App = () => {
             {/* Header */}
             <div className="px-5 py-4 md:px-8 md:py-5 flex justify-between items-center shrink-0 border-b border-slate-100">
               <div className="flex gap-3 items-center">
-                <div className={`w-10 h-10 rounded-2xl flex items-center justify-center shadow-md transition-colors ${modalData.completed ? 'bg-emerald-500' : 'bg-indigo-600'}`}>
-                  <Zap className="text-white" size={18} />
+                <div className={`w-10 h-10 rounded-2xl flex items-center justify-center shadow-md transition-colors ${modalData.isReminder ? 'bg-amber-500' : modalData.completed ? 'bg-emerald-500' : 'bg-indigo-600'}`}>
+                  {modalData.isReminder ? <Bell className="text-white" size={18} /> : <Zap className="text-white" size={18} />}
                 </div>
                 <div>
-                  <h2 className="text-base font-black text-slate-800 uppercase italic leading-tight">{modalData.mode === 'duplicate' ? 'Clonar Bloque' : 'Seguimiento'}</h2>
-                  <p className={`text-[9px] font-black uppercase tracking-widest ${modalData.completed ? 'text-emerald-500' : 'text-indigo-400'}`}>{modalData.completed ? 'Actividad completada' : 'Planificando'}</p>
+                  <h2 className="text-base font-black text-slate-800 uppercase italic leading-tight">{modalData.isReminder ? 'Recordatorio' : modalData.mode === 'duplicate' ? 'Clonar Bloque' : 'Seguimiento'}</h2>
+                  <p className={`text-[9px] font-black uppercase tracking-widest ${modalData.isReminder ? 'text-amber-500' : modalData.completed ? 'text-emerald-500' : 'text-indigo-400'}`}>
+                    {modalData.isReminder ? 'Te notificaremos a tiempo' : modalData.completed ? 'Actividad completada' : 'Planificando'}
+                  </p>
                 </div>
               </div>
               <button onClick={() => setModalData(null)} className="p-2.5 hover:bg-slate-100 rounded-full transition-all"><X size={18}/></button>
             </div>
 
+            {/* Toggle Actividad / Recordatorio — solo en creación */}
+            {!modalData.isEditing && (
+              <div className="px-5 md:px-8 pt-4">
+                <div className="flex bg-slate-100 rounded-2xl p-1 gap-1">
+                  <button onClick={() => setModalData({...modalData, isReminder: false})}
+                    className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${!modalData.isReminder ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}>
+                    <Zap size={13} /> Actividad
+                  </button>
+                  <button onClick={() => setModalData({...modalData, isReminder: true})}
+                    className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${modalData.isReminder ? 'bg-white text-amber-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}>
+                    <Bell size={13} /> Recordatorio
+                  </button>
+                </div>
+              </div>
+            )}
+
             {/* Scrollable body */}
             <div className="flex-1 overflow-y-auto custom-scrollbar">
               <div className="p-5 md:p-8 space-y-5">
 
+                {/* ══════ MODO RECORDATORIO ══════ */}
+                {modalData.isReminder && (
+                  <>
+                    <div className="space-y-2.5">
+                      <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block">¿Qué quieres recordar?</label>
+                      <input type="text" placeholder="Ej: Llamar al cliente, Enviar email, Cumpleaños..."
+                        className="w-full bg-slate-50 border-2 border-transparent focus:border-amber-300 rounded-2xl px-4 py-4 text-base font-black outline-none transition-all"
+                        value={modalData.task} onChange={(e) => setModalData({...modalData, task: e.target.value})} autoFocus />
+                    </div>
+                    <div className="space-y-2.5">
+                      <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block">Fecha y hora</label>
+                      <div className="bg-slate-50 rounded-2xl overflow-hidden border-2 border-transparent">
+                        <div className="date-picker-container relative h-14 cursor-pointer group">
+                          <div className="absolute inset-0 px-4 flex items-center justify-between pointer-events-none group-hover:bg-slate-100 transition-all">
+                            <span className="text-sm font-black text-slate-700 capitalize">
+                              {new Date(modalData.dateId + "T00:00").toLocaleDateString('es-ES', { weekday: 'short', day: '2-digit', month: 'long' })}
+                            </span>
+                            <CalendarDays size={16} className="text-amber-400" />
+                          </div>
+                          <input type="date" className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10 native-date-input"
+                            value={modalData.dateId} onChange={(e) => setModalData({...modalData, dateId: e.target.value})} />
+                        </div>
+                        <div className="h-px bg-slate-200 mx-3" />
+                        <div className="flex items-center justify-center p-4 gap-3">
+                          <AlarmClock size={16} className="text-amber-500" />
+                          <input type="time" value={`${modalData.startHour}:${modalData.startMin}`}
+                            onChange={(e) => { const [h, m] = e.target.value.split(':'); setModalData({...modalData, startHour: h, startMin: m}); }}
+                            className="bg-white border-2 border-slate-200 focus:border-amber-300 rounded-xl px-4 py-3 font-black text-sm outline-none transition-all text-center" />
+                        </div>
+                      </div>
+                    </div>
+                  </>
+                )}
+
+                {/* ══════ MODO ACTIVIDAD ══════ */}
                 {/* Completed toggle */}
-                {modalData.isEditing && modalData.mode === 'edit' && (
+                {!modalData.isReminder && modalData.isEditing && modalData.mode === 'edit' && (
                   <button onClick={() => setModalData({...modalData, completed: !modalData.completed})}
                     className={`w-full px-4 py-3.5 rounded-2xl border-2 flex items-center justify-between transition-all active:scale-[0.99] ${modalData.completed ? 'bg-emerald-50 border-emerald-400' : 'bg-slate-50 border-slate-200 hover:border-indigo-200'}`}>
                     <div className="flex items-center gap-3">
@@ -2091,7 +3119,7 @@ const App = () => {
                 )}
 
                 {/* Energy + Impact */}
-                {modalData.completed && (
+                {!modalData.isReminder && modalData.completed && (
                   <div className="grid grid-cols-2 gap-2.5 animate-in fade-in slide-in-from-top-1 duration-200">
                     <div className={`p-3.5 rounded-2xl border-2 flex flex-col items-center gap-2 transition-all ${(modalData.energy || 0) > 0 ? 'bg-amber-50 border-amber-200' : 'bg-slate-50 border-slate-100'}`}>
                       <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Energía invertida</span>
@@ -2119,7 +3147,7 @@ const App = () => {
                 )}
 
                 {/* Area selector */}
-                <div className="space-y-2.5">
+                {!modalData.isReminder && (<><div className="space-y-2.5">
                   <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block">Área</label>
                   <div className="grid grid-cols-3 md:grid-cols-5 gap-2">
                     {sortedCategories.map((cat) => {
@@ -2142,11 +3170,11 @@ const App = () => {
                     className="w-full bg-slate-50 border-2 border-transparent focus:border-indigo-200 rounded-2xl px-4 py-4 text-base font-black outline-none transition-all"
                     value={modalData.task} onChange={(e) => setModalData({...modalData, task: e.target.value})} />
                   {(() => {
-                    const { matches, canCreate } = getFilteredPresets(modalData.category, modalData.task);
+                    const { matches, canCreate, hasMore } = getFilteredPresets(modalData.category, modalData.task);
                     const hasMatches = matches.length > 0 || canCreate;
 
                     return hasMatches && (
-                      <div className="flex flex-wrap gap-1.5 animate-in fade-in">
+                      <div className="flex flex-wrap items-center gap-1.5 animate-in fade-in">
                         {/* Presets filtrados */}
                         {matches.map((preset, i) => (
                           <button
@@ -2160,6 +3188,11 @@ const App = () => {
                             {preset}
                           </button>
                         ))}
+
+                        {/* Indicador de que hay más sugerencias */}
+                        {hasMore && (
+                          <span className="text-[9px] font-bold text-slate-300 italic pl-1">Escribe para ver más...</span>
+                        )}
 
                         {/* Botón para crear nuevo preset */}
                         {canCreate && (
@@ -2244,22 +3277,40 @@ const App = () => {
                     </div>
                   </div>
                 )}
+                </>)}
               </div>
             </div>
 
             {/* Footer */}
-            <div className={`px-5 py-4 md:px-8 flex gap-3 shrink-0 border-t transition-colors duration-300 md:rounded-b-[2.5rem] ${modalData.completed ? 'bg-emerald-600 border-emerald-500' : 'bg-indigo-950 border-indigo-900'}`}
+            <div className={`px-5 py-4 md:px-8 flex gap-3 shrink-0 border-t transition-colors duration-300 md:rounded-b-[2.5rem] ${modalData.isReminder ? 'bg-amber-600 border-amber-500' : modalData.completed ? 'bg-emerald-600 border-emerald-500' : 'bg-indigo-950 border-indigo-900'}`}
               style={{ paddingBottom: 'max(1rem, env(safe-area-inset-bottom, 1rem))' }}>
-              {modalData.isEditing && (
-                <div className="flex gap-2">
-                  <button onClick={deleteActivity} className="p-3.5 rounded-2xl text-red-400 hover:bg-white/10 border border-red-500/20 transition-all active:scale-90"><Trash2 size={18} /></button>
-                  <button onClick={() => setModalData({...modalData, mode: 'duplicate', selectedDays: []})} className="p-3.5 rounded-2xl text-slate-300 hover:bg-white/10 border border-white/10 transition-all active:scale-90"><Copy size={18} /></button>
-                </div>
+              {modalData.isReminder ? (
+                <>
+                  {modalData.isEditing && (
+                    <button onClick={() => handleDeleteReminder(modalData.reminderId!)} className="p-3.5 rounded-2xl text-red-300 hover:bg-white/10 border border-red-400/20 transition-all active:scale-90"><Trash2 size={18} /></button>
+                  )}
+                  <button onClick={() => {
+                    if (!modalData.task.trim()) return;
+                    handleSaveReminder(modalData.task.trim(), modalData.dateId, `${modalData.startHour}:${modalData.startMin}`, modalData.isEditing ? modalData.reminderId : undefined);
+                  }}
+                    className="flex-1 py-4 rounded-2xl font-black shadow-lg active:scale-[0.98] uppercase text-xs tracking-widest transition-all bg-white text-amber-600 hover:bg-amber-50">
+                    {modalData.isEditing ? 'Guardar' : 'Crear Recordatorio'}
+                  </button>
+                </>
+              ) : (
+                <>
+                  {modalData.isEditing && (
+                    <div className="flex gap-2">
+                      <button onClick={deleteActivity} className="p-3.5 rounded-2xl text-red-400 hover:bg-white/10 border border-red-500/20 transition-all active:scale-90"><Trash2 size={18} /></button>
+                      <button onClick={() => setModalData({...modalData, mode: 'duplicate', selectedDays: []})} className="p-3.5 rounded-2xl text-slate-300 hover:bg-white/10 border border-white/10 transition-all active:scale-90"><Copy size={18} /></button>
+                    </div>
+                  )}
+                  <button onClick={saveActivity}
+                    className={`flex-1 py-4 rounded-2xl font-black shadow-lg active:scale-[0.98] uppercase text-xs tracking-widest transition-all ${modalData.completed ? 'bg-white text-emerald-600 hover:bg-emerald-50' : 'bg-indigo-500 text-white hover:bg-indigo-400'}`}>
+                    Confirmar
+                  </button>
+                </>
               )}
-              <button onClick={saveActivity}
-                className={`flex-1 py-4 rounded-2xl font-black shadow-lg active:scale-[0.98] uppercase text-xs tracking-widest transition-all ${modalData.completed ? 'bg-white text-emerald-600 hover:bg-emerald-50' : 'bg-indigo-500 text-white hover:bg-indigo-400'}`}>
-                Confirmar
-              </button>
             </div>
           </div>
         </div>
@@ -2315,6 +3366,56 @@ const App = () => {
         </div>
       )}
 
+
+      {/* ══════ REMINDER NOTIFICATION POPUP ══════ */}
+      {reminderPopup && (
+        <div className="fixed inset-0 bg-black/50 z-[300] flex items-center justify-center p-4 backdrop-blur-sm animate-in fade-in">
+          <div className="bg-white rounded-[2.5rem] shadow-2xl w-full max-w-sm overflow-hidden animate-in zoom-in-95">
+            {/* Header animado */}
+            <div className="bg-gradient-to-br from-amber-400 via-orange-500 to-red-500 px-6 py-8 text-center relative overflow-hidden">
+              <div className="absolute inset-0 opacity-10" style={{ backgroundImage: 'radial-gradient(circle at 30% 50%, white 1px, transparent 1px), radial-gradient(circle at 70% 80%, white 1px, transparent 1px)', backgroundSize: '20px 20px' }} />
+              <div className="relative">
+                <div className="w-16 h-16 bg-white/20 rounded-3xl flex items-center justify-center mx-auto mb-4 backdrop-blur-sm shadow-lg">
+                  <BellRing size={32} className="text-white" />
+                </div>
+                <h2 className="text-white font-black text-lg tracking-wide">¡Recordatorio!</h2>
+                <p className="text-white/70 text-[10px] font-bold uppercase tracking-widest mt-1">{reminderPopup.time} — {new Date(reminderPopup.date + 'T12:00:00').toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric', month: 'short' })}</p>
+              </div>
+            </div>
+            <div className="p-6 space-y-5">
+              <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 text-center">
+                <p className="text-base font-black text-slate-800">{reminderPopup.title}</p>
+              </div>
+              {/* Acciones */}
+              <div className="space-y-3">
+                <button onClick={() => handleReminderDone(reminderPopup.id)}
+                  className="w-full flex items-center justify-center gap-2 bg-emerald-500 text-white font-black rounded-2xl py-4 hover:bg-emerald-600 shadow-md text-xs uppercase tracking-widest transition-all active:scale-[0.98]">
+                  <CheckCircle2 size={16} /> Hecho
+                </button>
+                {!reminderSnoozeOpen ? (
+                  <button onClick={() => { setReminderSnoozeOpen(true); const now = new Date(); now.setMinutes(now.getMinutes() + 30); setReminderSnoozeTime(`${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}`); }}
+                    className="w-full flex items-center justify-center gap-2 bg-slate-100 text-slate-600 font-black rounded-2xl py-4 hover:bg-slate-200 text-xs uppercase tracking-widest transition-all active:scale-[0.98]">
+                    <AlarmClock size={16} /> Posponer
+                  </button>
+                ) : (
+                  <div className="flex gap-2">
+                    <input type="time" value={reminderSnoozeTime} onChange={e => setReminderSnoozeTime(e.target.value)}
+                      className="flex-1 bg-slate-50 border-2 border-amber-300 rounded-2xl px-4 py-3 font-bold outline-none text-sm text-center" />
+                    <button onClick={() => handleReminderSnooze(reminderPopup.id, reminderSnoozeTime)}
+                      className="bg-amber-500 text-white font-black rounded-2xl px-5 py-3 hover:bg-amber-600 text-[10px] uppercase tracking-widest transition-all active:scale-95">
+                      OK
+                    </button>
+                  </div>
+                )}
+                <button onClick={() => { setReminderPopup(null); setReminderSnoozeOpen(false); }}
+                  className="w-full text-[10px] font-bold text-slate-400 hover:text-slate-600 py-2 transition-all">
+                  Cerrar sin acción
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       <style>{`
         .custom-scrollbar::-webkit-scrollbar { width: 4px; height: 4px; }

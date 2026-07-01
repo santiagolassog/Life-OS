@@ -32,14 +32,16 @@ interface RevisionProps {
   currentDate: Date;
   onDownloadReport: () => void;
   isExporting: boolean;
+  isModuleEnabled?: (key: string) => boolean;
 }
 
 type Range = 'week' | 'month' | 'year';
 
 const Revision: React.FC<RevisionProps> = ({
   events, categories, transactions, finCategories, goals, tasks, habits, habitLogs, currentDate,
-  onDownloadReport, isExporting
+  onDownloadReport, isExporting, isModuleEnabled,
 }) => {
+  const modEnabled = (key: string) => isModuleEnabled ? isModuleEnabled(key) : true;
   const [range, setRange] = useState<Range>('week');
   const [viewDate, setViewDate] = useState(new Date(currentDate));
 
@@ -467,7 +469,7 @@ const Revision: React.FC<RevisionProps> = ({
 
   return (
     <div className="flex-1 overflow-y-auto custom-scrollbar">
-      <div className="max-w-5xl mx-auto p-4 md:p-8 space-y-6 pb-28 md:pb-12">
+      <div className="w-full p-4 md:p-8 space-y-6 pb-28 md:pb-12">
 
         {/* Header */}
         <div className="flex items-center justify-between flex-wrap gap-3">
@@ -631,10 +633,10 @@ const Revision: React.FC<RevisionProps> = ({
               ))}
             </div>
             {/* Tasks completadas por área en el período */}
-            <div className="space-y-2 mt-1">
+            {modEnabled('lista') && <div className="space-y-2 mt-1">
               <div className="flex items-center justify-between">
                 <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-1">
-                  <CheckCircle2 size={10} className="text-emerald-500" /> Tareas completadas (Lista)
+                  <CheckCircle2 size={10} className="text-emerald-500" /> Tareas completadas
                 </p>
                 <span className="text-sm font-black text-emerald-600">{taskStats.total}</span>
               </div>
@@ -657,10 +659,10 @@ const Revision: React.FC<RevisionProps> = ({
               {taskStats.inProgress > 0 && (
                 <p className="text-[9px] text-blue-400 font-bold">{taskStats.inProgress} en progreso</p>
               )}
-            </div>
+            </div>}
 
             {/* Hábitos */}
-            <div className="space-y-2 mt-1">
+            {modEnabled('habitos') && <div className="space-y-2 mt-1">
               <div className="flex items-center justify-between">
                 <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-1">
                   <Flame size={10} className="text-indigo-500" /> Hábitos
@@ -703,7 +705,7 @@ const Revision: React.FC<RevisionProps> = ({
               ) : (
                 <p className="text-[10px] text-emerald-400 italic font-bold">Sin hábitos activos en este período</p>
               )}
-            </div>
+            </div>}
           </div>
 
           {/* R — REVISAR */}
@@ -747,7 +749,7 @@ const Revision: React.FC<RevisionProps> = ({
               )}
 
               {/* Financial summary */}
-              <div className="bg-white/60 rounded-2xl p-3 space-y-2">
+              {modEnabled('dinero') && <div className="bg-white/60 rounded-2xl p-3 space-y-2">
                 <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-1">
                   <DollarSign size={10} /> Finanzas del período
                 </p>
@@ -765,7 +767,7 @@ const Revision: React.FC<RevisionProps> = ({
                     <p className={`text-sm font-black ${financialStats.balance >= 0 ? 'text-blue-600' : 'text-orange-500'}`}>${fmt(financialStats.balance)}</p>
                   </div>
                 </div>
-              </div>
+              </div>}
             </div>
           </div>
 
@@ -823,7 +825,7 @@ const Revision: React.FC<RevisionProps> = ({
               <div className="text-5xl mb-3">⚡</div>
               <p className="text-sm font-bold text-slate-600">Sin datos de energía e impacto</p>
               <p className="text-xs text-slate-400 mt-2 leading-relaxed max-w-xs mx-auto">
-                Al completar actividades en <strong>Tiempo</strong>, califícalas con energía e impacto. Así verás qué te drena y qué te impulsa.
+                Al completar actividades en <strong>Agenda</strong>, califícalas con energía e impacto. Así verás qué te drena y qué te impulsa.
               </p>
             </div>
           ) : (

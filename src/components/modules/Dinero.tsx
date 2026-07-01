@@ -675,7 +675,7 @@ const Dinero: React.FC<DineroProps> = ({
 
   return (
     <div className="flex-1 overflow-y-auto custom-scrollbar">
-      <div className="max-w-5xl mx-auto p-4 md:p-8 space-y-6">
+      <div className="w-full p-4 md:p-8 space-y-6">
 
         {/* Header */}
         <div className="flex items-center justify-between flex-wrap gap-3">

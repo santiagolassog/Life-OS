@@ -171,6 +171,7 @@ export interface Habit {
   target: number          // días por semana (1-7)
   color: string           // 'bg-indigo-500', 'bg-emerald-500', etc.
   startDate: string       // "YYYY-MM-DD"
+  sortOrder: number       // orden manual definido por el usuario
   createdAt: string       // ISO timestamp
 }
 
@@ -178,4 +179,187 @@ export interface HabitLog {
   id: string
   habitId: string
   date: string            // "YYYY-MM-DD"
+}
+
+// ────────────────────────────────────────────────────────
+// RECORDATORIOS
+// ────────────────────────────────────────────────────────
+
+export interface Reminder {
+  id: string
+  title: string
+  date: string              // "YYYY-MM-DD"
+  time: string              // "HH:MM"
+  done: boolean
+  snoozedTo?: string        // ISO timestamp si fue pospuesto
+  createdAt: string         // ISO timestamp
+}
+
+// ────────────────────────────────────────────────────────
+// ENTERPRISE
+// ────────────────────────────────────────────────────────
+
+export type UserRole = 'super_admin' | 'user'
+export type CompanyPlan = 'basic' | 'pro' | 'enterprise'
+export type CompanyMemberRole = 'owner' | 'admin' | 'member'
+
+export interface UserProfile {
+  id: string
+  displayName: string
+  email: string
+  role: UserRole
+  createdAt: string
+}
+
+export interface Company {
+  id: string
+  name: string
+  slug?: string
+  description?: string
+  logoUrl?: string
+  plan: CompanyPlan
+  active: boolean
+  createdAt: string
+  updatedAt: string
+}
+
+export interface CompanyMember {
+  id: string
+  companyId: string
+  userId: string
+  role: CompanyMemberRole
+  joinedAt: string
+  // joined fields (populated on fetch)
+  userProfile?: UserProfile
+}
+
+export type ModuleKey = 'tiempo' | 'dinero' | 'lista' | 'objetivos' | 'habitos' | 'revision' | 'academia'
+
+export interface CompanyModule {
+  id: string
+  companyId: string
+  moduleKey: ModuleKey
+  enabled: boolean
+}
+
+export interface AcademyCourse {
+  id: string
+  companyId: string
+  title: string
+  description?: string
+  thumbnailUrl?: string
+  sortOrder: number
+  published: boolean
+  createdAt: string
+  updatedAt: string
+  // joined
+  modules?: AcademyModule[]
+}
+
+export interface AcademyModule {
+  id: string
+  courseId: string
+  title: string
+  description?: string
+  sortOrder: number
+  createdAt: string
+  // joined
+  lessons?: AcademyLesson[]
+}
+
+export type LessonType = 'video' | 'document'
+
+export interface AcademyLesson {
+  id: string
+  courseId: string
+  moduleId?: string      // optional for backward compat
+  lessonType: LessonType // 'video' | 'document'
+  title: string
+  youtubeUrl?: string    // solo si lessonType = 'video'
+  documentUrl?: string   // solo si lessonType = 'document' (Google Drive link)
+  description?: string
+  durationMinutes?: number
+  sortOrder: number
+  createdAt: string
+  // joined
+  completed?: boolean
+}
+
+export interface AcademyProgress {
+  id: string
+  userId: string
+  lessonId: string
+  completed: boolean
+  completedAt?: string
+}
+
+export interface CompanyCourseAccess {
+  id: string
+  companyId: string
+  courseId: string
+  grantedAt: string
+}
+
+// ── Contenido exclusivo estructurado (reemplaza ExclusiveVideo) ───────────────
+
+export interface ExclusiveContent {
+  id: string
+  companyId: string
+  title: string
+  description?: string
+  sortOrder: number
+  published: boolean
+  createdAt: string
+}
+
+export interface ExclusiveModule {
+  id: string
+  contentId: string
+  title: string
+  description?: string
+  sortOrder: number
+  createdAt: string
+}
+
+export interface ExclusiveLesson {
+  id: string
+  contentId: string
+  moduleId?: string          // null = lección suelta
+  lessonType: LessonType
+  title: string
+  youtubeUrl?: string
+  documentUrl?: string
+  description?: string
+  durationMinutes?: number
+  sortOrder: number
+  createdAt: string
+}
+
+export interface ExclusiveLessonProgress {
+  id: string
+  userId: string
+  lessonId: string
+  completed: boolean
+  completedAt?: string
+}
+
+// Mantenido por compatibilidad con datos existentes
+export interface ExclusiveVideo {
+  id: string
+  companyId: string
+  title: string
+  youtubeUrl: string
+  description?: string
+  durationMinutes?: number
+  sortOrder: number
+  published: boolean
+  createdAt: string
+}
+
+export interface ExclusiveVideoProgress {
+  id: string
+  userId: string
+  videoId: string
+  completed: boolean
+  completedAt?: string
 }

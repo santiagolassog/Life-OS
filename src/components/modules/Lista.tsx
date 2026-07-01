@@ -46,12 +46,58 @@ const PRIORITY_CONFIG = {
 type ListaSubView = 'tablero' | 'resumen' | 'historial';
 type ResumeRange = 'week' | 'month' | 'year';
 
+// Tareas completadas antes de esta fecha no muestran tiempo (datos sin precisión)
+const ELAPSED_CUTOFF = '2026-05-23';
+
+/** Parse date string safely — handles both "YYYY-MM-DD" and full ISO timestamps */
+function safeDate(s: string): Date {
+  return s.length <= 10 ? new Date(s + 'T12:00:00') : new Date(s);
+}
+
 function daysBetween(a: string, b: string): number {
   return Math.max(0, Math.round((new Date(b).getTime() - new Date(a).getTime()) / 86400000));
 }
 
 function hoursBetween(a: string, b: string): number {
   return Math.max(0, Math.round((new Date(b).getTime() - new Date(a).getTime()) / 3600000));
+}
+
+/** Smart elapsed time formatter: seconds / minutes / hours / days */
+function formatElapsed(startDate: string, endDate: string): string {
+  const start = new Date(startDate.length <= 10 ? startDate + 'T00:00:00' : startDate);
+  const end   = new Date(endDate.length <= 10 ? endDate + 'T23:59:59' : endDate);
+  const diffMs = Math.max(0, end.getTime() - start.getTime());
+  const diffSec = Math.round(diffMs / 1000);
+  if (diffSec < 60)   return `${diffSec}s`;
+  const diffMin = Math.round(diffMs / 60000);
+  if (diffMin < 60)   return `${diffMin}min`;
+  const diffHours = diffMs / 3600000;
+  if (diffHours < 24) return `${Math.round(diffHours * 10) / 10}h`;
+  const diffDays = diffMs / 86400000;
+  if (diffDays < 30)  return `${Math.round(diffDays)}d`;
+  const diffMonths = diffDays / 30;
+  return `${Math.round(diffMonths * 10) / 10}m`;
+}
+
+/** Average elapsed time from a list of tasks with startedAt + completedAt */
+function formatAvgElapsed(tasks: { startedAt?: string; completedAt?: string }[]): string | null {
+  const valid = tasks.filter(t => t.startedAt && t.completedAt);
+  if (valid.length === 0) return null;
+  const totalMs = valid.reduce((sum, t) => {
+    const s = new Date(t.startedAt!.length <= 10 ? t.startedAt! + 'T00:00:00' : t.startedAt!);
+    const e = new Date(t.completedAt!.length <= 10 ? t.completedAt! + 'T23:59:59' : t.completedAt!);
+    return sum + Math.max(0, e.getTime() - s.getTime());
+  }, 0);
+  const avgMs = totalMs / valid.length;
+  const avgSec = Math.round(avgMs / 1000);
+  if (avgSec < 60) return `${avgSec}s`;
+  const avgMin = Math.round(avgMs / 60000);
+  if (avgMin < 60) return `${avgMin}min`;
+  const avgHours = avgMs / 3600000;
+  if (avgHours < 24) return `${Math.round(avgHours * 10) / 10}h`;
+  const avgDays = avgMs / 86400000;
+  if (avgDays < 30) return `${Math.round(avgDays)}d`;
+  return `${Math.round((avgDays / 30) * 10) / 10}m`;
 }
 
 /**
@@ -181,7 +227,7 @@ const Lista: React.FC<ListaProps> = ({
     done: filteredTasks.filter(t => {
       if (t.status !== 'done') return false;
       if (!t.completedAt) return true;
-      return getWeekId(new Date(t.completedAt + 'T12:00:00')) === currentWeekId;
+      return getWeekId(safeDate(t.completedAt)) === currentWeekId;
     }).sort(orderSort),
   }), [filteredTasks, currentWeekId]);
 
@@ -190,7 +236,7 @@ const Lista: React.FC<ListaProps> = ({
     tasks.filter(t => {
       if (t.status !== 'done' || !t.completedAt) return false;
       if (filterCat && t.categoryId !== filterCat) return false;
-      return getWeekId(new Date(t.completedAt + 'T12:00:00')) !== currentWeekId;
+      return getWeekId(safeDate(t.completedAt)) !== currentWeekId;
     }).sort((a, b) => (b.completedAt ?? '').localeCompare(a.completedAt ?? '')),
   [tasks, filterCat, currentWeekId]);
 
@@ -207,14 +253,14 @@ const Lista: React.FC<ListaProps> = ({
   // ── Status change ─────────────────────────────────────────────────────────
 
   function changeStatus(task: Task, newStatus: Task['status']) {
-    const today = getLocalISODate();
+    const now = new Date().toISOString();
     setTasks(prev => prev.map(t => {
       if (t.id !== task.id) return t;
       return {
         ...t,
         status: newStatus,
-        startedAt:   newStatus === 'inprogress' && !t.startedAt ? today : t.startedAt,
-        completedAt: newStatus === 'done' && !t.completedAt ? today : t.completedAt,
+        startedAt:   newStatus === 'inprogress' && !t.startedAt ? now : t.startedAt,
+        completedAt: newStatus === 'done' ? now : (newStatus !== 'done' ? undefined : t.completedAt),
       };
     }));
     if (newStatus === 'done') {
@@ -318,7 +364,7 @@ const Lista: React.FC<ListaProps> = ({
       ? (over.id as Task['status'])
       : (overTask?.status ?? activeTask.status);
 
-    const today = getLocalISODate();
+    const now = new Date().toISOString();
 
     setTasks(prev => {
       let updated = prev.map(t => {
@@ -326,8 +372,8 @@ const Lista: React.FC<ListaProps> = ({
         return {
           ...t,
           status: targetStatus,
-          startedAt:   targetStatus === 'inprogress' && !t.startedAt ? today : t.startedAt,
-          completedAt: targetStatus === 'done' && !t.completedAt ? today : t.completedAt,
+          startedAt:   targetStatus === 'inprogress' && !t.startedAt ? now : t.startedAt,
+          completedAt: targetStatus === 'done' ? now : (targetStatus !== 'done' ? undefined : t.completedAt),
         };
       });
 
@@ -360,7 +406,7 @@ const Lista: React.FC<ListaProps> = ({
 
   return (
     <div className="flex-1 overflow-y-auto custom-scrollbar">
-      <div className="max-w-5xl mx-auto p-4 md:p-8 space-y-5 pb-28 md:pb-12">
+      <div className="w-full p-4 md:p-8 space-y-5 pb-28 md:pb-12">
 
         {/* ── Header ── */}
         <div className="flex items-center justify-between flex-wrap gap-3">
@@ -369,7 +415,7 @@ const Lista: React.FC<ListaProps> = ({
               <CheckSquare size={20} className="text-white" />
             </div>
             <div>
-              <h2 className="text-xl font-black text-slate-800 uppercase italic">Lista</h2>
+              <h2 className="text-xl font-black text-slate-800 uppercase italic">Tareas</h2>
               <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">Gestión de tareas</p>
             </div>
           </div>
@@ -737,10 +783,10 @@ const TaskCard: React.FC<TaskCardProps> = ({
   const isTomorrow = deadlineStatus === 'tomorrow';
   const soon      = deadlineStatus === 'soon';
 
-  const timeDays = task.startedAt && task.completedAt
-    ? daysBetween(task.startedAt, task.completedAt)
-    : task.startedAt && task.status === 'inprogress'
-    ? daysBetween(task.startedAt, getLocalISODate())
+  const timeLabel = task.startedAt && task.completedAt && task.completedAt >= ELAPSED_CUTOFF
+    ? formatElapsed(task.startedAt, task.completedAt)
+    : task.startedAt && task.startedAt >= ELAPSED_CUTOFF && task.status === 'inprogress'
+    ? formatElapsed(task.startedAt, new Date().toISOString())
     : null;
 
   const nextStatuses: Task['status'][] =
@@ -807,10 +853,10 @@ const TaskCard: React.FC<TaskCardProps> = ({
               {new Date(task.deadline + 'T12:00:00').toLocaleDateString('es-ES', { day: '2-digit', month: 'short' })}
             </div>
           )}
-          {timeDays !== null && (
+          {timeLabel !== null && (
             <div className="flex items-center gap-1 text-xs font-bold text-slate-400">
               <Clock size={11} />
-              {task.status === 'done' ? `${timeDays}d` : `${timeDays}d en progreso`}
+              {task.status === 'done' ? timeLabel : `${timeLabel} en progreso`}
             </div>
           )}
           {/* Status badge — oculto en desktop (la columna ya lo indica) */}
@@ -1042,11 +1088,9 @@ const ResumenView: React.FC<ResumenViewProps> = ({ tasks, categories, currentDat
     const periodStarted = tasks.filter(t => inRange(t.startedAt));
     const totalInPeriod = tasks.filter(t => inRange(t.createdAt) || inRange(t.startedAt) || inRange(t.completedAt));
 
-    // Avg time (days from startedAt to completedAt)
-    const withTime = periodDone.filter(t => t.startedAt && t.completedAt);
-    const avgDays = withTime.length > 0
-      ? Math.round(withTime.reduce((s, t) => s + daysBetween(t.startedAt!, t.completedAt!), 0) / withTime.length)
-      : null;
+    // Avg time (smart format) — solo tareas completadas después del cutoff
+    const withTime = periodDone.filter(t => t.startedAt && t.completedAt && t.completedAt >= ELAPSED_CUTOFF);
+    const avgLabel = formatAvgElapsed(withTime);
 
     // By category
     const byCat: Record<string, number> = {};
@@ -1065,7 +1109,7 @@ const ResumenView: React.FC<ResumenViewProps> = ({ tasks, categories, currentDat
 
     const maxCount = byCatArr[0]?.count ?? 1;
 
-    return { periodDone, periodStarted, totalInPeriod, avgDays, byCatArr, maxCount };
+    return { periodDone, periodStarted, totalInPeriod, avgLabel, byCatArr, maxCount };
   }, [tasks, range, viewDate, categories]);
 
   // Tasks completed in this period, grouped by category
@@ -1121,7 +1165,7 @@ const ResumenView: React.FC<ResumenViewProps> = ({ tasks, categories, currentDat
           { label: 'Completadas', value: stats.periodDone.length,    color: 'text-emerald-600', bg: 'bg-emerald-50 border-emerald-100' },
           { label: 'Iniciadas',   value: stats.periodStarted.length, color: 'text-blue-600',    bg: 'bg-blue-50 border-blue-100' },
           { label: 'Creadas',     value: tasks.filter(t => inRange(t.createdAt)).length, color: 'text-violet-600', bg: 'bg-violet-50 border-violet-100' },
-          { label: 'Promedio',    value: stats.avgDays !== null ? `${stats.avgDays}d` : '—', color: 'text-slate-600', bg: 'bg-slate-50 border-slate-100' },
+          { label: 'Promedio',    value: stats.avgLabel ?? '—', color: 'text-slate-600', bg: 'bg-slate-50 border-slate-100' },
         ].map(({ label, value, color, bg }) => (
           <div key={label} className={`rounded-2xl border px-4 py-3.5 flex flex-col gap-0.5 ${bg}`}>
             <p className="text-[9px] font-black uppercase tracking-widest text-slate-400">{label}</p>
@@ -1193,21 +1237,21 @@ const ResumenView: React.FC<ResumenViewProps> = ({ tasks, categories, currentDat
               </div>
               <div className="space-y-1 pl-1">
                 {tasks.map(task => {
-                  const hours = task.startedAt && task.completedAt ? hoursBetween(task.startedAt, task.completedAt) : null;
+                  const elapsed = task.startedAt && task.completedAt && task.completedAt >= ELAPSED_CUTOFF ? formatElapsed(task.startedAt, task.completedAt) : null;
                   return (
                     <div key={task.id} className="flex items-center gap-2 py-2 text-[12px]">
                       <CheckCircle2 size={12} className="text-emerald-500 shrink-0" />
                       <p className="flex-1 font-medium text-slate-700 truncate">{task.title}</p>
                       <div className="flex items-center gap-2 shrink-0">
-                        {hours !== null && (
+                        {elapsed !== null && (
                           <div className="flex items-center gap-1">
                             <Clock size={10} className="text-violet-400" />
-                            <span className="font-bold text-violet-600 tabular-nums min-w-[25px] text-right">{hours}h</span>
+                            <span className="font-bold text-violet-600 tabular-nums min-w-[25px] text-right">{elapsed}</span>
                           </div>
                         )}
                         {task.completedAt && (
                           <span className="text-slate-400 font-bold tabular-nums min-w-[45px] text-right text-[10px]">
-                            {new Date(task.completedAt + 'T12:00:00').toLocaleDateString('es-ES', { day: '2-digit', month: 'short' })}
+                            {safeDate(task.completedAt).toLocaleDateString('es-ES', { day: '2-digit', month: 'short' })}
                           </span>
                         )}
                       </div>
@@ -1465,12 +1509,12 @@ const TaskModal: React.FC<TaskModalProps> = ({
                     <button
                       key={s}
                       onClick={() => {
-                        const today = getLocalISODate();
+                        const now = new Date().toISOString();
                         setTask(t => ({
                           ...t,
                           status: s,
-                          startedAt:   s === 'inprogress' && !t.startedAt ? today : t.startedAt,
-                          completedAt: s === 'done' ? today : (s !== 'done' ? undefined : t.completedAt),
+                          startedAt:   s === 'inprogress' && !t.startedAt ? now : t.startedAt,
+                          completedAt: s === 'done' ? now : (s !== 'done' ? undefined : t.completedAt),
                         }));
                       }}
                       className={`flex-1 flex items-center justify-center gap-1.5 py-2 rounded-xl text-[10px] font-black uppercase transition-all border-2 ${
@@ -1591,7 +1635,7 @@ const HistorialView: React.FC<HistorialViewProps> = ({ tasks, categories }) => {
   const byWeek = useMemo(() => {
     const groups: Record<string, Task[]> = {};
     allCompleted.forEach(t => {
-      const wId = getWeekId(new Date(t.completedAt! + 'T12:00:00'));
+      const wId = getWeekId(safeDate(t.completedAt!));
       if (!groups[wId]) groups[wId] = [];
       groups[wId].push(t);
     });
@@ -1622,7 +1666,7 @@ const HistorialView: React.FC<HistorialViewProps> = ({ tasks, categories }) => {
               {weekTasks.map(task => {
                 const cat = task.categoryId ? categories[task.categoryId] : null;
                 const pri = PRIORITY_CONFIG[task.priority];
-                const elapsed = task.startedAt && task.completedAt ? hoursBetween(task.startedAt, task.completedAt) : null;
+                const elapsedLabel = task.startedAt && task.completedAt && task.completedAt >= ELAPSED_CUTOFF ? formatElapsed(task.startedAt, task.completedAt) : null;
 
                 return (
                   <div key={task.id} className="flex items-center gap-3 bg-white rounded-2xl border border-slate-100 shadow-sm p-4">
@@ -1635,15 +1679,15 @@ const HistorialView: React.FC<HistorialViewProps> = ({ tasks, categories }) => {
                       </div>
                     </div>
                     <div className="text-right shrink-0 space-y-0.5">
-                      {elapsed !== null && (
+                      {elapsedLabel !== null && (
                         <div className="flex items-center gap-1 justify-end">
                           <Clock size={10} className="text-violet-400" />
-                          <span className="text-[11px] font-black text-violet-600">{elapsed}h</span>
+                          <span className="text-[11px] font-black text-violet-600">{elapsedLabel}</span>
                         </div>
                       )}
                       {task.completedAt && (
                         <p className="text-[9px] text-slate-300 font-bold">
-                          {new Date(task.completedAt + 'T12:00:00').toLocaleDateString('es-ES', { day: '2-digit', month: 'short' })}
+                          {safeDate(task.completedAt).toLocaleDateString('es-ES', { day: '2-digit', month: 'short' })}
                         </p>
                       )}
                     </div>

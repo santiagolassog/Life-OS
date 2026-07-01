@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import {
   CheckCircle2, Circle, Plus, Edit2, TrendingUp, ChevronLeft, ChevronRight,
-  Flame, BarChart3, Activity, X, Trash2, Target, Sparkles,
+  Flame, BarChart3, Activity, X, Trash2, Target, Sparkles, GripVertical,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import type { Habit, HabitLog } from '../../types';
@@ -94,10 +94,22 @@ const hexForColor = (bgClass: string): string =>
 // COMPONENT
 // ─────────────────────────────────────────────────────────────────────────────
 
+interface HabitCelebration {
+  habit: Habit;
+  streak: number;
+  weekDone: number;
+  weekTarget: number;
+  percentage: number;
+  message: typeof HABIT_DONE_MSGS[number];
+}
+
 export default function Habitos({ habits, setHabits, habitLogs, setHabitLogs }: HabitosProps) {
   // ─── State ──────────────────────────────────────────────────────────────────
   const [view, setView] = useState<ViewType>('week');
   const [showModal, setShowModal] = useState(false);
+  const [celebration, setCelebration] = useState<HabitCelebration | null>(null);
+  const [dragHabitId, setDragHabitId] = useState<string | null>(null);
+  const [dragOverHabitId, setDragOverHabitId] = useState<string | null>(null);
   const [editingHabitId, setEditingHabitId] = useState<string | null>(null);
   const [habitForm, setHabitForm] = useState<HabitForm>({
     name: '',
@@ -212,9 +224,39 @@ export default function Habitos({ habits, setHabits, habitLogs, setHabitLogs }: 
     if (exists) {
       setHabitLogs(prev => prev.filter(l => !(l.habitId === habitId && l.date === dateStr)));
     } else {
-      setHabitLogs(prev => [...prev, { id: generateId(), habitId, date: dateStr }]);
-      const msg = pickRandom(HABIT_DONE_MSGS);
-      toast(`${msg.emoji} ${msg.text}`, { duration: 2000 });
+      const newLogs = [...habitLogs, { id: generateId(), habitId, date: dateStr }];
+      setHabitLogs(newLogs);
+
+      // Calcular stats para el popup de celebración
+      const habit = habits.find(h => h.id === habitId);
+      if (habit) {
+        // Racha consecutiva de este hábito específico
+        const logsForHabit = new Set(newLogs.filter(l => l.habitId === habitId).map(l => l.date));
+        let habitStreak = 0;
+        const d = new Date(dateStr + 'T12:00:00');
+        while (true) {
+          const ds = formatDate(d);
+          if (ds < habit.startDate || !logsForHabit.has(ds)) break;
+          habitStreak++;
+          d.setDate(d.getDate() - 1);
+        }
+
+        // Progreso semanal
+        const weekStart = getStartOfWeek(new Date(dateStr + 'T12:00:00'));
+        const wDates = Array.from({ length: 7 }, (_, i) => { const dd = new Date(weekStart); dd.setDate(dd.getDate() + i); return dd; });
+        const weekDone = wDates.filter(dd => logsForHabit.has(formatDate(dd))).length;
+        const pct = habit.target > 0 ? Math.min(100, Math.round((weekDone / habit.target) * 100)) : 0;
+
+        setCelebration({
+          habit,
+          streak: habitStreak,
+          weekDone,
+          weekTarget: habit.target,
+          percentage: pct,
+          message: pickRandom(HABIT_DONE_MSGS),
+        });
+        setTimeout(() => setCelebration(null), 4000);
+      }
     }
   };
 
@@ -251,12 +293,14 @@ export default function Habitos({ habits, setHabits, habitLogs, setHabitLogs }: 
         : h));
       toast.success('Hábito actualizado');
     } else {
+      const maxOrder = habits.reduce((max, h) => Math.max(max, h.sortOrder ?? 0), 0);
       const newHabit: Habit = {
         id: generateId(),
         name: habitForm.name.trim(),
         target: habitForm.target,
         color: habitForm.color,
         startDate: habitForm.startDate,
+        sortOrder: maxOrder + 1,
         createdAt: new Date().toISOString(),
       };
       setHabits(prev => [...prev, newHabit]);
@@ -276,6 +320,52 @@ export default function Habitos({ habits, setHabits, habitLogs, setHabitLogs }: 
     setHabitLogs(prev => prev.filter(l => l.habitId !== editingHabitId));
     toast.success('Hábito eliminado');
     handleCloseModal();
+  };
+
+  // ─── Drag & drop reorder ──────────────────────────────────────────────────
+  const sortedHabits = useMemo(() =>
+    [...habits].sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0)),
+    [habits]
+  );
+
+  const handleHabitDragStart = (e: React.DragEvent, habitId: string) => {
+    setDragHabitId(habitId);
+    e.dataTransfer.effectAllowed = 'move';
+    // Imagen transparente para no mostrar ghost del navegador
+    const img = document.createElement('img');
+    img.src = 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7';
+    e.dataTransfer.setDragImage(img, 0, 0);
+  };
+
+  const handleHabitDragOver = (e: React.DragEvent, habitId: string) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    if (habitId !== dragOverHabitId) setDragOverHabitId(habitId);
+  };
+
+  const handleHabitDrop = (targetId: string) => {
+    if (!dragHabitId || dragHabitId === targetId) {
+      setDragHabitId(null);
+      setDragOverHabitId(null);
+      return;
+    }
+    const ordered = sortedHabits.map(h => h.id);
+    const fromIdx = ordered.indexOf(dragHabitId);
+    const toIdx = ordered.indexOf(targetId);
+    if (fromIdx === -1 || toIdx === -1) return;
+    ordered.splice(fromIdx, 1);
+    ordered.splice(toIdx, 0, dragHabitId);
+    // Reasignar sortOrder basado en la nueva posición
+    const idToOrder: Record<string, number> = {};
+    ordered.forEach((id, i) => { idToOrder[id] = i; });
+    setHabits(prev => prev.map(h => ({ ...h, sortOrder: idToOrder[h.id] ?? h.sortOrder })));
+    setDragHabitId(null);
+    setDragOverHabitId(null);
+  };
+
+  const handleHabitDragEnd = () => {
+    setDragHabitId(null);
+    setDragOverHabitId(null);
   };
 
   const changeDate = (offset: number): void => {
@@ -309,7 +399,7 @@ export default function Habitos({ habits, setHabits, habitLogs, setHabitLogs }: 
   // ─── Render ─────────────────────────────────────────────────────────────────
   return (
     <div className="flex-1 overflow-y-auto custom-scrollbar">
-      <div className="max-w-5xl mx-auto p-4 md:p-8 space-y-6 pb-28 md:pb-12">
+      <div className="w-full p-4 md:p-8 space-y-6 pb-28 md:pb-12">
 
         {/* ═══ HEADER ═══ */}
         <div className="flex items-center justify-between flex-wrap gap-3">
@@ -414,18 +504,30 @@ export default function Habitos({ habits, setHabits, habitLogs, setHabitLogs }: 
         )}
 
         {/* ═══ VISTA SEMANA ═══ */}
-        {habits.length > 0 && view === 'week' && habits.map((habit) => {
+        {habits.length > 0 && view === 'week' && sortedHabits.map((habit) => {
           const { doneCount, periodTarget, percentage } = getHabitStats(habit, weekDates);
           const isCompleted = doneCount >= periodTarget && periodTarget > 0;
+          const isDragging = dragHabitId === habit.id;
+          const isDragOver = dragOverHabitId === habit.id && dragHabitId !== habit.id;
 
           return (
             <div
               key={habit.id}
-              className="bg-white rounded-3xl border border-slate-100 p-5 md:p-7 shadow-sm group/card"
+              draggable
+              onDragStart={(e) => handleHabitDragStart(e, habit.id)}
+              onDragOver={(e) => handleHabitDragOver(e, habit.id)}
+              onDrop={() => handleHabitDrop(habit.id)}
+              onDragEnd={handleHabitDragEnd}
+              className={`bg-white rounded-3xl border p-5 md:p-7 shadow-sm group/card transition-all duration-200 ${
+                isDragging ? 'opacity-30 scale-[0.98]' : ''
+              } ${isDragOver ? 'border-indigo-400 shadow-md ring-2 ring-indigo-200' : 'border-slate-100'}`}
             >
               {/* Header del hábito */}
               <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4">
                 <div className="flex items-center gap-4">
+                  <div className="cursor-grab active:cursor-grabbing text-slate-300 hover:text-slate-500 transition-colors -ml-1 shrink-0" title="Arrastra para reordenar">
+                    <GripVertical size={18} />
+                  </div>
                   <div className={`w-3 h-12 rounded-full ${habit.color}`} />
                   <div>
                     <h3 className="font-black text-lg text-slate-800 leading-tight">{habit.name}</h3>
@@ -507,18 +609,30 @@ export default function Habitos({ habits, setHabits, habitLogs, setHabitLogs }: 
         {/* ═══ VISTA MES — grid 2 columnas desktop ═══ */}
         {habits.length > 0 && view === 'month' && (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-5">
-            {habits.map((habit) => {
+            {sortedHabits.map((habit) => {
               const { doneCount, periodTarget, percentage } = getHabitStats(habit, monthData.days);
               const isCompleted = doneCount >= periodTarget && periodTarget > 0;
+              const isDragging = dragHabitId === habit.id;
+              const isDragOver = dragOverHabitId === habit.id && dragHabitId !== habit.id;
 
               return (
                 <div
                   key={habit.id}
-                  className="bg-white rounded-3xl border border-slate-100 p-4 md:p-5 shadow-sm"
+                  draggable
+                  onDragStart={(e) => handleHabitDragStart(e, habit.id)}
+                  onDragOver={(e) => handleHabitDragOver(e, habit.id)}
+                  onDrop={() => handleHabitDrop(habit.id)}
+                  onDragEnd={handleHabitDragEnd}
+                  className={`bg-white rounded-3xl border p-4 md:p-5 shadow-sm transition-all duration-200 ${
+                    isDragging ? 'opacity-30 scale-[0.98]' : ''
+                  } ${isDragOver ? 'border-indigo-400 shadow-md ring-2 ring-indigo-200' : 'border-slate-100'}`}
                 >
                   {/* Header compacto */}
                   <div className="flex items-center justify-between mb-4">
                     <div className="flex items-center gap-3 min-w-0">
+                      <div className="cursor-grab active:cursor-grabbing text-slate-300 hover:text-slate-500 transition-colors -ml-1 shrink-0" title="Arrastra para reordenar">
+                        <GripVertical size={16} />
+                      </div>
                       <div className={`w-2.5 h-10 rounded-full shrink-0 ${habit.color}`} />
                       <div className="min-w-0">
                         <h3 className="font-black text-sm text-slate-800 leading-tight truncate">{habit.name}</h3>
@@ -594,7 +708,7 @@ export default function Habitos({ habits, setHabits, habitLogs, setHabitLogs }: 
                 Auditar progreso de:
               </span>
               <div className="flex flex-wrap gap-2">
-                {habits.map(h => (
+                {sortedHabits.map(h => (
                   <button
                     key={h.id}
                     onClick={() => setSelectedHabitIdForYear(h.id)}
@@ -1063,6 +1177,95 @@ export default function Habitos({ habits, setHabits, habitLogs, setHabitLogs }: 
           </div>
         </div>
       )}
+
+      {/* ══════ CELEBRATION POPUP ══════ */}
+      {celebration && (() => {
+        const hex = hexForColor(celebration.habit.color);
+        const pct = celebration.percentage;
+        const circumference = 2 * Math.PI * 36;
+        const strokeDash = (pct / 100) * circumference;
+        return (
+          <div className="fixed inset-0 z-[400] flex items-center justify-center p-4 pointer-events-none" onClick={() => setCelebration(null)}>
+            <div
+              className="pointer-events-auto bg-white rounded-[2.5rem] shadow-2xl w-full max-w-xs overflow-hidden border border-slate-100"
+              style={{
+                animation: 'habitCelebIn 0.4s cubic-bezier(0.16,1,0.3,1), habitCelebOut 0.4s ease-in 3.6s forwards',
+              }}
+            >
+              {/* Header con gradiente */}
+              <div className="relative px-6 pt-7 pb-5 text-center overflow-hidden" style={{ background: `linear-gradient(135deg, ${hex}22, ${hex}08)` }}>
+                <div className="absolute -top-6 -right-6 w-24 h-24 rounded-full opacity-10" style={{ backgroundColor: hex }} />
+                <div className="absolute -bottom-4 -left-4 w-16 h-16 rounded-full opacity-10" style={{ backgroundColor: hex }} />
+                <span className="text-4xl block mb-2">{celebration.message.emoji}</span>
+                <p className="text-sm font-black text-slate-800 leading-snug">{celebration.message.text}</p>
+                <p className="text-[10px] font-bold uppercase tracking-widest mt-1.5" style={{ color: hex }}>{celebration.habit.name}</p>
+              </div>
+
+              {/* Stats */}
+              <div className="px-6 pb-6 pt-4">
+                <div className="flex items-center justify-around">
+                  {/* Círculo de progreso */}
+                  <div className="relative flex items-center justify-center">
+                    <svg width="84" height="84" viewBox="0 0 84 84" className="-rotate-90">
+                      <circle cx="42" cy="42" r="36" fill="none" stroke="#e2e8f0" strokeWidth="5" />
+                      <circle cx="42" cy="42" r="36" fill="none" stroke={hex} strokeWidth="5"
+                        strokeLinecap="round"
+                        strokeDasharray={circumference}
+                        strokeDashoffset={circumference - strokeDash}
+                        style={{ transition: 'stroke-dashoffset 0.8s ease-out 0.3s' }}
+                      />
+                    </svg>
+                    <div className="absolute inset-0 flex flex-col items-center justify-center">
+                      <span className="text-xl font-black" style={{ color: hex }}>{pct}%</span>
+                      <span className="text-[7px] font-bold text-slate-400 uppercase tracking-widest">Semana</span>
+                    </div>
+                  </div>
+
+                  {/* Stats verticales */}
+                  <div className="flex flex-col gap-3">
+                    <div className="text-center">
+                      <div className="flex items-center justify-center gap-1.5">
+                        <Flame size={16} className="text-orange-500" />
+                        <span className="text-2xl font-black text-slate-800">{celebration.streak}</span>
+                      </div>
+                      <p className="text-[8px] font-bold text-slate-400 uppercase tracking-widest">Racha</p>
+                    </div>
+                    <div className="text-center">
+                      <div className="flex items-center justify-center gap-1">
+                        <Target size={14} style={{ color: hex }} />
+                        <span className="text-lg font-black text-slate-700">{celebration.weekDone}<span className="text-slate-300 text-sm">/{celebration.weekTarget}</span></span>
+                      </div>
+                      <p className="text-[8px] font-bold text-slate-400 uppercase tracking-widest">Esta semana</p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Progress bar */}
+                <div className="mt-4 h-2 bg-slate-100 rounded-full overflow-hidden">
+                  <div
+                    className="h-full rounded-full transition-all duration-700 ease-out"
+                    style={{ width: `${pct}%`, backgroundColor: hex, transitionDelay: '0.3s' }}
+                  />
+                </div>
+                <p className="text-[8px] font-bold text-slate-300 text-center mt-1.5 uppercase tracking-widest">
+                  {pct >= 100 ? '¡Meta semanal cumplida!' : pct >= 70 ? '¡Casi lo logras!' : pct >= 40 ? 'Buen progreso' : 'Sigue sumando'}
+                </p>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
+      <style>{`
+        @keyframes habitCelebIn {
+          0% { opacity: 0; transform: scale(0.8) translateY(20px); }
+          100% { opacity: 1; transform: scale(1) translateY(0); }
+        }
+        @keyframes habitCelebOut {
+          0% { opacity: 1; transform: scale(1) translateY(0); }
+          100% { opacity: 0; transform: scale(0.9) translateY(-10px); }
+        }
+      `}</style>
     </div>
   );
 }
