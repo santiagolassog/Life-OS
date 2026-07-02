@@ -25,6 +25,41 @@ import type {
 // Helpers
 // ─────────────────────────────────────────────────────────────────────────────
 
+const FETCH_PAGE_SIZE = 1000
+
+/**
+ * Trae TODAS las filas de una tabla, paginando en bloques de 1000.
+ *
+ * PostgREST (Supabase) limita cada respuesta a un máximo de filas (1000 por
+ * defecto) aunque no se pida un LIMIT explícito. Con .select('*') a secas,
+ * cualquier cuenta cuya tabla supere ese límite pierde en silencio las filas
+ * que exceden el corte — sin error visible, simplemente no vuelven en la
+ * respuesta. Esto es exactamente lo que causaba que actividades ya guardadas
+ * (confirmadas en la base de datos) nunca se reflejaran de vuelta en la app
+ * una vez la tabla de eventos superó las 1000 filas.
+ *
+ * Se ordena por 'id' para garantizar un orden estable entre páginas (sin
+ * ORDER BY, Postgres no garantiza el mismo orden en llamadas sucesivas,
+ * lo que podría saltarse o duplicar filas al paginar).
+ */
+async function fetchAllRows(table: string): Promise<Record<string, unknown>[]> {
+  const rows: Record<string, unknown>[] = []
+  let from = 0
+  for (;;) {
+    const { data, error } = await supabase
+      .from(table)
+      .select('*')
+      .order('id', { ascending: true })
+      .range(from, from + FETCH_PAGE_SIZE - 1)
+    if (error) { console.error(`fetchAllRows(${table}):`, error); break }
+    if (!data || data.length === 0) break
+    rows.push(...data)
+    if (data.length < FETCH_PAGE_SIZE) break
+    from += FETCH_PAGE_SIZE
+  }
+  return rows
+}
+
 /** Aplana un Record<dateId, EventEntry[]> a un array plano con dateId incluido. */
 function flattenEvents(events: Events): Array<EventEntry & { dateId: string }> {
   return Object.entries(events).flatMap(([dateId, evs]) =>
@@ -298,11 +333,10 @@ const savingsYearBalanceToDb = (b: SavingsYearBalance) => ({
 // ─────────────────────────────────────────────────────────────────────────────
 
 export async function loadEvents(): Promise<Events> {
-  const { data, error } = await supabase.from('events').select('*')
-  if (error) { console.error('loadEvents:', error); return {} }
+  const data = await fetchAllRows('events')
 
   const grouped: Events = {}
-  data?.forEach(row => {
+  data.forEach(row => {
     const dateId = row.date_id as string
     if (!grouped[dateId]) grouped[dateId] = []
     grouped[dateId].push(rowToEvent(row))
@@ -311,78 +345,65 @@ export async function loadEvents(): Promise<Events> {
 }
 
 export async function loadCategories(): Promise<Categories> {
-  const { data, error } = await supabase.from('categories').select('*')
-  if (error) { console.error('loadCategories:', error); return {} }
-
+  const data = await fetchAllRows('categories')
   const cats: Categories = {}
-  data?.forEach(row => { cats[row.id as string] = rowToCategory(row) })
+  data.forEach(row => { cats[row.id as string] = rowToCategory(row) })
   return cats
 }
 
 export async function loadTransactions(): Promise<Transaction[]> {
-  const { data, error } = await supabase.from('transactions').select('*').order('date', { ascending: false })
-  if (error) { console.error('loadTransactions:', error); return [] }
-  return data?.map(rowToTransaction) ?? []
+  const data = await fetchAllRows('transactions')
+  return data.map(rowToTransaction).sort((a, b) => b.date.localeCompare(a.date))
 }
 
 export async function loadFinCategories(): Promise<FinCategory[]> {
-  const { data, error } = await supabase.from('fin_categories').select('*')
-  if (error) { console.error('loadFinCategories:', error); return [] }
-  return data?.map(rowToFinCategory) ?? []
+  const data = await fetchAllRows('fin_categories')
+  return data.map(rowToFinCategory)
 }
 
 export async function loadGoals(): Promise<Goal[]> {
-  const { data, error } = await supabase.from('goals').select('*')
-  if (error) { console.error('loadGoals:', error); return [] }
-  return data?.map(rowToGoal) ?? []
+  const data = await fetchAllRows('goals')
+  return data.map(rowToGoal)
 }
 
 export async function loadHabits(): Promise<Habit[]> {
-  const { data, error } = await supabase.from('habits').select('*').order('created_at', { ascending: true })
-  if (error) { console.error('loadHabits:', error); return [] }
-  return data?.map(rowToHabit) ?? []
+  const data = await fetchAllRows('habits')
+  return data.map(rowToHabit).sort((a, b) => a.createdAt.localeCompare(b.createdAt))
 }
 
 export async function loadHabitLogs(): Promise<HabitLog[]> {
-  const { data, error } = await supabase.from('habit_logs').select('*')
-  if (error) { console.error('loadHabitLogs:', error); return [] }
-  return data?.map(rowToHabitLog) ?? []
+  const data = await fetchAllRows('habit_logs')
+  return data.map(rowToHabitLog)
 }
 
 export async function loadSavings(): Promise<Savings[]> {
-  const { data, error } = await supabase.from('savings').select('*')
-  if (error) { console.error('loadSavings:', error); return [] }
-  return data?.map(rowToSavings) ?? []
+  const data = await fetchAllRows('savings')
+  return data.map(rowToSavings)
 }
 
 export async function loadMonthBalances(): Promise<MonthBalance[]> {
-  const { data, error } = await supabase.from('month_balances').select('*')
-  if (error) { console.error('loadMonthBalances:', error); return [] }
-  return data?.map(rowToMonthBalance) ?? []
+  const data = await fetchAllRows('month_balances')
+  return data.map(rowToMonthBalance)
 }
 
 export async function loadSavingsWithdrawals(): Promise<SavingsWithdrawal[]> {
-  const { data, error } = await supabase.from('savings_withdrawals').select('*')
-  if (error) { console.error('loadSavingsWithdrawals:', error); return [] }
-  return data?.map(rowToSavingsWithdrawal) ?? []
+  const data = await fetchAllRows('savings_withdrawals')
+  return data.map(rowToSavingsWithdrawal)
 }
 
 export async function loadSavingsPockets(): Promise<SavingsPocket[]> {
-  const { data, error } = await supabase.from('savings_pockets').select('*')
-  if (error) { console.error('loadSavingsPockets:', error); return [] }
-  return data?.map(rowToSavingsPocket) ?? []
+  const data = await fetchAllRows('savings_pockets')
+  return data.map(rowToSavingsPocket)
 }
 
 export async function loadPocketFundings(): Promise<PocketFunding[]> {
-  const { data, error } = await supabase.from('pocket_fundings').select('*')
-  if (error) { console.error('loadPocketFundings:', error); return [] }
-  return data?.map(rowToPocketFunding) ?? []
+  const data = await fetchAllRows('pocket_fundings')
+  return data.map(rowToPocketFunding)
 }
 
 export async function loadSavingsYearBalances(): Promise<SavingsYearBalance[]> {
-  const { data, error } = await supabase.from('savings_year_balances').select('*')
-  if (error) { console.error('loadSavingsYearBalances:', error); return [] }
-  return data?.map(rowToSavingsYearBalance) ?? []
+  const data = await fetchAllRows('savings_year_balances')
+  return data.map(rowToSavingsYearBalance)
 }
 
 // ── Loans ────────────────────────────────────────────────────────────────────
@@ -432,15 +453,13 @@ const loanPaymentToDb = (p: LoanPayment) => ({
 })
 
 export async function loadLoans(): Promise<Loan[]> {
-  const { data, error } = await supabase.from('loans').select('*').order('date', { ascending: false })
-  if (error) { console.error('loadLoans:', error); return [] }
-  return data?.map(rowToLoan) ?? []
+  const data = await fetchAllRows('loans')
+  return data.map(rowToLoan).sort((a, b) => b.date.localeCompare(a.date))
 }
 
 export async function loadLoanPayments(): Promise<LoanPayment[]> {
-  const { data, error } = await supabase.from('loan_payments').select('*')
-  if (error) { console.error('loadLoanPayments:', error); return [] }
-  return data?.map(rowToLoanPayment) ?? []
+  const data = await fetchAllRows('loan_payments')
+  return data.map(rowToLoanPayment)
 }
 
 export async function syncLoans(prev: Loan[], curr: Loan[], userId: string) {
@@ -482,9 +501,8 @@ const budgetToDb = (b: Budget) => ({
 })
 
 export async function loadBudgets(): Promise<Budget[]> {
-  const { data, error } = await supabase.from('budgets').select('*')
-  if (error) { console.error('loadBudgets:', error); return [] }
-  return data?.map(rowToBudget) ?? []
+  const data = await fetchAllRows('budgets')
+  return data.map(rowToBudget)
 }
 
 export async function syncBudgets(prev: Budget[], curr: Budget[], userId: string) {
@@ -534,9 +552,8 @@ const taskToDb = (t: Task) => ({
 })
 
 export async function loadTasks(): Promise<Task[]> {
-  const { data, error } = await supabase.from('tasks').select('*')
-  if (error) { console.error('loadTasks:', error); return [] }
-  return data?.map(rowToTask) ?? []
+  const data = await fetchAllRows('tasks')
+  return data.map(rowToTask)
 }
 
 export async function syncTasks(prev: Task[], curr: Task[], userId: string) {
@@ -574,9 +591,8 @@ const checklistItemToDb = (c: ChecklistItem) => ({
 })
 
 export async function loadChecklistItems(): Promise<ChecklistItem[]> {
-  const { data, error } = await supabase.from('checklist_items').select('*')
-  if (error) { console.error('loadChecklistItems:', error); return [] }
-  return data?.map(rowToChecklistItem) ?? []
+  const data = await fetchAllRows('checklist_items')
+  return data.map(rowToChecklistItem)
 }
 
 export async function syncChecklistItems(prev: ChecklistItem[], curr: ChecklistItem[], userId: string) {
@@ -749,9 +765,8 @@ const reminderToDb = (r: Reminder) => ({
 })
 
 export async function loadReminders(): Promise<Reminder[]> {
-  const { data, error } = await supabase.from('reminders').select('*')
-  if (error) { console.error('loadReminders:', error); return [] }
-  return data?.map(rowToReminder) ?? []
+  const data = await fetchAllRows('reminders')
+  return data.map(rowToReminder)
 }
 
 export async function syncReminders(prev: Reminder[], curr: Reminder[], userId: string) {
